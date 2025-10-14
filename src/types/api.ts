@@ -33,9 +33,12 @@ export interface BotSymbolSetting {
 export interface Position {
   id: number;
   botId: number;
+  botName?: string;
   symbol: string;
   side: 'long' | 'short';
   qty: number;
+  leverage?: number;
+  currentPrice?: number;
   entrySignalPrice: number;
   entryFillPrice?: number;
   tp?: number;
