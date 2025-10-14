@@ -1,11 +1,19 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { KPICard } from '@/components/KPICard';
+import { FilterBar } from '@/components/FilterBar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DollarSign, TrendingUp, Activity, Clock } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { DateRange } from 'react-day-picker';
 
 export default function Dashboard() {
+  const [selectedBots, setSelectedBots] = useState<string[]>([]);
+  const [selectedPairs, setSelectedPairs] = useState<string[]>([]);
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [side, setSide] = useState<'all' | 'long' | 'short'>('all');
+
   const { data: positions } = useQuery({
     queryKey: ['positions'],
     queryFn: () => api.getPositions(),
@@ -15,6 +23,22 @@ export default function Dashboard() {
     queryKey: ['bots'],
     queryFn: () => api.getBots(),
   });
+
+  const { data: symbolsData } = useQuery({
+    queryKey: ['symbols'],
+    queryFn: () => api.getSymbols(),
+  });
+
+  // Extract unique bot names and pairs
+  const availableBots = Array.from(new Set(bots?.map(b => b.name) || []));
+  const availablePairs = Array.from(new Set(symbolsData?.map((s: any) => s.symbol) || []));
+
+  const handleResetFilters = () => {
+    setSelectedBots([]);
+    setSelectedPairs([]);
+    setDateRange(undefined);
+    setSide('all');
+  };
 
   // Calculate KPIs
   const totalPnL = positions?.positions.reduce((sum, p) => sum + (p.pnl || 0), 0) || 0;
@@ -36,9 +60,23 @@ export default function Dashboard() {
   return (
     <div className="space-y-6 p-4 lg:p-6">
       <div>
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground">Übersicht über Ihre Trading-Performance</p>
+        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <p className="text-sm text-muted-foreground">Trading Portfolio Overview</p>
       </div>
+
+      <FilterBar
+        bots={availableBots}
+        pairs={availablePairs}
+        selectedBots={selectedBots}
+        selectedPairs={selectedPairs}
+        dateRange={dateRange}
+        side={side}
+        onBotsChange={setSelectedBots}
+        onPairsChange={setSelectedPairs}
+        onDateRangeChange={setDateRange}
+        onSideChange={setSide}
+        onReset={handleResetFilters}
+      />
 
       {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

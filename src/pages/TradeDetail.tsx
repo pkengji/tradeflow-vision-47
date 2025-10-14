@@ -57,7 +57,7 @@ export default function TradeDetail() {
       {/* Price Slider Visualization */}
       <Card>
         <CardHeader>
-          <CardTitle>Preis-Visualisierung</CardTitle>
+          <CardTitle>Price Visualization</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -75,10 +75,10 @@ export default function TradeDetail() {
                       ) : (
                         <ArrowDownRight className="h-3 w-3 mr-1" />
                       )}
-                      Entry
+                      ENTRY
                     </Badge>
                   </div>
-                  <div className="h-8 w-1 bg-primary" />
+                  <div className={`h-8 w-1 ${position.side === 'long' ? 'bg-success' : 'bg-danger'}`} />
                   <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs font-medium whitespace-nowrap">
                     {formatPrice(entryPrice)}
                   </div>
@@ -116,6 +116,24 @@ export default function TradeDetail() {
                     <div className="h-8 w-1 bg-danger" />
                     <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs whitespace-nowrap">
                       {formatPrice(position.sl)}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Current Price */}
+              {position.currentPrice && (
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 z-10"
+                  style={{ left: `${getPosition(position.currentPrice)}%` }}
+                >
+                  <div className="relative">
+                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap">
+                      <Badge variant="default">NOW</Badge>
+                    </div>
+                    <div className="h-8 w-1 bg-primary" />
+                    <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs font-bold whitespace-nowrap">
+                      {formatPrice(position.currentPrice)}
                     </div>
                   </div>
                 </div>

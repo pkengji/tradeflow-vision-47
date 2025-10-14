@@ -1,9 +1,10 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { LayoutDashboard, TrendingUp, Activity, Bot, Settings, LogOut, Menu } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useState } from 'react';
+import { cn } from '@/lib/utils';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -16,9 +17,15 @@ const navigation = [
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const NavLinks = () => (
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  const NavLinks = ({ onNavigate }: { onNavigate?: () => void }) => (
     <>
       {navigation.map((item) => {
         const isActive = location.pathname === item.href;
@@ -27,11 +34,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           <Link
             key={item.name}
             to={item.href}
-            onClick={() => setMobileMenuOpen(false)}
+            onClick={onNavigate}
             className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-colors ${
               isActive
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                ? 'bg-accent text-foreground'
+                : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
             }`}
           >
             <Icon className="h-5 w-5" />
@@ -43,67 +50,90 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="flex min-h-screen flex-col">
-      {/* Top Header */}
-      <header className="sticky top-0 z-50 border-b border-border bg-card">
-        <div className="flex h-16 items-center justify-between px-4 lg:px-6">
-          <div className="flex items-center gap-4">
-            <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-              <SheetTrigger asChild className="lg:hidden">
-                <Button variant="ghost" size="icon">
-                  <Menu className="h-6 w-6" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="w-64 p-0">
-                <div className="flex h-full flex-col">
-                  <div className="border-b border-border p-6">
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                        <TrendingUp className="h-5 w-5 text-primary-foreground" />
-                      </div>
-                      <span className="text-lg font-semibold">Trading Bot</span>
-                    </div>
-                  </div>
-                  <nav className="flex-1 space-y-1 p-4">
-                    <NavLinks />
-                  </nav>
+    <div className="min-h-screen bg-background pb-16 lg:pb-0">
+      {/* Header */}
+      <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="flex h-14 items-center px-4 gap-4">
+          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+            <SheetTrigger asChild className="lg:hidden">
+              <Button variant="ghost" size="icon">
+                <Menu className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-64 p-0">
+              <div className="flex flex-col h-full">
+                <div className="p-6 border-b">
+                  <h2 className="text-xl font-bold">TradingBot</h2>
                 </div>
-              </SheetContent>
-            </Sheet>
-            
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                <TrendingUp className="h-5 w-5 text-primary-foreground" />
+                <nav className="flex-1 p-4">
+                  <NavLinks onNavigate={() => setMobileMenuOpen(false)} />
+                </nav>
               </div>
-              <span className="text-lg font-semibold">Trading Bot</span>
-            </div>
+            </SheetContent>
+          </Sheet>
+
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-6 w-6" />
+            <h1 className="text-lg font-bold hidden sm:block">TradingBot</h1>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="hidden text-sm sm:block">
-              <span className="text-muted-foreground">Angemeldet als</span>{' '}
-              <span className="font-medium">{user?.name}</span>
+          <div className="ml-auto flex items-center gap-4">
+            <div className="text-right hidden sm:block">
+              <div className="text-sm font-medium">{user?.email}</div>
+              <div className="text-xs text-muted-foreground capitalize">{user?.role}</div>
             </div>
-            <Button variant="ghost" size="icon" onClick={logout}>
+            <Button variant="ghost" size="icon" onClick={handleLogout} className="hidden lg:flex">
               <LogOut className="h-5 w-5" />
             </Button>
           </div>
         </div>
       </header>
 
-      <div className="flex flex-1">
-        {/* Desktop Sidebar */}
-        <aside className="hidden w-64 border-r border-border bg-card lg:block">
-          <nav className="space-y-1 p-4">
+      <div className="flex">
+        {/* Sidebar - Desktop */}
+        <aside className="hidden lg:block w-64 border-r min-h-[calc(100vh-3.5rem)] sticky top-14">
+          <nav className="p-4">
             <NavLinks />
           </nav>
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-x-hidden">
+        <main className="flex-1">
           {children}
         </main>
       </div>
+
+      {/* Mobile Bottom Navigation */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="grid grid-cols-5 h-16">
+          {navigation.map((item) => {
+            const Icon = item.icon;
+            const isActive = location.pathname === item.href;
+            return (
+              <Link
+                key={item.name}
+                to={item.href}
+                className={cn(
+                  'flex flex-col items-center justify-center gap-1 text-xs transition-colors',
+                  isActive
+                    ? 'text-foreground font-medium'
+                    : 'text-muted-foreground'
+                )}
+              >
+                <Icon className="h-5 w-5" />
+                <span className="text-[10px]">{item.name}</span>
+              </Link>
+            );
+          })}
+          <button
+            onClick={handleLogout}
+            className="flex flex-col items-center justify-center gap-1 text-xs text-muted-foreground transition-colors"
+          >
+            <LogOut className="h-5 w-5" />
+            <span className="text-[10px]">Logout</span>
+          </button>
+        </div>
+      </nav>
     </div>
   );
 }
