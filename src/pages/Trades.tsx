@@ -1,18 +1,42 @@
+// src/pages/Trades.tsx
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TradeCard } from '@/components/TradeCard';
+
+// 🔁 neuer zentraler GET-Wrapper
+import { apiGet } from '@/lib/api';
+// ✅ OpenAPI-Typen (per openapi-typescript generiert: src/types/openapi.ts)
+import type { components } from '@/types/openapi';
+
+// --- API Types aus OpenAPI ---
+type PositionsResponse = components['schemas']['PositionsResponse'];
+type PositionOut = components['schemas']['PositionOut'];
+
+// --- Fetch-Funktion: /positions -> { items: PositionOut[] }
+async function fetchPositions(opts: { status?: 'open' | 'closed'; bot_id?: number; symbol?: string }) {
+  const data = await apiGet<PositionsResponse>('/positions', opts);
+  return data.items ?? [];
+}
 
 export default function Trades() {
   const [status, setStatus] = useState<'open' | 'closed'>('open');
 
-  const { data: positionsData } = useQuery({
-    queryKey: ['positions', status],
-    queryFn: () => api.getPositions({ status }),
+  // Zahlen in den Tabs: getrennt laden (leicht gecacht, schnell)
+  const { data: openPositions = [] } = useQuery({
+    queryKey: ['positions', { status: 'open' }],
+    queryFn: () => fetchPositions({ status: 'open' }),
+    staleTime: 30_000,
   });
 
-  const positions = positionsData?.positions || [];
+  const { data: closedPositions = [] } = useQuery({
+    queryKey: ['positions', { status: 'closed' }],
+    queryFn: () => fetchPositions({ status: 'closed' }),
+    staleTime: 30_000,
+  });
+
+  // Liste für das aktive Tab
+  const positions: PositionOut[] = status === 'open' ? openPositions : closedPositions;
 
   return (
     <div className="space-y-4 p-4 lg:p-6">
@@ -24,10 +48,10 @@ export default function Trades() {
       <Tabs value={status} onValueChange={(v) => setStatus(v as 'open' | 'closed')} className="w-full">
         <TabsList className="w-full">
           <TabsTrigger value="open" className="flex-1">
-            Active ({positions.filter(p => p.status === 'open').length})
+            Active ({openPositions.length})
           </TabsTrigger>
           <TabsTrigger value="closed" className="flex-1">
-            Closed ({positions.filter(p => p.status === 'closed').length})
+            Closed ({closedPositions.length})
           </TabsTrigger>
         </TabsList>
 
