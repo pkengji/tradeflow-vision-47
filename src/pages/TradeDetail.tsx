@@ -1,6 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import type { PositionOut, OrderOut, FundingEventOut } from '@/types/openapi';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,12 +11,24 @@ import { Link } from 'react-router-dom';
 export default function TradeDetail() {
   const { id } = useParams<{ id: string }>();
 
-  const { data: position } = useQuery({
+  const { data: position, isLoading: loadingPosition } = useQuery({
     queryKey: ['position', id],
     queryFn: () => api.getPosition(Number(id)),
   });
 
-  if (!position) {
+  const { data: orders = [] } = useQuery({
+    queryKey: ['orders', id],
+    queryFn: () => api.getOrders(Number(id)),
+    enabled: !!id,
+  });
+
+  const { data: funding = [] } = useQuery({
+    queryKey: ['funding', id],
+    queryFn: () => api.getFunding(Number(id)),
+    enabled: !!id,
+  });
+
+  if (loadingPosition || !position) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -30,9 +43,9 @@ export default function TradeDetail() {
     }).format(price);
   };
 
-  const entryPrice = position.entryFillPrice || position.entrySignalPrice;
-  const minPrice = Math.min(entryPrice, position.tp || entryPrice, position.sl || entryPrice);
-  const maxPrice = Math.max(entryPrice, position.tp || entryPrice, position.sl || entryPrice);
+  const entryPrice = position.entry_price;
+  const minPrice = Math.min(entryPrice, position.tp_trigger, position.sl_trigger);
+  const maxPrice = Math.max(entryPrice, position.tp_trigger, position.sl_trigger);
   const priceRange = maxPrice - minPrice;
 
   const getPosition = (price: number) => {
@@ -69,7 +82,7 @@ export default function TradeDetail() {
               >
                 <div className="relative">
                   <div className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap">
-                    <Badge className={position.side === 'long' ? 'bg-success' : 'bg-danger'}>
+                    <Badge variant={position.side === 'long' ? 'default' : 'destructive'}>
                       {position.side === 'long' ? (
                         <ArrowUpRight className="h-3 w-3 mr-1" />
                       ) : (
@@ -86,58 +99,36 @@ export default function TradeDetail() {
               </div>
 
               {/* Take Profit */}
-              {position.tp && (
-                <div
-                  className="absolute top-1/2 -translate-y-1/2"
-                  style={{ left: `${getPosition(position.tp)}%` }}
-                >
-                  <div className="relative">
-                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap">
-                      <Badge variant="outline" className="border-success text-success">TP</Badge>
-                    </div>
-                    <div className="h-8 w-1 bg-success" />
-                    <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs whitespace-nowrap">
-                      {formatPrice(position.tp)}
-                    </div>
+              <div
+                className="absolute top-1/2 -translate-y-1/2"
+                style={{ left: `${getPosition(position.tp_trigger)}%` }}
+              >
+                <div className="relative">
+                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap">
+                    <Badge variant="outline" className="border-success text-success">TP</Badge>
+                  </div>
+                  <div className="h-8 w-1 bg-success" />
+                  <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs whitespace-nowrap">
+                    {formatPrice(position.tp_trigger)}
                   </div>
                 </div>
-              )}
+              </div>
 
               {/* Stop Loss */}
-              {position.sl && (
-                <div
-                  className="absolute top-1/2 -translate-y-1/2"
-                  style={{ left: `${getPosition(position.sl)}%` }}
-                >
-                  <div className="relative">
-                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap">
-                      <Badge variant="outline" className="border-danger text-danger">SL</Badge>
-                    </div>
-                    <div className="h-8 w-1 bg-danger" />
-                    <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs whitespace-nowrap">
-                      {formatPrice(position.sl)}
-                    </div>
+              <div
+                className="absolute top-1/2 -translate-y-1/2"
+                style={{ left: `${getPosition(position.sl_trigger)}%` }}
+              >
+                <div className="relative">
+                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap">
+                    <Badge variant="outline" className="border-danger text-danger">SL</Badge>
+                  </div>
+                  <div className="h-8 w-1 bg-danger" />
+                  <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs whitespace-nowrap">
+                    {formatPrice(position.sl_trigger)}
                   </div>
                 </div>
-              )}
-
-              {/* Current Price */}
-              {position.currentPrice && (
-                <div
-                  className="absolute top-1/2 -translate-y-1/2 z-10"
-                  style={{ left: `${getPosition(position.currentPrice)}%` }}
-                >
-                  <div className="relative">
-                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap">
-                      <Badge variant="default">NOW</Badge>
-                    </div>
-                    <div className="h-8 w-1 bg-primary" />
-                    <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs font-bold whitespace-nowrap">
-                      {formatPrice(position.currentPrice)}
-                    </div>
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
 
             <div className="flex justify-between text-xs text-muted-foreground pt-6">
@@ -156,19 +147,17 @@ export default function TradeDetail() {
           </CardHeader>
           <CardContent className="space-y-2">
             <div>
-              <div className="text-sm text-muted-foreground">Signal Preis</div>
-              <div className="text-lg font-bold">{formatPrice(position.entrySignalPrice)}</div>
+              <div className="text-sm text-muted-foreground">Entry Price</div>
+              <div className="text-lg font-bold">{formatPrice(position.entry_price)}</div>
             </div>
             <div>
-              <div className="text-sm text-muted-foreground">Fill Preis</div>
-              <div className="text-lg font-bold">{formatPrice(position.entryFillPrice || position.entrySignalPrice)}</div>
+              <div className="text-sm text-muted-foreground">Leverage</div>
+              <div className="text-lg font-bold">{position.leverage}x</div>
             </div>
-            {position.slippagePct !== undefined && (
-              <div>
-                <div className="text-sm text-muted-foreground">Slippage</div>
-                <div className="text-lg font-bold text-danger">{position.slippagePct.toFixed(3)}%</div>
-              </div>
-            )}
+            <div>
+              <div className="text-sm text-muted-foreground">Quantity</div>
+              <div className="text-lg font-bold">{position.qty}</div>
+            </div>
           </CardContent>
         </Card>
 
@@ -178,16 +167,16 @@ export default function TradeDetail() {
           </CardHeader>
           <CardContent className="space-y-2">
             <div>
-              <div className="text-sm text-muted-foreground">Trading Fees</div>
-              <div className="text-lg font-bold">{formatPrice(position.tradingFees || 0)}</div>
+              <div className="text-sm text-muted-foreground">Entry Fees</div>
+              <div className="text-lg font-bold">{formatPrice(position.entry_fee_total_usdt)}</div>
             </div>
             <div>
-              <div className="text-sm text-muted-foreground">Funding Fees</div>
-              <div className="text-lg font-bold">{formatPrice(position.fundingFees || 0)}</div>
+              <div className="text-sm text-muted-foreground">Exit Fees</div>
+              <div className="text-lg font-bold">{formatPrice(position.exit_fee_total_usdt || 0)}</div>
             </div>
             <div>
-              <div className="text-sm text-muted-foreground">Gesamt</div>
-              <div className="text-lg font-bold">{formatPrice((position.tradingFees || 0) + (position.fundingFees || 0))}</div>
+              <div className="text-sm text-muted-foreground">Funding Total</div>
+              <div className="text-lg font-bold">{formatPrice(position.funding_total_usdt)}</div>
             </div>
           </CardContent>
         </Card>
@@ -197,28 +186,22 @@ export default function TradeDetail() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Performance</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {position.pnl !== undefined && (
+            {position.realized_pnl_net_usdt !== null && (
               <div>
-                <div className="text-sm text-muted-foreground">PnL</div>
-                <div className={`text-2xl font-bold ${position.pnl >= 0 ? 'text-success' : 'text-danger'}`}>
-                  {formatPrice(position.pnl)}
+                <div className="text-sm text-muted-foreground">Net PnL</div>
+                <div className={`text-2xl font-bold ${position.realized_pnl_net_usdt >= 0 ? 'text-success' : 'text-danger'}`}>
+                  {formatPrice(position.realized_pnl_net_usdt)}
                 </div>
               </div>
             )}
-            {position.pnlPct !== undefined && (
-              <div>
-                <div className="text-sm text-muted-foreground">PnL %</div>
-                <div className={`text-lg font-bold ${position.pnlPct >= 0 ? 'text-success' : 'text-danger'}`}>
-                  {position.pnlPct > 0 ? '+' : ''}{position.pnlPct.toFixed(2)}%
-                </div>
-              </div>
-            )}
-            {position.timelagMs !== undefined && (
-              <div>
-                <div className="text-sm text-muted-foreground">Timelag</div>
-                <div className="text-lg font-bold">{position.timelagMs}ms</div>
-              </div>
-            )}
+            <div>
+              <div className="text-sm text-muted-foreground">Risk/Reward</div>
+              <div className="text-lg font-bold">{position.rr.toFixed(2)}</div>
+            </div>
+            <div>
+              <div className="text-sm text-muted-foreground">Status</div>
+              <div className="text-lg font-bold capitalize">{position.status}</div>
+            </div>
           </CardContent>
         </Card>
       </div>

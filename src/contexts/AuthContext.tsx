@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '@/types/api';
-import { api } from '@/lib/api';
 
 interface AuthContextType {
   user: User | null;
@@ -22,22 +21,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const storedUser = localStorage.getItem('user');
     
     if (token && storedUser) {
-      api.setToken(token);
       setUser(JSON.parse(storedUser));
     }
     setIsLoading(false);
   }, []);
 
   const login = async (email: string, password: string) => {
-    const response = await api.login(email, password);
-    api.setToken(response.accessToken);
-    setUser(response.user);
-    localStorage.setItem('user', JSON.stringify(response.user));
+    // Mock login for now
+    const mockUser: User = {
+      id: '1',
+      email,
+      name: 'Trader',
+      role: 'trader',
+    };
+    localStorage.setItem('auth_token', 'mock-token');
+    localStorage.setItem('user', JSON.stringify(mockUser));
+    setUser(mockUser);
   };
 
   const logout = async () => {
-    await api.logout();
     setUser(null);
+    localStorage.removeItem('auth_token');
     localStorage.removeItem('user');
   };
 

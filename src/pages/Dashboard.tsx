@@ -30,8 +30,8 @@ export default function Dashboard() {
   });
 
   // Extract unique bot names and pairs
-  const availableBots = Array.from(new Set(bots?.map(b => b.name) || []));
-  const availablePairs = Array.from(new Set(symbolsData?.map((s: any) => s.symbol) || []));
+  const availableBots = Array.from(new Set(bots?.map(b => b.name) || [])) as string[];
+  const availablePairs = Array.from(new Set(symbolsData?.map((s) => s.symbol) || [])) as string[];
 
   const handleResetFilters = () => {
     setSelectedBots([]);
@@ -41,11 +41,11 @@ export default function Dashboard() {
   };
 
   // Calculate KPIs
-  const totalPnL = positions?.positions.reduce((sum, p) => sum + (p.pnl || 0), 0) || 0;
-  const totalTrades = positions?.total || 0;
-  const winningTrades = positions?.positions.filter(p => (p.pnl || 0) > 0).length || 0;
+  const totalPnL = positions?.items.reduce((sum, p) => sum + (p.realized_pnl_net_usdt || 0), 0) || 0;
+  const totalTrades = positions?.items.length || 0;
+  const winningTrades = positions?.items.filter(p => (p.realized_pnl_net_usdt || 0) > 0).length || 0;
   const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
-  const avgTimelag = positions?.positions.reduce((sum, p) => sum + (p.timelagMs || 0), 0) || 0 / (totalTrades || 1);
+  const avgTimelag = 0; // TODO: Calculate from actual data
 
   // Mock equity curve data
   const equityCurve = [
@@ -151,15 +151,15 @@ export default function Dashboard() {
       {/* Active Bots */}
       <Card>
         <CardHeader>
-          <CardTitle>Aktive Bots ({bots?.filter(b => b.isActive).length || 0})</CardTitle>
+          <CardTitle>Active Bots ({bots?.length || 0})</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {bots?.filter(b => b.isActive).map(bot => (
+            {bots?.map(bot => (
               <div key={bot.id} className="flex items-center justify-between rounded-lg border border-border p-3">
                 <div>
                   <div className="font-medium">{bot.name}</div>
-                  <div className="text-sm text-muted-foreground">{bot.exchange}</div>
+                  <div className="text-sm text-muted-foreground">{bot.strategy} • {bot.timeframe}</div>
                 </div>
                 <div className="flex h-2 w-2 rounded-full bg-success" />
               </div>

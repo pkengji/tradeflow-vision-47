@@ -16,11 +16,11 @@ export default function Bots() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Bots</h1>
-          <p className="text-muted-foreground">Verwalten Sie Ihre Trading Bots</p>
+          <p className="text-muted-foreground">Manage your trading bots</p>
         </div>
         <Button>
           <Plus className="mr-2 h-4 w-4" />
-          Neuer Bot
+          New Bot
         </Button>
       </div>
 
@@ -31,34 +31,34 @@ export default function Bots() {
               <div className="flex items-start justify-between">
                 <div>
                   <CardTitle>{bot.name}</CardTitle>
-                  {bot.description && (
-                    <p className="text-sm text-muted-foreground mt-1">{bot.description}</p>
-                  )}
+                  <p className="text-sm text-muted-foreground mt-1">{bot.strategy} • {bot.timeframe}</p>
                 </div>
-                <div className={`h-2 w-2 rounded-full ${bot.isActive ? 'bg-success' : 'bg-muted'}`} />
+                <div className="h-2 w-2 rounded-full bg-success" />
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Exchange</span>
-                <Badge variant="outline">{bot.exchange}</Badge>
+                <span className="text-sm text-muted-foreground">Strategy</span>
+                <Badge variant="outline">{bot.strategy}</Badge>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Status</span>
-                <Badge variant={bot.isActive ? 'default' : 'secondary'}>
-                  {bot.isActive ? 'Aktiv' : 'Inaktiv'}
-                </Badge>
+                <span className="text-sm text-muted-foreground">Timeframe</span>
+                <Badge variant="outline">{bot.timeframe}</Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Risk Multiplier</span>
+                <span className="text-sm font-medium">{bot.tv_risk_multiplier_default}x</span>
               </div>
               <div className="flex gap-2 pt-2">
                 <Button variant="outline" size="sm" className="flex-1">
-                  Bearbeiten
+                  Edit
                 </Button>
                 <Button 
-                  variant={bot.isActive ? 'destructive' : 'default'} 
+                  variant='destructive' 
                   size="sm" 
                   className="flex-1"
                 >
-                  {bot.isActive ? 'Deaktivieren' : 'Aktivieren'}
+                  Stop
                 </Button>
               </div>
             </CardContent>
@@ -69,10 +69,10 @@ export default function Bots() {
       {(!bots || bots.length === 0) && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <p className="text-muted-foreground mb-4">Keine Bots vorhanden</p>
+            <p className="text-muted-foreground mb-4">No bots available</p>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
-              Ersten Bot erstellen
+              Create first bot
             </Button>
           </CardContent>
         </Card>
