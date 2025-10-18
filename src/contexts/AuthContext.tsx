@@ -1,5 +1,12 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User } from '@/types/api';
+import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
+
+export type Role = 'admin' | 'trader';
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: Role;
+}
 
 interface AuthContextType {
   user: User | null;
@@ -13,55 +20,50 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    // Check for existing token on mount
     const token = localStorage.getItem('auth_token');
-    const storedUser = localStorage.getItem('user');
-    
-    if (token && storedUser) {
-      setUser(JSON.parse(storedUser));
+    const savedUser = localStorage.getItem('user');
+    if (token && savedUser) {
+      try {
+        const u: User = JSON.parse(savedUser);
+        setUser(u);
+      } catch {}
     }
     setIsLoading(false);
   }, []);
 
-  const login = async (email: string, password: string) => {
-    // Mock login for now
-    const mockUser: User = {
-      id: '1',
-      email,
-      name: 'Trader',
-      role: 'trader',
-    };
+  const login = async (email: string, _password: string) => {
+    // Replace with real API call later
+    const mock: User = { id: '1', email, name: 'Trader', role: 'trader' };
     localStorage.setItem('auth_token', 'mock-token');
-    localStorage.setItem('user', JSON.stringify(mockUser));
-    setUser(mockUser);
+    localStorage.setItem('user', JSON.stringify(mock));
+    setUser(mock);
   };
 
   const logout = async () => {
-    setUser(null);
     localStorage.removeItem('auth_token');
     localStorage.removeItem('user');
+    setUser(null);
   };
 
-  return (
-    <AuthContext.Provider value={{ 
-      user, 
-      login, 
-      logout, 
+  const value = useMemo<AuthContextType>(
+    () => ({
+      user,
+      login,
+      logout,
       isAuthenticated: !!user,
       isLoading,
-    }}>
-      {children}
-    </AuthContext.Provider>
+    }),
+    [user, isLoading]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
+export const useAuth = (): AuthContextType => {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  return ctx;
 };

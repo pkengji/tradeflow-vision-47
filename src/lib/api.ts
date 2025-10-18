@@ -34,3 +34,5 @@ export const api = {
   getDailyPnl: (params?: { days?: number; bot_id?: number }) => 
     apiGet<DailyPnlPoint[]>('/pnl/daily', params),
 };
+
+export default api;
