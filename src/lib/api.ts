@@ -187,7 +187,7 @@ export type TradesResponse = {
 // ---------- API-Funktionen ----------
 
 async function getBots(): Promise<Bot[]> {
-  const rows = await http<BotRow[]>('/bots');
+  const rows = await http<BotRow[]>('/api/v1/bots');
   return rows.map((b) => ({
     id: b.id,
     name: b.name,
@@ -209,17 +209,17 @@ async function getBots(): Promise<Bot[]> {
 }
 
 async function pauseBot(id: number) {
-  return http(`/bots/${id}/pause`, { method: 'POST' });
+  return http(`/api/v1/bots/${id}/pause`, { method: 'POST' });
 }
 async function resumeBot(id: number) {
-  return http(`/bots/${id}/resume`, { method: 'POST' });
+  return http(`/api/v1/bots/${id}/resume`, { method: 'POST' });
 }
 async function deleteBot(id: number) {
-  return http(`/bots/${id}`, { method: 'DELETE' });
+  return http(`/api/v1/bots/${id}`, { method: 'DELETE' });
 }
 
 async function setBotAutoApprove(bot_id: number, auto_approve: boolean) {
-  return http(`/bots/${bot_id}/auto-approve`, {
+  return http(`/api/v1/bots/${bot_id}/auto-approve`, {
     method: 'PATCH',
     body: { auto_approve },
   });
@@ -228,7 +228,7 @@ async function setBotAutoApprove(bot_id: number, auto_approve: boolean) {
 type PositionsParams = { status?: string; bot_id?: number; symbol?: string; side?: string };
 
 async function getPositions(params?: PositionsParams): Promise<{ items: PositionListItem[] }> {
-  const res = await http<PositionsResponseRaw>('/positions', { query: params });
+  const res = await http<PositionsResponseRaw>('/api/v1/positions', { query: params });
   const items = (res.items ?? []).map((p: any): PositionListItem => ({
     id: p.id,
     symbol: p.symbol,
@@ -245,27 +245,27 @@ async function getPositions(params?: PositionsParams): Promise<{ items: Position
 }
 
 async function getPosition(id: number): Promise<any> {
-  return http<any>(`/positions/${id}`);
+  return http<any>(`/api/v1/positions/${id}`);
 }
 
 async function setPositionSlTp(position_id: number, params: { sl?: number; tp?: number }) {
-  return http(`/positions/${position_id}/set-sl-tp`, { method: 'POST', body: params });
+  return http(`/api/v1/positions/${position_id}/set-sl-tp`, { method: 'POST', body: params });
 }
 
 async function closePosition(position_id: number) {
-  return http(`/positions/${position_id}/close`, { method: 'POST' });
+  return http(`/api/v1/positions/${position_id}/close`, { method: 'POST' });
 }
 
 async function getOrders(position_id: number): Promise<any[]> {
-  return http<any[]>('/orders', { query: { position_id } });
+  return http<any[]>('/api/v1/orders', { query: { position_id } });
 }
 
 async function getFunding(position_id: number): Promise<any[]> {
-  return http<any[]>('/funding', { query: { position_id } });
+  return http<any[]>('/api/v1/funding', { query: { position_id } });
 }
 
 async function getSymbols(): Promise<string[]> {
-  const rows = await http<SymbolRow[]>('/symbols');
+  const rows = await http<SymbolRow[]>('/api/v1/symbols');
   return rows.map((s) => s.symbol ?? (s as any).name ?? String(s));
 }
 
@@ -288,7 +288,7 @@ async function previewOutbox(id: number): Promise<any> {
 }
 
 async function logAction(event: string, payload?: any): Promise<null | any> {
-  return http('/client-log', {
+  return http('/api/v1/client-log', {
     method: 'POST',
     body: { event, payload, ts: new Date().toISOString() },
   });

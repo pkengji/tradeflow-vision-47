@@ -1,9 +1,10 @@
 // src/pages/Trades.tsx
 import { useEffect, useMemo, useState } from 'react';
 import { actions, apiRequest } from '@/lib/api';
-import TradesFiltersBar from '@/components/app/TradesFiltersBar';
+import TradesFiltersBar, { type TradesFilters } from '@/components/app/TradesFiltersBar';
 import TradeCardCompact from '@/components/app/TradeCardCompact';
 import ResponsivePanel from '@/components/ui/ResponsivePanel';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 type TradeSide = 'long' | 'short';
 type TradeStatus = 'open' | 'closed';
@@ -12,6 +13,7 @@ type Trade = {
   id: number;
   symbol: string;
   side: TradeSide;
+  botId?: number;
   botName?: string;
   status: TradeStatus;
   pnl_usdt?: number;          // realized (closed) oder unrealized (open) – je nach Backend-Feld
@@ -109,6 +111,12 @@ export default function Trades() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [selected, setSelected] = useState<Trade | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'open' | 'closed'>('open');
+  const [filters, setFilters] = useState<TradesFilters>({
+    botIds: [],
+    symbols: [],
+    side: 'all',
+  });
 
   // Beispiel: Trades laden – passe den Endpoint an deine API an
   useEffect(() => {
@@ -141,6 +149,21 @@ export default function Trades() {
     return { pnl: v, deltaPct: t.deltaPct ?? 0 };
   };
 
+  // Gefilterte Trades basierend auf Tab + Filter
+  const filteredTrades = useMemo(() => {
+    return trades.filter((t) => {
+      // Tab-Filter: open/closed
+      if (t.status !== activeTab) return false;
+      // Bot-Filter
+      if (filters.botIds.length > 0 && !filters.botIds.includes(t.botId ?? 0)) return false;
+      // Symbol-Filter
+      if (filters.symbols.length > 0 && !filters.symbols.includes(t.symbol)) return false;
+      // Side-Filter
+      if (filters.side && filters.side !== 'all' && t.side !== filters.side) return false;
+      return true;
+    });
+  }, [trades, activeTab, filters]);
+
   return (
     <div className="container mx-auto p-4 space-y-4">
       <div className="flex items-center justify-between">
@@ -149,11 +172,8 @@ export default function Trades() {
       </div>
 
       <TradesFiltersBar
-        value={{ botIds: [], symbols: [], side: 'all', status: 'all' }}
-        onChange={(f) => {
-          // TODO: hier Filter an die Fetch-URL anhängen, z.B. /api/v1/trades?bot_ids=...&symbols=...
-          console.log('filters', f);
-        }}
+        value={filters}
+        onChange={setFilters}
         availableBots={[
           { id: 1, name: 'Bot Alpha' },
           { id: 2, name: 'Bot Beta' },
@@ -162,35 +182,42 @@ export default function Trades() {
         availableSymbols={['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT']}
       />
 
-      {/* Liste der Trades */}
-      <div className="grid gap-2">
-        {trades.map((t) => {
-          const { pnl, deltaPct } = pnlDisplay(t);
-          return (
-            <div key={t.id} className="space-y-2">
-              <TradeCardCompact
-                symbol={t.symbol}
-                botName={t.botName}
-                side={t.side}
-                pnl={pnl}
-                deltaPct={(deltaPct || 0) / 100} // erwartet 0..1 → falls du schon 0..1 bekommst: diesen /100 entfernen
-                onClick={() => openDetail(t)}
-              />
-              {/* Preisleiste pro Trade */}
-              <PriceBar
-                entry={t.entryPrice}
-                sl={t.sl ?? undefined}
-                tp={t.tp ?? undefined}
-                now={(t.status === 'open' ? t.currentPrice : t.closePrice) ?? undefined}
-                side={t.side}
-              />
-            </div>
-          );
-        })}
-        {trades.length === 0 && (
-          <div className="text-sm text-muted-foreground">Keine Trades gefunden.</div>
-        )}
-      </div>
+      {/* Tabs für Open/Closed */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'open' | 'closed')}>
+        <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsTrigger value="open">Offen</TabsTrigger>
+          <TabsTrigger value="closed">Geschlossen</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value={activeTab} className="space-y-2 mt-4">
+          {filteredTrades.map((t) => {
+            const { pnl, deltaPct } = pnlDisplay(t);
+            return (
+              <div key={t.id} className="space-y-2">
+                <TradeCardCompact
+                  symbol={t.symbol}
+                  botName={t.botName}
+                  side={t.side}
+                  pnl={pnl}
+                  deltaPct={(deltaPct || 0) / 100} // erwartet 0..1 → falls du schon 0..1 bekommst: diesen /100 entfernen
+                  onClick={() => openDetail(t)}
+                />
+                {/* Preisleiste pro Trade */}
+                <PriceBar
+                  entry={t.entryPrice}
+                  sl={t.sl ?? undefined}
+                  tp={t.tp ?? undefined}
+                  now={(t.status === 'open' ? t.currentPrice : t.closePrice) ?? undefined}
+                  side={t.side}
+                />
+              </div>
+            );
+          })}
+          {filteredTrades.length === 0 && (
+            <div className="text-sm text-muted-foreground">Keine Trades gefunden.</div>
+          )}
+        </TabsContent>
+      </Tabs>
 
       {/* Detail-Panel mit Aktionen */}
       <ResponsivePanel open={panelOpen} onClose={closeDetail}>
