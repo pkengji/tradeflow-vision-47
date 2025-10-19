@@ -11,9 +11,11 @@ import Dashboard from "./pages/Dashboard";
 import Trades from "./pages/Trades";
 import TradeDetail from "./pages/TradeDetail";
 import Bots from "./pages/Bots";
+import BotDetail from "./pages/BotDetail";
 import Signals from "./pages/Signals";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
+import OutboxPage from "./pages/Outbox";
 
 const queryClient = new QueryClient();
 
@@ -66,6 +68,7 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            <Route path="/bots/:id" element={<BotDetail />} />
             <Route
               path="/signals"
               element={
@@ -87,6 +90,7 @@ const App = () => (
               }
             />
             <Route path="*" element={<NotFound />} />
+            <Route path="/outbox" element={<OutboxPage />} />
           </Routes>
         </BrowserRouter>
       </TooltipProvider>
