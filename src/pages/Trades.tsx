@@ -1,7 +1,7 @@
 // src/pages/Trades.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { actions, apiRequest } from '@/lib/api';
-import FiltersBar from '@/components/app/FiltersBar';
+import TradesFiltersBar from '@/components/app/TradesFiltersBar';
 import TradeCardCompact from '@/components/app/TradeCardCompact';
 import ResponsivePanel from '@/components/ui/ResponsivePanel';
 
@@ -39,7 +39,7 @@ function ExportCSVButton({ url, filename }: { url: string; filename: string }) {
 
 // Einfache, eigenständige Tick-Komponente
 function Tick({ xPct, label, cls, hollow }: { xPct: number; label: string; cls?: string; hollow?: boolean }) {
-  const style: React.CSSProperties = { left: `${Math.max(0, Math.min(100, xPct))}%` };
+  const style = { left: `${Math.max(0, Math.min(100, xPct))}%` };
   return (
     <div className="absolute -translate-x-1/2 top-0 h-full" style={style}>
       <div
@@ -142,21 +142,25 @@ export default function Trades() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="mb-3 flex gap-2">
+    <div className="container mx-auto p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Trades</h1>
         <ExportCSVButton url={`/api/v1/export/trades`} filename="trades.csv" />
       </div>
 
-      <div className="mb-3">
-        <FiltersBar
-          value={{ botIds: [], symbols: [] }}
-          onChange={(f) => {
-            // TODO: hier Filter an die Fetch-URL anhängen, z.B. /api/v1/trades?bot_ids=...&symbols=...
-            console.log('filters', f);
-          }}
-          showKind={false}
-        />
-      </div>
+      <TradesFiltersBar
+        value={{ botIds: [], symbols: [], side: 'all', status: 'all' }}
+        onChange={(f) => {
+          // TODO: hier Filter an die Fetch-URL anhängen, z.B. /api/v1/trades?bot_ids=...&symbols=...
+          console.log('filters', f);
+        }}
+        availableBots={[
+          { id: 1, name: 'Bot Alpha' },
+          { id: 2, name: 'Bot Beta' },
+          { id: 3, name: 'Bot Gamma' }
+        ]}
+        availableSymbols={['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT']}
+      />
 
       {/* Liste der Trades */}
       <div className="grid gap-2">

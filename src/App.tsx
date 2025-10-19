@@ -29,7 +29,14 @@ const App = () => (
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route
-              path="/" element={<Dashboard />}
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout>
+                    <Dashboard />
+                  </DashboardLayout>
+                </ProtectedRoute>
+              }
             />
             <Route
               path="/trades"
@@ -52,9 +59,25 @@ const App = () => (
               }
             />
             <Route
-              path="/bots" element={<Bots />}
+              path="/bots"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout>
+                    <Bots />
+                  </DashboardLayout>
+                </ProtectedRoute>
+              }
             />
-            <Route path="/bots/:id" element={<BotDetail />} />
+            <Route
+              path="/bots/:id"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout>
+                    <BotDetail />
+                  </DashboardLayout>
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/signals"
               element={
@@ -75,8 +98,17 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/outbox"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout>
+                    <OutboxPage />
+                  </DashboardLayout>
+                </ProtectedRoute>
+              }
+            />
             <Route path="*" element={<NotFound />} />
-            <Route path="/outbox" element={<OutboxPage />} />
           </Routes>
         </BrowserRouter>
       </TooltipProvider>
