@@ -1,8 +1,33 @@
+// src/pages/Signals.tsx
+import React, { useState } from 'react';
+import FiltersBar from "@/components/app/FiltersBar";
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
 
+// CSV-Export-Button (eigenständig, keine Lib nötig)
+function ExportCSV({ url, filename }: { url: string; filename: string }) {
+  const go = async () => {
+    const res = await fetch(url, { credentials: 'include' });
+    if (!res.ok) { alert('CSV-Export fehlgeschlagen'); return; }
+    const txt = await res.text();
+    const blob = new Blob([txt], { type: "text/csv" });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+  return (
+    <Button variant="outline" onClick={go}>
+      <Download className="mr-2 h-4 w-4" />
+      Export CSV
+    </Button>
+  );
+}
+
+// Mock-Daten (bis Backend-Feed/Filter angeschlossen ist)
 const mockSignals = [
   {
     id: 1,
@@ -49,54 +74,74 @@ export default function Signals() {
   };
 
   return (
-    <div className="space-y-6 p-4 lg:p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Signal Log</h1>
-          <p className="text-muted-foreground">Überwachung aller Webhook-Events und Systemlogs</p>
+    <>
+      {/* Filter & Export */}
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex-1">
+          <FiltersBar
+            value={{ botIds: [], symbols: [] }}
+            onChange={(f) => {
+              // Hier kannst du Query-Params an deinen Fetch hängen: ?bot_ids=...&symbols=...&kind=...
+              console.log('filters', f);
+            }}
+            showKind={true}
+          />
         </div>
-        <Button variant="outline">
-          <Download className="mr-2 h-4 w-4" />
-          Export CSV
-        </Button>
+        <div className="ml-3">
+          <ExportCSV url={`/api/v1/export/signals`} filename="signals.csv" />
+        </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Letzte Signals</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {mockSignals.map((signal) => (
-              <div
-                key={signal.id}
-                className="flex flex-col gap-3 rounded-lg border border-border p-4 md:flex-row md:items-center md:justify-between"
-              >
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Badge variant={signal.status === 'ok' ? 'default' : 'destructive'}>
-                      {signal.type}
-                    </Badge>
-                    <Badge variant="outline">{signal.symbol}</Badge>
-                    <span className="text-sm text-muted-foreground">Bot #{signal.botId}</span>
-                  </div>
-                  <p className="text-sm">{signal.humanMessage}</p>
-                  <p className="text-xs text-muted-foreground">{formatTime(signal.timestamp)}</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <div className="text-sm text-muted-foreground">Latenz</div>
-                    <div className="font-medium">{signal.latencyMs}ms</div>
-                  </div>
-                  <Button variant="ghost" size="sm">
-                    Details
-                  </Button>
-                </div>
-              </div>
-            ))}
+      {/* Überschrift */}
+      <div className="space-y-6 p-4 lg:p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Signal Log</h1>
+            <p className="text-muted-foreground">Überwachung aller Webhook-Events und Systemlogs</p>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+
+        {/* Liste */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Letzte Signals</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {mockSignals.map((signal) => (
+                <div
+                  key={signal.id}
+                  className="flex flex-col gap-3 rounded-lg border border-border p-4 md:flex-row md:items-center md:justify-between"
+                >
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Badge variant={signal.status === 'ok' ? 'default' : 'destructive'}>
+                        {signal.type}
+                      </Badge>
+                      <Badge variant="outline">{signal.symbol}</Badge>
+                      <span className="text-sm text-muted-foreground">Bot #{signal.botId}</span>
+                    </div>
+                    <p className="text-sm">{signal.humanMessage}</p>
+                    <p className="text-xs text-muted-foreground">{formatTime(signal.timestamp)}</p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <div className="text-sm text-muted-foreground">Latenz</div>
+                      <div className="font-medium">{signal.latencyMs}ms</div>
+                    </div>
+                    <Button variant="ghost" size="sm">
+                      Details
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              {mockSignals.length === 0 && (
+                <div className="text-sm text-muted-foreground">Keine Signals gefunden.</div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </>
   );
 }

@@ -1,3 +1,4 @@
+import { actions } from '@/lib/api';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -212,6 +213,28 @@ export default function TradeDetail() {
           <pre className="text-xs overflow-auto">{JSON.stringify(funding, null, 2)}</pre>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+
+// --- Action Buttons (simple) ---
+function SltpActions({ pid }: { pid: number }){
+  const setBoth = async ()=>{
+    const tp = parseFloat(prompt('TP Trigger (leer = kein Update)') || 'NaN');
+    const sl = parseFloat(prompt('SL Trigger (leer = kein Update)') || 'NaN');
+    const body: any = { tp: isNaN(tp) ? null : tp, sl: isNaN(sl) ? null : sl };
+    await actions.setTpSl(pid, body);
+    alert('TP/SL aktualisiert');
+  };
+  const closeNow = async ()=>{
+    await actions.closePosition(pid);
+    alert('Position geschlossen (Market)');
+  };
+  return (
+    <div className="mt-4 flex gap-2">
+      <button className="px-3 py-1 rounded border" onClick={setBoth}>TP/SL setzen</button>
+      <button className="px-3 py-1 rounded border" onClick={closeNow}>Close (Market)</button>
     </div>
   );
 }

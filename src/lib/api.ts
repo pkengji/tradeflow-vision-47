@@ -1,13 +1,11 @@
 // src/lib/api.ts
-// Einheitliche API-Schicht für das TradingBot-Backend
-// - passt Feldnamen deines Backends an das Frontend an
-// - liefert stabile, typisierte Helper
-// - exportiert sowohl "api" (named) als auch default
+// Einheitliche API-Schicht fürs TradingBot-Backend
+// - Bewahrt Backcompat: apiRequest<T>, actions, default- und named-Export
+// - Fügt robuste http-Helper + typisierte api-Methoden hinzu
 
-const BASE_URL =
-  (import.meta as any)?.env?.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
-type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 
 interface FetchOpts {
   method?: HttpMethod;
@@ -17,7 +15,7 @@ interface FetchOpts {
   headers?: Record<string, string>;
 }
 
-// ---------- generische Helpers ----------
+// ---------- Helper ----------
 
 function withQuery(path: string, query?: Record<string, any>) {
   if (!query || Object.keys(query).length === 0) return path;
@@ -30,11 +28,11 @@ function withQuery(path: string, query?: Record<string, any>) {
 }
 
 async function http<T = any>(path: string, opts: FetchOpts = {}): Promise<T> {
-  const url = new URL(withQuery(path, opts.query), BASE_URL);
+  const urlStr = `${API_BASE}${withQuery(path, opts.query)}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? 15000);
 
-  const r = await fetch(url, {
+  const res = await fetch(urlStr, {
     method: opts.method ?? 'GET',
     headers: {
       'Content-Type': 'application/json',
@@ -47,30 +45,31 @@ async function http<T = any>(path: string, opts: FetchOpts = {}): Promise<T> {
         ? opts.body
         : JSON.stringify(opts.body),
     signal: controller.signal,
+    mode: 'cors',
   }).catch((e) => {
     clearTimeout(timeout);
-    throw new Error(`Network error fetching ${url.toString()}: ${e}`);
+    throw new Error(`Network error: ${e}`);
   });
 
   clearTimeout(timeout);
 
-  if (!r.ok) {
-    const text = await r.text().catch(() => '');
-    throw new Error(`HTTP ${r.status} for ${url.pathname}: ${text || r.statusText}`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status} ${res.statusText} for ${urlStr}: ${text}`);
   }
 
-  if (r.status === 204) return null as unknown as T;
+  if (res.status === 204) return null as unknown as T;
 
-  const ct = r.headers.get('content-type') || '';
+  const ct = res.headers.get('content-type') || '';
   if (!ct.includes('application/json')) {
-    const t = await r.text();
+    const t = await res.text();
     return t as unknown as T;
   }
 
-  return (await r.json()) as T;
+  return (await res.json()) as T;
 }
 
-// ---------- Roh-Response-Typen vom Backend ----------
+// ---------- Roh-Typen vom Backend ----------
 
 type BotRow = {
   id: number;
@@ -101,11 +100,11 @@ type PositionsResponseRaw = {
 };
 
 type PnlDailyRowRaw = {
-  day: string;            // z.B. "2025-10-16"
-  pnl_net_usdt: number;   // Backend-Feldname
+  day: string;
+  pnl_net_usdt: number;
 };
 
-// ---------- Normalisierte Frontend-Typen ----------
+// ---------- Frontend-Typen (stabil) ----------
 
 export type Bot = {
   id: number;
@@ -117,7 +116,7 @@ export type Bot = {
   margin_mode?: string | null;
   default_leverage?: number | null;
   status: 'active' | 'paused' | 'deleted';
-  auto_approve: boolean;          
+  auto_approve: boolean;
   uuid: string | null;
   secret: string | null;
   max_leverage: number | null;
@@ -136,13 +135,15 @@ export type PositionListItem = {
   bot_name: string | null;
   opened_at: string | null;
   closed_at: string | null;
-  pnl: number | null; // mapped aus realized_pnl_net_usdt
+  pnl: number | null;
 };
 
-export type PnlDailyPoint = {
-  date: string; // mapped aus "day"
-  pnl: number;  // mapped aus "pnl_net_usdt"
-};
+export type PnlDailyPoint = { date: string; pnl: number };
+
+// Aliases für bestehende Importe in Dashboard.tsx
+export type DailyPnl = PnlDailyPoint;
+// Gern später präzisieren, sobald /summary final ist:
+export type Summary = Record<string, any>;
 
 export type OutboxItem = {
   id: number;
@@ -162,16 +163,15 @@ export type Trade = {
   entry_price?: number | null;
   exit_price?: number | null;
   mark_price?: number | null;
-  sl?: number | null;    
-  tp?: number | null;        
+  sl?: number | null;
+  tp?: number | null;
   pnl?: number | null;
   pnl_pct?: number | null;
   status: 'open' | 'closed';
-  opened_at: string;       // ISO Datum
+  opened_at: string;
   closed_at?: string | null;
   bot_id?: number | null;
   bot_name?: string | null;
-
   timelag_ms?: number | null;
   slippage_bp?: number | null;
   fees_usdt?: number | null;
@@ -184,7 +184,7 @@ export type TradesResponse = {
   page_size: number;
 };
 
-// ---------- API-Funktionen (mit Mapping) ----------
+// ---------- API-Funktionen ----------
 
 async function getBots(): Promise<Bot[]> {
   const rows = await http<BotRow[]>('/bots');
@@ -197,28 +197,37 @@ async function getBots(): Promise<Bot[]> {
     position_mode: b.position_mode ?? null,
     margin_mode: b.margin_mode ?? null,
     default_leverage: b.default_leverage ?? null,
-    status: b.status, 
-    auto_approve: b.auto_approve, 
+    status: b.status,
+    auto_approve: b.auto_approve,
     uuid: null,
     secret: null,
     max_leverage: null,
-
     is_deleted: b.is_deleted ?? false,
     created_at: b.created_at,
     updated_at: b.updated_at ?? null,
   }));
 }
 
-async function getSymbols(): Promise<string[]> {
-  const rows = await http<SymbolRow[]>('/symbols');
-  return rows.map((s) => s.symbol ?? (s as any).name ?? String(s));
+async function pauseBot(id: number) {
+  return http(`/bots/${id}/pause`, { method: 'POST' });
+}
+async function resumeBot(id: number) {
+  return http(`/bots/${id}/resume`, { method: 'POST' });
+}
+async function deleteBot(id: number) {
+  return http(`/bots/${id}`, { method: 'DELETE' });
 }
 
-async function getPositions(params?: {
-  status?: string;
-  bot_id?: number;
-  symbol?: string;
-}): Promise<{ items: PositionListItem[] }> {
+async function setBotAutoApprove(bot_id: number, auto_approve: boolean) {
+  return http(`/bots/${bot_id}/auto-approve`, {
+    method: 'PATCH',
+    body: { auto_approve },
+  });
+}
+
+type PositionsParams = { status?: string; bot_id?: number; symbol?: string; side?: string };
+
+async function getPositions(params?: PositionsParams): Promise<{ items: PositionListItem[] }> {
   const res = await http<PositionsResponseRaw>('/positions', { query: params });
   const items = (res.items ?? []).map((p: any): PositionListItem => ({
     id: p.id,
@@ -239,6 +248,14 @@ async function getPosition(id: number): Promise<any> {
   return http<any>(`/positions/${id}`);
 }
 
+async function setPositionSlTp(position_id: number, params: { sl?: number; tp?: number }) {
+  return http(`/positions/${position_id}/set-sl-tp`, { method: 'POST', body: params });
+}
+
+async function closePosition(position_id: number) {
+  return http(`/positions/${position_id}/close`, { method: 'POST' });
+}
+
 async function getOrders(position_id: number): Promise<any[]> {
   return http<any[]>('/orders', { query: { position_id } });
 }
@@ -247,157 +264,95 @@ async function getFunding(position_id: number): Promise<any[]> {
   return http<any[]>('/funding', { query: { position_id } });
 }
 
-async function getDailyPnl(params?: { days?: number; bot_id?: number }): Promise<PnlDailyPoint[]> {
-  const rows = await http<PnlDailyRowRaw[]>('/pnl/daily', { query: params });
-  return rows.map((r) => ({
-    date: r.day,
-    pnl: r.pnl_net_usdt ?? 0,
-  }));
+async function getSymbols(): Promise<string[]> {
+  const rows = await http<SymbolRow[]>('/symbols');
+  return rows.map((s) => s.symbol ?? (s as any).name ?? String(s));
 }
 
-type ClientLogEvent = {
-  event: string;
-  payload?: any;
-  ts?: string;
-};
+async function getDailyPnl(params?: { days?: number; bot_id?: number }): Promise<PnlDailyPoint[]> {
+  const rows = await http<PnlDailyRowRaw[]>('/api/v1/dashboard/daily-pnl', { query: params });
+  return rows.map((r) => ({ date: r.day, pnl: r.pnl_net_usdt ?? 0 }));
+}
+
+async function getOutbox(params?: { status?: string; limit?: number }): Promise<OutboxItem[]> {
+  return http<OutboxItem[]>('/api/v1/outbox', { query: params });
+}
+async function approveOutbox(id: number): Promise<OutboxItem> {
+  return http<OutboxItem>(`/api/v1/outbox/${id}/approve`, { method: 'POST' });
+}
+async function rejectOutbox(id: number): Promise<OutboxItem> {
+  return http<OutboxItem>(`/api/v1/outbox/${id}/reject`, { method: 'POST' });
+}
+async function previewOutbox(id: number): Promise<any> {
+  return http(`/api/v1/outbox/${id}/preview`);
+}
 
 async function logAction(event: string, payload?: any): Promise<null | any> {
   return http('/client-log', {
     method: 'POST',
-    body: { event, payload, ts: new Date().toISOString() } as ClientLogEvent,
+    body: { event, payload, ts: new Date().toISOString() },
   });
 }
 
-async function getOutbox(params?: { status?: string; limit?: number }): Promise<OutboxItem[]> {
-  return http<OutboxItem[]>('/outbox', { query: params });
-}
-async function approveOutbox(id: number): Promise<OutboxItem> {
-  return http<OutboxItem>(`/outbox/${id}/approve`, { method: 'POST' });
-}
-async function rejectOutbox(id: number): Promise<OutboxItem> {
-  return http<OutboxItem>(`/outbox/${id}/reject`, { method: 'POST' });
-}
-async function previewOutbox(id: number): Promise<any> {
-  return http(`/outbox/${id}/preview`);
-}
-
-async function setBotAutoApprove(bot_id: number, auto_approve: boolean) {
-  return http(`/bots/${bot_id}/auto-approve`, {
-    method: 'PATCH',
-    body: { auto_approve },
-  });
-}
-
-// === Trades ===
-export async function getTrades(params: {
-  status: 'open' | 'closed';
-  page?: number;
-  page_size?: number;
-  symbol?: string;
-  side?: string;
-  bot_id?: number;
-  sort?: string; // z. B. "-opened_at", "pnl"
-}): Promise<TradesResponse> {
-  // 1) Backend holen (PositionsResponse) – dein Endpoint existiert schon:
-  const res = await http<{ items: any[] }>('/positions', {
-    query: {
-      status: params.status,                    // 'open' | 'closed'
-      symbol: params.symbol,
-      bot_id: params.bot_id,
-      // side kennt dein /positions bereits; wenn nicht, filtern wir unten clientseitig
-      side: params.side,
-    },
-  });
-
-  const mapped = (res.items ?? []).map((p: any) => ({
-    id: p.id,
-    symbol: p.symbol,
-    side: p.side,                             // 'long' | 'short'
-    qty: p.qty ?? p.tv_qty ?? null,
-    entry_price: p.entry_price ?? null,
-    exit_price: p.exit_price ?? null,
-    mark_price: null,                         // falls du eins hast, setz es hier
-    sl: p.sl_trigger ?? null,                 // 🔁 Mapping
-    tp: p.tp_trigger ?? null,                 // 🔁 Mapping
-    pnl: p.realized_pnl_net_usdt ?? null,
-    pnl_pct: null,                            // falls du später berechnest
-    status: p.status,                         // 'open' | 'closed'
-    opened_at: p.opened_at ?? null,
-    closed_at: p.closed_at ?? null,
-    bot_id: p.bot_id ?? null,
-    bot_name: p.bot_name ?? (p.bot_id ? `Bot #${p.bot_id}` : null),
-    // optional analytics – wenn du sie irgendwann hast:
-    timelag_ms: p.timelag_ms ?? null,
-    slippage_bp: p.slippage_bp ?? null,
-    fees_usdt: ((p.entry_fee_total_usdt ?? 0) + (p.exit_fee_total_usdt ?? 0)) || null,
-  }));
-
-  // 3) clientseitiges Filtern (falls Backend side nicht filtert)
-  let items = mapped;
-  if (params.side) items = items.filter(t => t.side === params.side);
-  if (params.symbol) items = items.filter(t => t.symbol === params.symbol);
-
-  // 4) Sortierung (Whitelist)
-  const sortKey = (params.sort ?? '-opened_at').replace(/^-/, '');
-  const desc = (params.sort ?? '-opened_at').startsWith('-');
-  const keyFn: Record<string, (t: any) => any> = {
-    opened_at: t => t.opened_at ?? '',
-    closed_at: t => t.closed_at ?? '',
-    pnl:       t => t.pnl ?? -Infinity,
-    symbol:    t => t.symbol ?? '',
-    side:      t => t.side ?? '',
-  };
-  const getter = keyFn[sortKey] ?? keyFn.opened_at;
-  items = items.sort((a, b) => {
-    const av = getter(a), bv = getter(b);
-    return (av > bv ? 1 : av < bv ? -1 : 0) * (desc ? -1 : 1);
-  });
-
-  // 5) Pagination clientseitig
-  const page = Math.max(1, params.page ?? 1);
-  const pageSize = Math.max(1, params.page_size ?? 25);
-  const total = items.length;
-  const start = (page - 1) * pageSize;
-  const paged = items.slice(start, start + pageSize);
-
-  return { items: paged, total, page, page_size: pageSize };
-}
-
-// ---------- NEU: Aktionen (POST) ----------
-
-/** Position schließen (expects 200/204). */
-async function closePosition(position_id: number): Promise<null | any> {
-  // Pfad ggf. an dein Backend anpassen:
-  return http(`/positions/${position_id}/close`, { method: 'POST' });
-}
-
-/** SL/TP für Position setzen. Body-Felder optional. */
-async function setPositionSlTp(position_id: number, params: { sl?: number; tp?: number }): Promise<null | any> {
-  return http(`/positions/${position_id}/set-sl-tp`, {
-    method: 'POST',
-    body: params,
-  });
-}
-
-// ---------- Export ----------
+// ---------- Export-Objekt ----------
 
 export const api = {
-  // GETs
+  // Bots
   getBots,
-  getSymbols,
+  pauseBot,
+  resumeBot,
+  deleteBot,
+  setBotAutoApprove,
+
+  // Positions / Trades
   getPositions,
   getPosition,
+  setPositionSlTp,
+  closePosition,
+
+  // Orders / Funding
   getOrders,
   getFunding,
+
+  // Symbols / PnL
+  getSymbols,
   getDailyPnl,
-  closePosition,
-  setPositionSlTp,
-  logAction,
+
+  // Outbox
   getOutbox,
   approveOutbox,
   rejectOutbox,
   previewOutbox,
-  setBotAutoApprove,
+
+  // Misc
+  logAction,
 };
 
 export default api;
+
+// ---------- Backcompat: generisches apiRequest + actions ----------
+
+// Nutzung: apiRequest<T>(path, { method?, body?, headers? })
+export async function apiRequest<T = any>(
+  path: string,
+  opts: { method?: string; body?: any; headers?: Record<string, string> } = {}
+): Promise<T> {
+  return http<T>(path, {
+    method: (opts.method ?? 'GET') as any,
+    body: opts.body,
+    headers: opts.headers,
+  });
+}
+
+// Legacy-Pfade beibehalten, falls irgendwo noch verwendet:
+async function legacySetTpSl(positionId: number, payload: { tp: number | null; sl: number | null }) {
+  return apiRequest(`/api/v1/trades/${positionId}/set-tp-sl`, { method: 'POST', body: payload });
+}
+async function legacyClosePosition(positionId: number) {
+  return apiRequest(`/api/v1/trades/${positionId}/close`, { method: 'POST' });
+}
+
+export const actions = {
+  setTpSl: legacySetTpSl,   // alte Signatur/Pfad intakt
+  closePosition: legacyClosePosition,
+};

@@ -4,21 +4,20 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import { Link } from 'react-router-dom';
 import { Pause, Play, Edit2, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 export default function Bots() {
   const qc = useQueryClient();
-  const { data: bots, isLoading, refetch } = useQuery({
+  const { data: bots, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['bots'],
     queryFn: api.getBots,
   });
 
   const [loadingId, setLoadingId] = useState<number | null>(null);
 
-  // Toggle Auto-Approve
+  // Auto-Approve toggeln (optimistic update)
   const toggleAA = useMutation({
     mutationFn: ({ id, value }: { id: number; value: boolean }) =>
       api.setBotAutoApprove(id, value),
@@ -30,38 +29,76 @@ export default function Bots() {
       );
       return { prev };
     },
-    onError: (_e, _v, ctx) => {
+    onError: (_e, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(['bots'], ctx.prev);
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ['bots'] }),
   });
 
-  // Beispielhafte Mutations-Platzhalter für Pause/Löschen
-  const pauseBot = async (id: number) => {
-    setLoadingId(id);
-    await new Promise(res => setTimeout(res, 400)); // hier später API-Call
-    setLoadingId(null);
-  };
-  const deleteBot = async (id: number) => {
-    if (!confirm('Bot wirklich löschen?')) return;
-    setLoadingId(id);
-    await new Promise(res => setTimeout(res, 400)); // hier später API-Call
-    setLoadingId(null);
-    qc.invalidateQueries({ queryKey: ['bots'] });
-  };
+  // Pausieren/Fortsetzen
+  const pauseMutation = useMutation({
+    mutationFn: ({ id, pause }: { id: number; pause: boolean }) =>
+      pause ? api.pauseBot(id) : api.resumeBot(id),
+    onMutate: async ({ id, pause }) => {
+      setLoadingId(id);
+      await qc.cancelQueries({ queryKey: ['bots'] });
+      const prev = qc.getQueryData<Bot[]>(['bots']);
+      qc.setQueryData<Bot[]>(['bots'], old =>
+        (old ?? []).map(b =>
+          b.id === id ? { ...b, status: pause ? 'paused' : 'active' } : b
+        )
+      );
+      return { prev };
+    },
+    onError: (_e, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['bots'], ctx.prev);
+    },
+    onSettled: () => {
+      setLoadingId(null);
+      qc.invalidateQueries({ queryKey: ['bots'] });
+    },
+  });
+
+  // Löschen
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.deleteBot(id),
+    onMutate: async (id) => {
+      setLoadingId(id);
+      await qc.cancelQueries({ queryKey: ['bots'] });
+      const prev = qc.getQueryData<Bot[]>(['bots']);
+      qc.setQueryData<Bot[]>(['bots'], old => (old ?? []).filter(b => b.id !== id));
+      return { prev };
+    },
+    onError: (_e, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['bots'], ctx.prev);
+    },
+    onSettled: () => {
+      setLoadingId(null);
+      qc.invalidateQueries({ queryKey: ['bots'] });
+    },
+  });
 
   return (
     <div className="space-y-4">
       <Card>
         <CardHeader className="flex items-center justify-between">
           <CardTitle>Trading-Bots</CardTitle>
-          <Button variant="outline" onClick={() => refetch()}>
-            Refresh
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => refetch()}>
+              Refresh
+            </Button>
+            <Button asChild>
+              <Link to="/bots/new">Neuer Bot</Link>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="text-sm text-muted-foreground">Lade Bots…</div>
+          ) : isError ? (
+            <div className="text-sm text-red-600">
+              Fehler beim Laden: {(error as any)?.message ?? 'Unbekannter Fehler'}
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
@@ -70,6 +107,7 @@ export default function Bots() {
                     <th className="py-2 pr-4">Name</th>
                     <th className="py-2 pr-4">Strategie</th>
                     <th className="py-2 pr-4">Timeframe</th>
+                    <th className="py-2 pr-4">Status</th>
                     <th className="py-2 pr-4">Auto-Approve</th>
                     <th className="py-2 pr-4">Aktionen</th>
                   </tr>
@@ -88,6 +126,15 @@ export default function Bots() {
                       <td className="py-2 pr-4">{b.strategy ?? '—'}</td>
                       <td className="py-2 pr-4">{b.timeframe ?? '—'}</td>
                       <td className="py-2 pr-4">
+                        {b.status === 'active' ? (
+                          <Badge variant="default">aktiv</Badge>
+                        ) : b.status === 'paused' ? (
+                          <Badge variant="secondary">pausiert</Badge>
+                        ) : (
+                          <Badge variant="destructive">gelöscht</Badge>
+                        )}
+                      </td>
+                      <td className="py-2 pr-4">
                         <div className="flex items-center gap-2">
                           <Switch
                             checked={!!b.auto_approve}
@@ -104,15 +151,27 @@ export default function Bots() {
                       </td>
                       <td className="py-2 pr-4">
                         <div className="flex items-center gap-2">
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            disabled={loadingId === b.id}
-                            onClick={() => pauseBot(b.id)}
-                            title="Pausieren"
-                          >
-                            <Pause size={14} />
-                          </Button>
+                          {b.status === 'active' ? (
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              disabled={loadingId === b.id}
+                              onClick={() => pauseMutation.mutate({ id: b.id, pause: true })}
+                              title="Pausieren"
+                            >
+                              <Pause size={14} />
+                            </Button>
+                          ) : (
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              disabled={loadingId === b.id}
+                              onClick={() => pauseMutation.mutate({ id: b.id, pause: false })}
+                              title="Fortsetzen"
+                            >
+                              <Play size={14} />
+                            </Button>
+                          )}
                           <Button
                             size="icon"
                             variant="outline"
@@ -127,7 +186,9 @@ export default function Bots() {
                             size="icon"
                             variant="destructive"
                             disabled={loadingId === b.id}
-                            onClick={() => deleteBot(b.id)}
+                            onClick={() => {
+                              if (confirm('Bot wirklich löschen?')) deleteMutation.mutate(b.id);
+                            }}
                             title="Löschen"
                           >
                             <Trash2 size={14} />
@@ -136,6 +197,13 @@ export default function Bots() {
                       </td>
                     </tr>
                   ))}
+                  {(bots ?? []).length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-4 opacity-70">
+                        Keine Bots gefunden.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

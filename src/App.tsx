@@ -7,14 +7,14 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { DashboardLayout } from "./components/layout/DashboardLayout";
 import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
+import Dashboard from "@/pages/Dashboard";
 import Trades from "./pages/Trades";
 import TradeDetail from "./pages/TradeDetail";
-import Bots from "./pages/Bots";
+import Bots from "@/pages/Bots";
 import BotDetail from "./pages/BotDetail";
 import Signals from "./pages/Signals";
 import Settings from "./pages/Settings";
-import NotFound from "./pages/NotFound";
+import NotFound from "@/pages/NotFound";
 import OutboxPage from "./pages/Outbox";
 
 const queryClient = new QueryClient();
@@ -29,14 +29,7 @@ const App = () => (
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <DashboardLayout>
-                    <Dashboard />
-                  </DashboardLayout>
-                </ProtectedRoute>
-              }
+              path="/" element={<Dashboard />}
             />
             <Route
               path="/trades"
@@ -59,14 +52,7 @@ const App = () => (
               }
             />
             <Route
-              path="/bots"
-              element={
-                <ProtectedRoute>
-                  <DashboardLayout>
-                    <Bots />
-                  </DashboardLayout>
-                </ProtectedRoute>
-              }
+              path="/bots" element={<Bots />}
             />
             <Route path="/bots/:id" element={<BotDetail />} />
             <Route
