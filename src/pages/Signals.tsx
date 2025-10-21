@@ -1,6 +1,7 @@
 // src/pages/Signals.tsx
-import React, { useState } from 'react';
-import FiltersBar from "@/components/app/FiltersBar";
+import { useEffect, useState } from 'react';
+import api from '@/lib/api';
+import TradesFiltersBar, { type TradesFilters } from '@/components/app/TradesFiltersBar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -62,6 +63,33 @@ const mockSignals = [
 ];
 
 export default function Signals() {
+  const [filters, setFilters] = useState<TradesFilters>({
+    botIds: [],
+    symbols: [],
+    side: 'all',
+    dateFrom: undefined,
+    dateTo: undefined,
+    timeFrom: undefined,
+    timeTo: undefined,
+    timeMode: 'opened',
+    signalKind: 'all',
+  });
+  const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
+  const [symbols, setSymbols] = useState<string[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const botsList = await api.getBots();
+        setBots(botsList.map((b: any) => ({ id: b.id, name: b.name })));
+      } catch {}
+      try {
+        const symbolsList = await api.getSymbols();
+        setSymbols(symbolsList);
+      } catch {}
+    })();
+  }, []);
+
   const formatTime = (iso: string) => {
     return new Date(iso).toLocaleString('de-CH', {
       day: '2-digit',
@@ -77,17 +105,16 @@ export default function Signals() {
     <>
       {/* Filter & Export */}
       <div className="mb-3 flex items-center justify-between">
-        <div className="flex-1">
-          <FiltersBar
-            value={{ botIds: [], symbols: [] }}
-            onChange={(f) => {
-              // Hier kannst du Query-Params an deinen Fetch hängen: ?bot_ids=...&symbols=...&kind=...
-              console.log('filters', f);
-            }}
-            showKind={true}
+        <div className="ml-auto flex gap-2">
+          <TradesFiltersBar
+            value={filters}
+            onChange={setFilters}
+            availableBots={bots}
+            availableSymbols={symbols}
+            showDateRange={true}
+            showTimeRange={true}
+            showSignalKind={true}
           />
-        </div>
-        <div className="ml-3">
           <ExportCSV url={`/api/v1/export/signals`} filename="signals.csv" />
         </div>
       </div>

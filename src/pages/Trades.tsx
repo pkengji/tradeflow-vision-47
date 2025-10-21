@@ -54,7 +54,16 @@ function combineDateTime(dateStr?: string, timeStr?: string): Date | null {
 export default function Trades() {
   // ---- 4.1 STATE (UI & Daten) ----
   const [activeTab, setActiveTab] = useState<TabKey>('open');
-  const [filters, setFilters] = useState<TradesFilters>({ botIds: [], symbols: [], side: 'all' });
+  const [filters, setFilters] = useState<TradesFilters>({
+    botIds: [],
+    symbols: [],
+    side: 'all',
+    dateFrom: undefined,
+    dateTo: undefined,
+    timeFrom: undefined,
+    timeTo: undefined,
+    timeMode: 'opened',
+  });
 
   const [positions, setPositions] = useState<PositionListItem[]>([]);
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
@@ -63,13 +72,6 @@ export default function Trades() {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [showFilters, setShowFilters] = useState<boolean>(false);
-
-  // Datum/Uhrzeit-Filter (nur für geschlossene Trades wirksam)
-  const [closedDateFrom, setClosedDateFrom] = useState<string>(''); // yyyy-mm-dd
-  const [closedTimeFrom, setClosedTimeFrom] = useState<string>(''); // HH:MM
-  const [closedDateTo, setClosedDateTo] = useState<string>('');
-  const [closedTimeTo, setClosedTimeTo] = useState<string>('');
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [selected, setSelected] = useState<SelectedTrade | null>(null);
@@ -126,19 +128,50 @@ export default function Trades() {
 
   const filtered = useMemo(() => {
     let list = afterBasicFilters;
-    if (activeTab === 'closed') {
-      const fromDT = combineDateTime(closedDateFrom, closedTimeFrom);
-      const toDT = combineDateTime(closedDateTo, closedTimeTo);
-      list = list.filter(p => {
-        const closedAt = toDateOrNull(p.closed_at);
-        if (!closedAt) return false;
-        if (fromDT && closedAt < fromDT) return false;
-        if (toDT && closedAt > toDT) return false;
+
+    // Datumsfilter
+    if (filters.dateFrom || filters.dateTo) {
+      list = list.filter((p) => {
+        const date = toDateOrNull(activeTab === 'closed' ? p.closed_at : p.opened_at);
+        if (!date) return false;
+        if (filters.dateFrom && date < filters.dateFrom) return false;
+        if (filters.dateTo && date > filters.dateTo) return false;
         return true;
       });
     }
+
+    // Tageszeitfilter
+    if (filters.timeFrom || filters.timeTo) {
+      list = list.filter((p) => {
+        const dateStr = filters.timeMode === 'closed' ? p.closed_at : p.opened_at;
+        const date = toDateOrNull(dateStr);
+        if (!date) return false;
+        const hours = date.getHours();
+        const minutes = date.getMinutes();
+        const timeInMinutes = hours * 60 + minutes;
+
+        let fromMinutes = 0;
+        let toMinutes = 24 * 60;
+
+        if (filters.timeFrom) {
+          const [h, m] = filters.timeFrom.split(':').map(Number);
+          fromMinutes = h * 60 + m;
+        }
+        if (filters.timeTo) {
+          const [h, m] = filters.timeTo.split(':').map(Number);
+          toMinutes = h * 60 + m;
+        }
+
+        // Handle overnight ranges (e.g., 22:00 - 03:00)
+        if (fromMinutes > toMinutes) {
+          return timeInMinutes >= fromMinutes || timeInMinutes <= toMinutes;
+        }
+        return timeInMinutes >= fromMinutes && timeInMinutes <= toMinutes;
+      });
+    }
+
     return list;
-  }, [afterBasicFilters, activeTab, closedDateFrom, closedTimeFrom, closedDateTo, closedTimeTo]);
+  }, [afterBasicFilters, filters, activeTab]);
 
   const openTrades = useMemo(() => filtered.filter(t => t.status === 'open'), [filtered]);
   const closedTrades = useMemo(() => filtered.filter(t => t.status === 'closed'), [filtered]);
@@ -150,7 +183,7 @@ export default function Trades() {
   // ---- 4.5 RENDER ----
   return (
     <div className="space-y-4">
-      {/* Header: Tabs links, Filter-Toggle rechts */}
+      {/* Header: Tabs links, Filter rechts */}
       <div className="flex items-center justify-between">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)}>
           <TabsList>
@@ -158,49 +191,16 @@ export default function Trades() {
             <TabsTrigger value="closed">Geschlossen</TabsTrigger>
           </TabsList>
         </Tabs>
-        <button
-          type="button"
-          onClick={() => setShowFilters(s => !s)}
-          className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-        >
-          <span aria-hidden>🔎</span>
-          <span>Filter</span>
-        </button>
+        <TradesFiltersBar
+          value={filters}
+          onChange={setFilters}
+          availableBots={bots}
+          availableSymbols={symbols}
+          showDateRange={activeTab === 'closed'}
+          showTimeRange={activeTab === 'closed'}
+          showSignalKind={false}
+        />
       </div>
-
-      {/* Filter-Panel (toggelbar) */}
-      {showFilters && (
-        <div className="space-y-3 p-3 rounded-md border border-zinc-200 dark:border-zinc-800">
-          <TradesFiltersBar
-            value={filters}
-            onChange={setFilters}
-            availableBots={bots}
-            availableSymbols={symbols}
-          />
-
-          {activeTab === 'closed' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">Geschlossen von (Datum/Zeit)</div>
-                <div className="flex gap-2">
-                  <input type="date" value={closedDateFrom} onChange={(e) => setClosedDateFrom(e.target.value)} className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-transparent px-2 py-1 text-sm" />
-                  <input type="time" value={closedTimeFrom} onChange={(e) => setClosedTimeFrom(e.target.value)} className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-transparent px-2 py-1 text-sm" />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">Geschlossen bis (Datum/Zeit)</div>
-                <div className="flex gap-2">
-                  <input type="date" value={closedDateTo} onChange={(e) => setClosedDateTo(e.target.value)} className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-transparent px-2 py-1 text-sm" />
-                  <input type="time" value={closedTimeTo} onChange={(e) => setClosedTimeTo(e.target.value)} className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-transparent px-2 py-1 text-sm" />
-                </div>
-              </div>
-              <div className="flex items-end gap-2 md:col-span-2">
-                <button type="button" className="px-3 py-1.5 rounded-md border border-zinc-300 dark:border-zinc-700 text-sm" onClick={() => { setClosedDateFrom(''); setClosedTimeFrom(''); setClosedDateTo(''); setClosedTimeTo(''); }}>Reset Filter</button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Liste: Offene oder Geschlossene */}
       {activeTab === 'open' ? (

@@ -1,7 +1,8 @@
 // src/pages/Dashboard.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { apiRequest } from '@/lib/api';
-import FiltersBar from '@/components/app/FiltersBar';
+import api from '@/lib/api';
+import TradesFiltersBar, { type TradesFilters } from '@/components/app/TradesFiltersBar';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -27,17 +28,42 @@ type DailyPnl = { date: string; pnl: number; equity: number };
 export default function Dashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [series, setSeries] = useState<DailyPnl[]>([]);
-  const [filters, setFilters] = useState<{ botIds: number[]; symbols: string[]; dateFrom?: string; dateTo?: string; timeOpen?: [string, string]; timeClose?: [string, string]; }>({ botIds: [], symbols: [] });
+  const [filters, setFilters] = useState<TradesFilters>({
+    botIds: [],
+    symbols: [],
+    side: 'all',
+    dateFrom: undefined,
+    dateTo: undefined,
+    timeFrom: undefined,
+    timeTo: undefined,
+    timeMode: 'opened',
+  });
+  const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
+  const [symbols, setSymbols] = useState<string[]>([]);
+
+  // Bots & Symbols laden
+  useEffect(() => {
+    (async () => {
+      try {
+        const botsList = await api.getBots();
+        setBots(botsList.map((b: any) => ({ id: b.id, name: b.name })));
+      } catch {}
+      try {
+        const symbolsList = await api.getSymbols();
+        setSymbols(symbolsList);
+      } catch {}
+    })();
+  }, []);
 
   // Daten laden (einfacher Fetch, kein React Query nötig)
   useEffect(() => {
     const qs = new URLSearchParams();
     if (filters.botIds.length) qs.set('bot_ids', filters.botIds.join(','));
     if (filters.symbols.length) qs.set('symbols', filters.symbols.join(','));
-    if (filters.dateFrom) qs.set('from', filters.dateFrom);
-    if (filters.dateTo) qs.set('to', filters.dateTo);
-    if (filters.timeOpen) qs.set('time_open', filters.timeOpen.join('-'));
-    if (filters.timeClose) qs.set('time_close', filters.timeClose.join('-'));
+    if (filters.dateFrom) qs.set('from', filters.dateFrom.toISOString().split('T')[0]);
+    if (filters.dateTo) qs.set('to', filters.dateTo.toISOString().split('T')[0]);
+    if (filters.timeFrom) qs.set('time_from', filters.timeFrom);
+    if (filters.timeTo) qs.set('time_to', filters.timeTo);
 
     (async () => {
       try {
@@ -98,14 +124,15 @@ export default function Dashboard() {
   return (
     <>
       {/* Filterzeile */}
-      <div className="mb-3">
-        <FiltersBar
-          value={{ botIds: filters.botIds, symbols: filters.symbols }}
-          onChange={(f: any) => {
-            // Du kannst FiltersBar so verdrahten, dass sie date/time auch mitliefert
-            setFilters((prev) => ({ ...prev, ...f }));
-          }}
-          showKind={false}
+      <div className="mb-3 flex justify-end">
+        <TradesFiltersBar
+          value={filters}
+          onChange={setFilters}
+          availableBots={bots}
+          availableSymbols={symbols}
+          showDateRange={true}
+          showTimeRange={true}
+          showSignalKind={false}
         />
       </div>
 
