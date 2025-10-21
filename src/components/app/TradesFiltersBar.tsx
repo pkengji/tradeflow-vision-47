@@ -314,11 +314,26 @@ export default function TradesFiltersBar({
 
           {/* Aktionen */}
           <div className="flex gap-2 pt-2 border-t">
-            <Button variant="ghost" size="sm" onClick={resetFilters} className="flex-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                resetFilters();
+                setShowFilters(false);
+              }}
+              className="flex-1"
+            >
               <X className="h-4 w-4 mr-1" />
               Zurücksetzen
             </Button>
-            <Button size="sm" onClick={closeAllDropdowns} className="flex-1">
+            <Button
+              size="sm"
+              onClick={() => {
+                closeAllDropdowns();
+                setShowFilters(false);
+              }}
+              className="flex-1"
+            >
               Fertig
             </Button>
           </div>

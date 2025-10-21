@@ -221,13 +221,15 @@ export default function Trades() {
                   deltaPct={undefined}
                   onClick={() => handleCardClick(t)}
                 />
-                <MiniRange
-                  labelEntry={t.side === 'short' ? 'SELL' : 'BUY'}
-                  entry={t.entry_price ?? null}
-                  sl={t.sl ?? null}
-                  tp={t.tp ?? null}
-                  mark={null}
-                />
+                <div onClick={() => handleCardClick(t)} className="cursor-pointer">
+                  <MiniRange
+                    labelEntry={t.side === 'short' ? 'SELL' : 'BUY'}
+                    entry={t.entry_price ?? null}
+                    sl={t.sl ?? null}
+                    tp={t.tp ?? null}
+                    mark={null}
+                  />
+                </div>
               </div>
             ))}
           </div>
@@ -250,13 +252,15 @@ export default function Trades() {
                   deltaPct={undefined}
                   onClick={() => handleCardClick(t)}
                 />
-                <MiniRange
-                  labelEntry={t.side === 'short' ? 'SELL' : 'BUY'}
-                  entry={t.entry_price ?? null}
-                  sl={t.sl ?? null}
-                  tp={t.tp ?? null}
-                  mark={t.exit_price ?? null}
-                />
+                <div onClick={() => handleCardClick(t)} className="cursor-pointer">
+                  <MiniRange
+                    labelEntry={t.side === 'short' ? 'SELL' : 'BUY'}
+                    entry={t.entry_price ?? null}
+                    sl={t.sl ?? null}
+                    tp={t.tp ?? null}
+                    mark={t.exit_price ?? null}
+                  />
+                </div>
               </div>
             ))}
           </div>

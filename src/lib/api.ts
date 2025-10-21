@@ -190,25 +190,31 @@ export type TradesResponse = {
 // ---------- API-Funktionen ----------
 
 async function getBots(): Promise<Bot[]> {
-  const rows = await http<BotRow[]>('/api/v1/bots');
-  return rows.map((b) => ({
-    id: b.id,
-    name: b.name,
-    strategy: b.strategy ?? null,
-    timeframe: b.timeframe ?? null,
-    tv_risk_multiplier_default: b.tv_risk_multiplier_default ?? null,
-    position_mode: b.position_mode ?? null,
-    margin_mode: b.margin_mode ?? null,
-    default_leverage: b.default_leverage ?? null,
-    status: b.status,
-    auto_approve: b.auto_approve,
-    uuid: null,
-    secret: null,
-    max_leverage: null,
-    is_deleted: b.is_deleted ?? false,
-    created_at: b.created_at,
-    updated_at: b.updated_at ?? null,
-  }));
+  try {
+    const rows = await http<BotRow[]>('/api/v1/bots');
+    return rows.map((b) => ({
+      id: b.id,
+      name: b.name,
+      strategy: b.strategy ?? null,
+      timeframe: b.timeframe ?? null,
+      tv_risk_multiplier_default: b.tv_risk_multiplier_default ?? null,
+      position_mode: b.position_mode ?? null,
+      margin_mode: b.margin_mode ?? null,
+      default_leverage: b.default_leverage ?? null,
+      status: b.status,
+      auto_approve: b.auto_approve,
+      uuid: null,
+      secret: null,
+      max_leverage: null,
+      is_deleted: b.is_deleted ?? false,
+      created_at: b.created_at,
+      updated_at: b.updated_at ?? null,
+    }));
+  } catch (error) {
+    console.warn('API Error, using mock data:', error);
+    const { MOCK_BOTS } = await import('./mockData');
+    return MOCK_BOTS;
+  }
 }
 
 async function pauseBot(id: number) {
@@ -231,27 +237,39 @@ async function setBotAutoApprove(bot_id: number, auto_approve: boolean) {
 type PositionsParams = { status?: string; bot_id?: number; symbol?: string; side?: string };
 
 async function getPositions(params?: PositionsParams): Promise<{ items: PositionListItem[] }> {
-  const res = await http<PositionsResponseRaw>('/api/v1/positions', { query: params });
-  const items = (res.items ?? []).map((p: any): PositionListItem => ({
-    id: p.id,
-    symbol: p.symbol,
-    side: p.side,
-    status: p.status,
-    entry_price: p.entry_price ?? null,
-    qty: p.qty ?? p.tv_qty ?? null,
-    bot_name: p.bot_name ?? null,
-    opened_at: p.opened_at ?? null,
-    closed_at: p.closed_at ?? null,
-    pnl: p.realized_pnl_net_usdt ?? null,
-    sl: p.sl_trigger ?? null,
-    tp: p.tp_trigger ?? null,
-    exit_price: p.exit_price ?? null,
-  }));
-  return { items };
+  try {
+    const res = await http<PositionsResponseRaw>('/api/v1/positions', { query: params });
+    const items = (res.items ?? []).map((p: any): PositionListItem => ({
+      id: p.id,
+      symbol: p.symbol,
+      side: p.side,
+      status: p.status,
+      entry_price: p.entry_price ?? null,
+      qty: p.qty ?? p.tv_qty ?? null,
+      bot_name: p.bot_name ?? null,
+      opened_at: p.opened_at ?? null,
+      closed_at: p.closed_at ?? null,
+      pnl: p.realized_pnl_net_usdt ?? null,
+      sl: p.sl_trigger ?? null,
+      tp: p.tp_trigger ?? null,
+      exit_price: p.exit_price ?? null,
+    }));
+    return { items };
+  } catch (error) {
+    console.warn('API Error, using mock data:', error);
+    const { generateAllMockTrades } = await import('./mockData');
+    return { items: generateAllMockTrades() };
+  }
 }
 
 async function getPosition(id: number): Promise<any> {
-  return http<any>(`/api/v1/positions/${id}`);
+  try {
+    return await http<any>(`/api/v1/positions/${id}`);
+  } catch (error) {
+    console.warn('API Error, using mock data:', error);
+    const { generateMockPositionDetail } = await import('./mockData');
+    return generateMockPositionDetail(id);
+  }
 }
 
 async function setPositionSlTp(position_id: number, params: { sl?: number; tp?: number }) {
@@ -263,16 +281,34 @@ async function closePosition(position_id: number) {
 }
 
 async function getOrders(position_id: number): Promise<any[]> {
-  return http<any[]>('/api/v1/orders', { query: { position_id } });
+  try {
+    return await http<any[]>('/api/v1/orders', { query: { position_id } });
+  } catch (error) {
+    console.warn('API Error, using mock data:', error);
+    const { generateMockOrders } = await import('./mockData');
+    return generateMockOrders(position_id);
+  }
 }
 
 async function getFunding(position_id: number): Promise<any[]> {
-  return http<any[]>('/api/v1/funding', { query: { position_id } });
+  try {
+    return await http<any[]>('/api/v1/funding', { query: { position_id } });
+  } catch (error) {
+    console.warn('API Error, using mock data:', error);
+    const { generateMockFunding } = await import('./mockData');
+    return generateMockFunding(position_id);
+  }
 }
 
 async function getSymbols(): Promise<string[]> {
-  const rows = await http<SymbolRow[]>('/api/v1/symbols');
-  return rows.map((s) => s.symbol ?? (s as any).name ?? String(s));
+  try {
+    const rows = await http<SymbolRow[]>('/api/v1/symbols');
+    return rows.map((s) => s.symbol ?? (s as any).name ?? String(s));
+  } catch (error) {
+    console.warn('API Error, using mock data:', error);
+    const { MOCK_SYMBOLS } = await import('./mockData');
+    return MOCK_SYMBOLS;
+  }
 }
 
 async function getDailyPnl(params?: { days?: number; bot_id?: number }): Promise<PnlDailyPoint[]> {
