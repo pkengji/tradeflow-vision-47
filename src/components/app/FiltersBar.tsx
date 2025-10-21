@@ -1,92 +1,238 @@
+// src/components/app/TradesFiltersBar.tsx
+import { useMemo, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
-import { useEffect, useMemo, useState } from "react";
-
-export type Filters = {
+export type TradesFilters = {
   botIds: number[];
   symbols: string[];
-  dateFrom?: string; // DD.MM.YYYY
-  dateTo?: string;
-  openHour?: string; // HH:MM-HH:MM
-  closeHour?: string;
-  kind?: 'all'|'automatic'|'manual'; // for Signals
+  side?: 'all' | 'long' | 'short';
+  // neue Filter
+  dateFrom?: string;        // ISO yyyy-mm-dd
+  dateTo?: string;          // ISO yyyy-mm-dd
+  timeOpen?: [number, number];   // Stunden 0..23
+  timeClose?: [number, number];  // Stunden 0..23
 };
 
-type Props = {
-  value: Filters;
-  onChange: (f: Filters) => void;
-  showKind?: boolean;
-};
+type Bot = { id: number; name: string };
 
-const pad = (n:number)=> n<10?`0${n}`:`${n}`;
-const toLocalISO = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+export default function TradesFiltersBar({
+  availableBots,
+  availableSymbols,
+  value,
+  onChange,
+  activeTab, // 'open' | 'closed' – bei 'open' blenden wir Date/Time-Filter aus
+}: {
+  availableBots: Bot[];
+  availableSymbols: string[];
+  value: TradesFilters;
+  onChange: (next: TradesFilters) => void;
+  activeTab: 'open' | 'closed';
+}) {
+  const [botOpen, setBotOpen] = useState(false);
+  const [symbolOpen, setSymbolOpen] = useState(false);
 
-export default function FiltersBar({ value, onChange, showKind }: Props) {
-  const [local, setLocal] = useState<Filters>(value);
-  useEffect(()=>setLocal(value),[value]);
+  const hourOptions = useMemo(
+    () => Array.from({ length: 24 }, (_, h) => ({ v: h, label: `${String(h).padStart(2, '0')}:00` })),
+    []
+  );
 
-  const apply = () => onChange(local);
+  const toggleBot = (id: number) => {
+    const has = value.botIds.includes(id);
+    onChange({
+      ...value,
+      botIds: has ? value.botIds.filter((x) => x !== id) : [...value.botIds, id],
+    });
+  };
+
+  const toggleSymbol = (sym: string) => {
+    const has = value.symbols.includes(sym);
+    onChange({
+      ...value,
+      symbols: has ? value.symbols.filter((x) => x !== sym) : [...value.symbols, sym],
+    });
+  };
+
+  const setRange = (key: 'timeOpen' | 'timeClose', idx: 0 | 1, hour: number) => {
+    const cur = (value[key] ?? [0, 23]) as [number, number];
+    const next: [number, number] = idx === 0 ? [hour, cur[1]] : [cur[0], hour];
+    onChange({ ...value, [key]: next });
+  };
+
+  const clearAll = () =>
+    onChange({
+      botIds: [],
+      symbols: [],
+      side: 'all',
+      dateFrom: undefined,
+      dateTo: undefined,
+      timeOpen: undefined,
+      timeClose: undefined,
+    });
 
   return (
-    <div className="flex flex-wrap items-end gap-2 p-2 border rounded-md">
-      <div className="flex flex-col">
-        <label className="text-xs">Bots (IDs, Komma-getrennt)</label>
-        <input className="input input-bordered px-2 py-1 rounded border"
-          placeholder="z.B. 1,2,3"
-          value={local.botIds.join(",")}
-          onChange={(e)=> setLocal({...local, botIds: e.target.value.split(",").map(s=>parseInt(s)).filter(n=>!isNaN(n))})}
-        />
+    <div className="flex flex-wrap gap-2 p-3 rounded bg-card border">
+      {/* Bot-Filter */}
+      <div className="relative">
+        <Button variant="outline" size="sm" onClick={() => setBotOpen(!botOpen)}>
+          Bot {value.botIds.length > 0 && `(${value.botIds.length})`}
+        </Button>
+        {botOpen && (
+          <div className="absolute top-full mt-1 z-10 bg-card border rounded shadow-md p-2 space-y-1 min-w-[180px]">
+            {availableBots.map((b) => (
+              <label key={b.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted px-2 py-1 rounded">
+                <input
+                  type="checkbox"
+                  checked={value.botIds.includes(b.id)}
+                  onChange={() => toggleBot(b.id)}
+                />
+                <span className="text-sm">{b.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
       </div>
-      <div className="flex flex-col">
-        <label className="text-xs">Coins</label>
-        <input className="input input-bordered px-2 py-1 rounded border"
-          placeholder="BTCUSDT,SOLUSDT"
-          value={local.symbols.join(",")}
-          onChange={(e)=> setLocal({...local, symbols: e.target.value.split(",").map(s=>s.trim()).filter(Boolean)})}
-        />
+
+      {/* Symbol-Filter */}
+      <div className="relative">
+        <Button variant="outline" size="sm" onClick={() => setSymbolOpen(!symbolOpen)}>
+          Symbol {value.symbols.length > 0 && `(${value.symbols.length})`}
+        </Button>
+        {symbolOpen && (
+          <div className="absolute top-full mt-1 z-10 bg-card border rounded shadow-md p-2 space-y-1 min-w-[140px]">
+            {availableSymbols.map((s) => (
+              <label key={s} className="flex items-center gap-2 cursor-pointer hover:bg-muted px-2 py-1 rounded">
+                <input
+                  type="checkbox"
+                  checked={value.symbols.includes(s)}
+                  onChange={() => toggleSymbol(s)}
+                />
+                <span className="text-sm">{s}</span>
+              </label>
+            ))}
+          </div>
+        )}
       </div>
-      <div className="flex flex-col">
-        <label className="text-xs">Datum von (TT.MM.JJJJ)</label>
-        <input className="input input-bordered px-2 py-1 rounded border"
-          placeholder="01.10.2025"
-          value={local.dateFrom ?? ""}
-          onChange={(e)=> setLocal({...local, dateFrom: e.target.value})}
-        />
-      </div>
-      <div className="flex flex-col">
-        <label className="text-xs">Datum bis (TT.MM.JJJJ)</label>
-        <input className="input input-bordered px-2 py-1 rounded border"
-          placeholder="19.10.2025"
-          value={local.dateTo ?? ""}
-          onChange={(e)=> setLocal({...local, dateTo: e.target.value})}
-        />
-      </div>
-      <div className="flex flex-col">
-        <label className="text-xs">Uhrzeit-Range (Open)</label>
-        <input className="input input-bordered px-2 py-1 rounded border"
-          placeholder="00:00-06:00"
-          value={local.openHour ?? ""}
-          onChange={(e)=> setLocal({...local, openHour: e.target.value})}
-        />
-      </div>
-      <div className="flex flex-col">
-        <label className="text-xs">Uhrzeit-Range (Close)</label>
-        <input className="input input-bordered px-2 py-1 rounded border"
-          placeholder="22:00-04:00"
-          value={local.closeHour ?? ""}
-          onChange={(e)=> setLocal({...local, closeHour: e.target.value})}
-        />
-      </div>
-      {showKind && (
-        <div className="flex flex-col">
-          <label className="text-xs">Signal-Art</label>
-          <select className="px-2 py-1 rounded border" value={local.kind ?? 'all'} onChange={(e)=> setLocal({...local, kind: e.target.value as any})}>
-            <option value="all">Alle</option>
-            <option value="automatic">Automatisch</option>
-            <option value="manual">Manuell</option>
-          </select>
-        </div>
+
+      {/* Side-Filter */}
+      <Select value={value.side ?? 'all'} onValueChange={(v) => onChange({ ...value, side: v as any })}>
+        <SelectTrigger className="w-32">
+          <SelectValue placeholder="Side" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            <SelectItem value="all">Alle</SelectItem>
+            <SelectItem value="long">Long</SelectItem>
+            <SelectItem value="short">Short</SelectItem>
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+
+      {/* Date/Time – nur wenn Tab "closed" aktiv ist */}
+      {activeTab === 'closed' && (
+        <>
+          {/* Date Range */}
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              className="border rounded px-2 py-1 text-sm"
+              value={value.dateFrom ?? ''}
+              onChange={(e) => onChange({ ...value, dateFrom: e.target.value || undefined })}
+            />
+            <span className="text-xs text-muted-foreground">bis</span>
+            <input
+              type="date"
+              className="border rounded px-2 py-1 text-sm"
+              value={value.dateTo ?? ''}
+              onChange={(e) => onChange({ ...value, dateTo: e.target.value || undefined })}
+            />
+          </div>
+
+          {/* Time Range (Opened) */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Opened</span>
+            <Select
+              value={String((value.timeOpen ?? [0, 23])[0])}
+              onValueChange={(v) => setRange('timeOpen', 0, Number(v))}
+            >
+              <SelectTrigger className="w-20">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {hourOptions.map(({ v, label }) => (
+                  <SelectItem key={`open-start-${v}`} value={String(v)}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-xs text-muted-foreground">–</span>
+            <Select
+              value={String((value.timeOpen ?? [0, 23])[1])}
+              onValueChange={(v) => setRange('timeOpen', 1, Number(v))}
+            >
+              <SelectTrigger className="w-20">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {hourOptions.map(({ v, label }) => (
+                  <SelectItem key={`open-end-${v}`} value={String(v)}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Time Range (Closed) */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Closed</span>
+            <Select
+              value={String((value.timeClose ?? [0, 23])[0])}
+              onValueChange={(v) => setRange('timeClose', 0, Number(v))}
+            >
+              <SelectTrigger className="w-20">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {hourOptions.map(({ v, label }) => (
+                  <SelectItem key={`close-start-${v}`} value={String(v)}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-xs text-muted-foreground">–</span>
+            <Select
+              value={String((value.timeClose ?? [0, 23])[1])}
+              onValueChange={(v) => setRange('timeClose', 1, Number(v))}
+            >
+              <SelectTrigger className="w-20">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {hourOptions.map(({ v, label }) => (
+                  <SelectItem key={`close-end-${v}`} value={String(v)}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </>
       )}
-      <button className="px-3 py-1 rounded border ml-auto" onClick={apply}>Übernehmen</button>
+
+      {/* Clear */}
+      <Button variant="ghost" size="sm" onClick={clearAll}>
+        Zurücksetzen
+      </Button>
     </div>
   );
 }

@@ -136,6 +136,9 @@ export type PositionListItem = {
   opened_at: string | null;
   closed_at: string | null;
   pnl: number | null;
+  sl?: number | null;          // aus sl_trigger (oder sl_limit)
+  tp?: number | null;          // aus tp_trigger
+  exit_price?: number | null;  // bei closed: als "mark"-Ersatz
 };
 
 export type PnlDailyPoint = { date: string; pnl: number };
@@ -240,6 +243,9 @@ async function getPositions(params?: PositionsParams): Promise<{ items: Position
     opened_at: p.opened_at ?? null,
     closed_at: p.closed_at ?? null,
     pnl: p.realized_pnl_net_usdt ?? null,
+    sl: p.sl_trigger ?? null,
+    tp: p.tp_trigger ?? null,
+    exit_price: p.exit_price ?? null,
   }));
   return { items };
 }

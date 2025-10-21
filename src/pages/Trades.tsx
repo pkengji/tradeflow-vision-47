@@ -1,296 +1,276 @@
-// src/pages/Trades.tsx
+// ==============================
+// 1) IMPORTS
+// ==============================
 import { useEffect, useMemo, useState } from 'react';
-import { actions, apiRequest } from '@/lib/api';
+import api, { type PositionListItem, type Bot } from '@/lib/api';
 import TradesFiltersBar, { type TradesFilters } from '@/components/app/TradesFiltersBar';
 import TradeCardCompact from '@/components/app/TradeCardCompact';
 import ResponsivePanel from '@/components/ui/ResponsivePanel';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import MiniRange from '@/components/app/MiniRange';
+import TradeDetailPanel from '@/components/app/TradeDetailPanel';
 
-type TradeSide = 'long' | 'short';
-type TradeStatus = 'open' | 'closed';
+// ==============================
+// 2) LOCAL TYPES
+// ==============================
+type TabKey = 'open' | 'closed';
 
-type Trade = {
-  id: number;
-  symbol: string;
-  side: TradeSide;
-  botId?: number;
-  botName?: string;
-  status: TradeStatus;
-  pnl_usdt?: number;          // realized (closed) oder unrealized (open) – je nach Backend-Feld
-  deltaPct?: number;          // Bewegung Entry -> Now/Close in %
-  entryPrice?: number;
-  sl?: number | null;
-  tp?: number | null;
-  currentPrice?: number;      // für offene Trades
-  closePrice?: number | null; // für geschlossene Trades
-};
+interface SelectedTrade { id: number; symbol: string; }
 
-function ExportCSVButton({ url, filename }: { url: string; filename: string }) {
-  const onClick = async () => {
-    const res = await fetch(url, { credentials: 'include' });
-    if (!res.ok) { alert('CSV-Export fehlgeschlagen'); return; }
-    const blob = await res.blob();
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
-  return <button className="px-3 py-1 rounded border" onClick={onClick}>CSV exportieren</button>;
+// ==============================
+// 3) HELPERS (klein & testbar)
+// ==============================
+function safeNumber(n: number | null | undefined, fallback = 0): number {
+  return typeof n === 'number' && Number.isFinite(n) ? n : fallback;
 }
 
-// Einfache, eigenständige Tick-Komponente
-function Tick({ xPct, label, cls, hollow }: { xPct: number; label: string; cls?: string; hollow?: boolean }) {
-  const style = { left: `${Math.max(0, Math.min(100, xPct))}%` };
-  return (
-    <div className="absolute -translate-x-1/2 top-0 h-full" style={style}>
-      <div
-        className={`w-[2px] h-full ${hollow ? 'bg-transparent border' : ''} ${cls ?? 'bg-primary'}`}
-        title={label}
-      />
-      <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] whitespace-nowrap">{label}</div>
-    </div>
-  );
+function toDateOrNull(value?: string | null): Date | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
-// Preisleiste, berechnet alle X-Positionen selbst – keine Fremd-Abhängigkeiten nötig
-function PriceBar({
-  entry, sl, tp, now,
-  side,
-}: {
-  entry?: number; sl?: number | null; tp?: number | null; now?: number | null; side: TradeSide;
-}) {
-  const { min, max } = useMemo(() => {
-    const vals = [entry, sl ?? undefined, tp ?? undefined, now ?? undefined].filter((v): v is number => typeof v === 'number');
-    if (vals.length === 0) return { min: 0, max: 1 };
-    const lo = Math.min(...vals);
-    const hi = Math.max(...vals);
-    // falls alles gleich, Range leicht aufziehen
-    return lo === hi ? { min: lo * 0.999, max: hi * 1.001 } : { min: lo, max: hi };
-  }, [entry, sl, tp, now]);
-
-  const px = (v?: number | null) => {
-    if (typeof v !== 'number') return null;
-    return ((v - min) / (max - min)) * 100;
-  };
-
-  const xEN = px(entry) ?? 0;
-  const xSL = px(sl ?? undefined);
-  const xTP = px(tp ?? undefined);
-  const xNOW = px(now ?? undefined);
-
-  // Fläche zwischen Entry und Now einfärben (grün bei Gewinn, rot bei Verlust – je nach Long/Short)
-  const gain = (() => {
-    if (typeof entry !== 'number' || typeof now !== 'number') return false;
-    const diff = side === 'long' ? now - entry : entry - now;
-    return diff >= 0;
-  })();
-
-  const left = Math.min(xEN, xNOW ?? xEN);
-  const right = Math.max(xEN, xNOW ?? xEN);
-
-  return (
-    <div className="relative h-10 rounded bg-muted px-2">
-      {/* Grundlinie */}
-      <div className="absolute left-2 right-2 top-1/2 h-0.5 bg-border" />
-      {/* Füllfläche */}
-      <div
-        className={`absolute top-1/4 h-1/2 rounded ${gain ? 'bg-emerald-500/40' : 'bg-red-500/40'}`}
-        style={{ left: `calc(2px + ${left}%)`, right: `calc(2px + ${100 - right}%)` }}
-      />
-      {/* Ticks */}
-      <Tick xPct={xEN} label="ENTRY" cls="bg-primary" />
-      {xSL != null && <Tick xPct={xSL} label="SL" cls="bg-red-500" />}
-      {xTP != null && <Tick xPct={xTP} label="TP" cls="bg-emerald-600" />}
-      {xNOW != null && <Tick xPct={xNOW} label="NOW" cls="bg-zinc-800" hollow />}
-    </div>
-  );
+function combineDateTime(dateStr?: string, timeStr?: string): Date | null {
+  if (!dateStr && !timeStr) return null;
+  const [yy, mm, dd] = (dateStr ?? '').split('-');
+  const [HH, MM] = (timeStr ?? '').split(':');
+  const y = Number(yy), m = Number(mm), d = Number(dd), h = Number(HH), min = Number(MM);
+  const hasDate = Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d);
+  const hasTime = Number.isFinite(h) && Number.isFinite(min);
+  if (!hasDate && !hasTime) return null;
+  const now = new Date();
+  const year = hasDate ? y : now.getFullYear();
+  const month = hasDate ? (m - 1) : now.getMonth();
+  const day = hasDate ? d : now.getDate();
+  const hour = hasTime ? h : 0;
+  const minute = hasTime ? min : 0;
+  const dt = new Date(year, month, day, hour, minute, 0, 0);
+  return Number.isNaN(dt.getTime()) ? null : dt;
 }
 
+// ==============================
+// 4) COMPONENT
+// ==============================
 export default function Trades() {
-  const [trades, setTrades] = useState<Trade[]>([]);
-  const [selected, setSelected] = useState<Trade | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'open' | 'closed'>('open');
-  const [filters, setFilters] = useState<TradesFilters>({
-    botIds: [],
-    symbols: [],
-    side: 'all',
-  });
+  // ---- 4.1 STATE (UI & Daten) ----
+  const [activeTab, setActiveTab] = useState<TabKey>('open');
+  const [filters, setFilters] = useState<TradesFilters>({ botIds: [], symbols: [], side: 'all' });
 
-  // Beispiel: Trades laden – passe den Endpoint an deine API an
+  const [positions, setPositions] = useState<PositionListItem[]>([]);
+  const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
+  const [symbols, setSymbols] = useState<string[]>([]);
+
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [showFilters, setShowFilters] = useState<boolean>(false);
+
+  // Datum/Uhrzeit-Filter (nur für geschlossene Trades wirksam)
+  const [closedDateFrom, setClosedDateFrom] = useState<string>(''); // yyyy-mm-dd
+  const [closedTimeFrom, setClosedTimeFrom] = useState<string>(''); // HH:MM
+  const [closedDateTo, setClosedDateTo] = useState<string>('');
+  const [closedTimeTo, setClosedTimeTo] = useState<string>('');
+
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [selected, setSelected] = useState<SelectedTrade | null>(null);
+
+  // ---- 4.2 EFFECTS: Daten laden ----
   useEffect(() => {
+    let cancel = false;
     (async () => {
       try {
-        // Erwartet ein Array von Trades; passe Mapping ggf. an dein Backend an:
-        const res = await apiRequest<Trade[]>('/api/v1/trades'); // <- falls dein Endpoint anders heißt: anpassen
-        setTrades(res || []);
-      } catch (e) {
-        console.error(e);
-        // Fallback: leere Liste
-        setTrades([]);
+        setLoading(true); setError(null);
+        const res = await api.getPositions();
+        if (!cancel) setPositions(Array.isArray(res?.items) ? res.items : []);
+      } catch (e: any) {
+        if (!cancel) setError(e?.message ?? 'Unbekannter Fehler');
+      } finally {
+        if (!cancel) setLoading(false);
       }
     })();
+    return () => { cancel = true; };
   }, []);
 
-  const openDetail = (t: Trade) => {
-    setSelected(t);
-    setPanelOpen(true);
-  };
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const list = await api.getBots();
+        if (!cancel) setBots((list as Bot[]).map(b => ({ id: b.id, name: b.name })));
+      } catch {}
+    })();
+    return () => { cancel = true; };
+  }, []);
 
-  const closeDetail = () => {
-    setPanelOpen(false);
-    setSelected(null);
-  };
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const list = await api.getSymbols();
+        if (!cancel) setSymbols(Array.isArray(list) ? list : []);
+      } catch {}
+    })();
+    return () => { cancel = true; };
+  }, []);
 
-  // Helper: P&L + Delta anzeigen
-  const pnlDisplay = (t: Trade) => {
-    const v = t.pnl_usdt ?? 0;
-    return { pnl: v, deltaPct: t.deltaPct ?? 0 };
-  };
+  // ---- 4.3 SELECTORS/DERIVATES ----
+  const byTab = useMemo(() => positions.filter(p => (activeTab === 'open' ? p.status === 'open' : p.status === 'closed')), [positions, activeTab]);
 
-  // Gefilterte Trades basierend auf Tab + Filter
-  const filteredTrades = useMemo(() => {
-    return trades.filter((t) => {
-      // Tab-Filter: open/closed
-      if (t.status !== activeTab) return false;
-      // Bot-Filter
-      if (filters.botIds.length > 0 && !filters.botIds.includes(t.botId ?? 0)) return false;
-      // Symbol-Filter
-      if (filters.symbols.length > 0 && !filters.symbols.includes(t.symbol)) return false;
-      // Side-Filter
-      if (filters.side && filters.side !== 'all' && t.side !== filters.side) return false;
+  const afterBasicFilters = useMemo(() => {
+    return byTab.filter(p => {
+      if (filters.side && filters.side !== 'all' && p.side !== filters.side) return false;
+      if (filters.symbols && filters.symbols.length > 0 && !filters.symbols.includes(p.symbol)) return false;
       return true;
     });
-  }, [trades, activeTab, filters]);
+  }, [byTab, filters]);
 
+  const filtered = useMemo(() => {
+    let list = afterBasicFilters;
+    if (activeTab === 'closed') {
+      const fromDT = combineDateTime(closedDateFrom, closedTimeFrom);
+      const toDT = combineDateTime(closedDateTo, closedTimeTo);
+      list = list.filter(p => {
+        const closedAt = toDateOrNull(p.closed_at);
+        if (!closedAt) return false;
+        if (fromDT && closedAt < fromDT) return false;
+        if (toDT && closedAt > toDT) return false;
+        return true;
+      });
+    }
+    return list;
+  }, [afterBasicFilters, activeTab, closedDateFrom, closedTimeFrom, closedDateTo, closedTimeTo]);
+
+  const openTrades = useMemo(() => filtered.filter(t => t.status === 'open'), [filtered]);
+  const closedTrades = useMemo(() => filtered.filter(t => t.status === 'closed'), [filtered]);
+
+  // ---- 4.4 HANDLER ----
+  const handleCardClick = (t: PositionListItem) => { setSelected({ id: t.id, symbol: t.symbol }); setPanelOpen(true); };
+  const closePanel = () => { setPanelOpen(false); setSelected(null); };
+
+  // ---- 4.5 RENDER ----
   return (
-    <div className="container mx-auto p-4 space-y-4">
+    <div className="space-y-4">
+      {/* Header: Tabs links, Filter-Toggle rechts */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Trades</h1>
-        <ExportCSVButton url={`/api/v1/export/trades`} filename="trades.csv" />
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)}>
+          <TabsList>
+            <TabsTrigger value="open">Offen</TabsTrigger>
+            <TabsTrigger value="closed">Geschlossen</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <button
+          type="button"
+          onClick={() => setShowFilters(s => !s)}
+          className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+        >
+          <span aria-hidden>🔎</span>
+          <span>Filter</span>
+        </button>
       </div>
 
-      <TradesFiltersBar
-        value={filters}
-        onChange={setFilters}
-        availableBots={[
-          { id: 1, name: 'Bot Alpha' },
-          { id: 2, name: 'Bot Beta' },
-          { id: 3, name: 'Bot Gamma' }
-        ]}
-        availableSymbols={['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT']}
-      />
+      {/* Filter-Panel (toggelbar) */}
+      {showFilters && (
+        <div className="space-y-3 p-3 rounded-md border border-zinc-200 dark:border-zinc-800">
+          <TradesFiltersBar
+            value={filters}
+            onChange={setFilters}
+            availableBots={bots}
+            availableSymbols={symbols}
+          />
 
-      {/* Tabs für Open/Closed */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'open' | 'closed')}>
-        <TabsList className="grid w-full grid-cols-2 max-w-md">
-          <TabsTrigger value="open">Offen</TabsTrigger>
-          <TabsTrigger value="closed">Geschlossen</TabsTrigger>
-        </TabsList>
+          {activeTab === 'closed' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Geschlossen von (Datum/Zeit)</div>
+                <div className="flex gap-2">
+                  <input type="date" value={closedDateFrom} onChange={(e) => setClosedDateFrom(e.target.value)} className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-transparent px-2 py-1 text-sm" />
+                  <input type="time" value={closedTimeFrom} onChange={(e) => setClosedTimeFrom(e.target.value)} className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-transparent px-2 py-1 text-sm" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Geschlossen bis (Datum/Zeit)</div>
+                <div className="flex gap-2">
+                  <input type="date" value={closedDateTo} onChange={(e) => setClosedDateTo(e.target.value)} className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-transparent px-2 py-1 text-sm" />
+                  <input type="time" value={closedTimeTo} onChange={(e) => setClosedTimeTo(e.target.value)} className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-transparent px-2 py-1 text-sm" />
+                </div>
+              </div>
+              <div className="flex items-end gap-2 md:col-span-2">
+                <button type="button" className="px-3 py-1.5 rounded-md border border-zinc-300 dark:border-zinc-700 text-sm" onClick={() => { setClosedDateFrom(''); setClosedTimeFrom(''); setClosedDateTo(''); setClosedTimeTo(''); }}>Reset Filter</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
-        <TabsContent value={activeTab} className="space-y-2 mt-4">
-          {filteredTrades.map((t) => {
-            const { pnl, deltaPct } = pnlDisplay(t);
-            return (
+      {/* Liste: Offene oder Geschlossene */}
+      {activeTab === 'open' ? (
+        <section>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm text-muted-foreground">{loading ? 'Lade…' : `${openTrades.length} Einträge`}</div>
+            {error && <div className="text-sm text-red-500">{error}</div>}
+          </div>
+          <div className="grid gap-3">
+            {openTrades.length === 0 && !loading && (<div className="text-sm text-muted-foreground">Keine offenen Trades.</div>)}
+            {openTrades.map((t) => (
               <div key={t.id} className="space-y-2">
                 <TradeCardCompact
                   symbol={t.symbol}
-                  botName={t.botName}
-                  side={t.side}
-                  pnl={pnl}
-                  deltaPct={(deltaPct || 0) / 100} // erwartet 0..1 → falls du schon 0..1 bekommst: diesen /100 entfernen
-                  onClick={() => openDetail(t)}
+                  side={t.side as 'long' | 'short'}
+                  pnl={safeNumber(t.pnl, 0)}
+                  botName={t.bot_name ?? undefined}
+                  deltaPct={undefined}
+                  onClick={() => handleCardClick(t)}
                 />
-                {/* Preisleiste pro Trade */}
-                <PriceBar
-                  entry={t.entryPrice}
-                  sl={t.sl ?? undefined}
-                  tp={t.tp ?? undefined}
-                  now={(t.status === 'open' ? t.currentPrice : t.closePrice) ?? undefined}
-                  side={t.side}
+                <MiniRange
+                  labelEntry={t.side === 'short' ? 'SELL' : 'BUY'}
+                  entry={t.entry_price ?? null}
+                  sl={t.sl ?? null}
+                  tp={t.tp ?? null}
+                  mark={null}
                 />
               </div>
-            );
-          })}
-          {filteredTrades.length === 0 && (
-            <div className="text-sm text-muted-foreground">Keine Trades gefunden.</div>
-          )}
-        </TabsContent>
-      </Tabs>
-
-      {/* Detail-Panel mit Aktionen */}
-      <ResponsivePanel open={panelOpen} onClose={closeDetail}>
-        {selected && (
-          <div className="space-y-3">
-            <div className="text-lg font-semibold">{selected.symbol} <span className="uppercase text-xs text-muted-foreground">{selected.side}</span></div>
-
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div>Bot: <span className="text-muted-foreground">{selected.botName ?? '—'}</span></div>
-              <div>Status: <span className="text-muted-foreground">{selected.status}</span></div>
-              <div>Entry: <span className="text-muted-foreground">{selected.entryPrice ?? '—'}</span></div>
-              <div>SL: <span className="text-muted-foreground">{selected.sl ?? '—'}</span></div>
-              <div>TP: <span className="text-muted-foreground">{selected.tp ?? '—'}</span></div>
-              <div>Now/Close: <span className="text-muted-foreground">{(selected.status === 'open' ? selected.currentPrice : selected.closePrice) ?? '—'}</span></div>
-              <div>P&L (USDT): <span className={`font-medium ${ (selected.pnl_usdt ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{(selected.pnl_usdt ?? 0).toFixed(2)}</span></div>
-              <div>Δ (%): <span className={`font-medium ${ (selected.deltaPct ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{(selected.deltaPct ?? 0).toFixed(2)}</span></div>
-            </div>
-
-            <div className="pt-2 border-t">
-              <ActionsBar trade={selected} onChanged={async () => {
-                // Nach Aktion neu laden
-                try {
-                  const res = await apiRequest<Trade[]>('/api/v1/trades');
-                  setTrades(res || []);
-                } catch {}
-              }} />
-            </div>
+            ))}
           </div>
-        )}
+        </section>
+      ) : (
+        <section>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm text-muted-foreground">{loading ? 'Lade…' : `${closedTrades.length} Einträge`}</div>
+            {error && <div className="text-sm text-red-500">{error}</div>}
+          </div>
+          <div className="grid gap-3">
+            {closedTrades.length === 0 && !loading && (<div className="text-sm text-muted-foreground">Keine geschlossenen Trades.</div>)}
+            {closedTrades.map((t) => (
+              <div key={t.id} className="space-y-2">
+                <TradeCardCompact
+                  symbol={t.symbol}
+                  side={t.side as 'long' | 'short'}
+                  pnl={safeNumber(t.pnl, 0)}
+                  botName={t.bot_name ?? undefined}
+                  deltaPct={undefined}
+                  onClick={() => handleCardClick(t)}
+                />
+                <MiniRange
+                  labelEntry={t.side === 'short' ? 'SELL' : 'BUY'}
+                  entry={t.entry_price ?? null}
+                  sl={t.sl ?? null}
+                  tp={t.tp ?? null}
+                  mark={t.exit_price ?? null}
+                />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Responsive Modal/Panel: gleiche BG wie Panel-Inhalt */}
+      <ResponsivePanel open={panelOpen} onClose={closePanel}>
+        {selected ? (
+          <div className="bg-white dark:bg-zinc-900">
+            <TradeDetailPanel positionId={selected.id} />
+          </div>
+        ) : null}
       </ResponsivePanel>
-    </div>
-  );
-}
-
-function ActionsBar({ trade, onChanged }: { trade: Trade; onChanged: () => Promise<void> | void }) {
-  const [busy, setBusy] = useState(false);
-
-  const setBoth = async () => {
-    const rawTp = prompt('TP Trigger (leer = kein Update)');
-    const rawSl = prompt('SL Trigger (leer = kein Update)');
-    const tp = rawTp === null || rawTp.trim() === '' ? null : Number(rawTp);
-    const sl = rawSl === null || rawSl.trim() === '' ? null : Number(rawSl);
-
-    setBusy(true);
-    try {
-      await actions.setTpSl(trade.id, { tp, sl });
-      alert('TP/SL aktualisiert');
-      await onChanged();
-    } catch (e: any) {
-      alert(`Fehler: ${e?.message ?? e}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const closeNow = async () => {
-    if (!confirm('Position wirklich sofort (Market) schließen?')) return;
-    setBusy(true);
-    try {
-      await actions.closePosition(trade.id);
-      alert('Position geschlossen (Market)');
-      await onChanged();
-    } catch (e: any) {
-      alert(`Fehler: ${e?.message ?? e}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="flex gap-2">
-      <button className="px-3 py-1 rounded border" onClick={setBoth} disabled={busy}>TP/SL setzen</button>
-      <button className="px-3 py-1 rounded border" onClick={closeNow} disabled={busy}>Close (Market)</button>
     </div>
   );
 }
