@@ -6,6 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 // CSV-Export-Button (eigenständig, keine Lib nötig)
 function ExportCSV({ url, filename }: { url: string; filename: string }) {
@@ -76,6 +82,7 @@ export default function Signals() {
   });
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
+  const [selectedSignal, setSelectedSignal] = useState<any>(null);
 
   useEffect(() => {
     (async () => {
@@ -135,33 +142,32 @@ export default function Signals() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {mockSignals.map((signal) => (
-                <div
-                  key={signal.id}
-                  className="flex flex-col gap-3 rounded-lg border border-border p-4 md:flex-row md:items-center md:justify-between"
-                >
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <Badge variant={signal.status === 'ok' ? 'default' : 'destructive'}>
-                        {signal.type}
-                      </Badge>
-                      <Badge variant="outline">{signal.symbol}</Badge>
-                      <span className="text-sm text-muted-foreground">Bot #{signal.botId}</span>
+              {mockSignals.map((signal) => {
+                const bot = bots.find(b => b.id === signal.botId);
+                return (
+                  <div
+                    key={signal.id}
+                    onClick={() => setSelectedSignal(signal)}
+                    className="flex flex-col gap-3 rounded-lg border border-border p-4 md:flex-row md:items-center md:justify-between cursor-pointer hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Badge variant={signal.status === 'ok' ? 'default' : 'destructive'}>
+                          {signal.type}
+                        </Badge>
+                        <Badge variant="outline">{signal.symbol}</Badge>
+                        <span className="text-sm text-muted-foreground">{bot?.name || `Bot #${signal.botId}`}</span>
+                      </div>
+                      <p className="text-sm">{signal.humanMessage}</p>
+                      <p className="text-xs text-muted-foreground">{formatTime(signal.timestamp)}</p>
                     </div>
-                    <p className="text-sm">{signal.humanMessage}</p>
-                    <p className="text-xs text-muted-foreground">{formatTime(signal.timestamp)}</p>
-                  </div>
-                  <div className="flex items-center gap-4">
                     <div className="text-right">
                       <div className="text-sm text-muted-foreground">Latenz</div>
                       <div className="font-medium">{signal.latencyMs}ms</div>
                     </div>
-                    <Button variant="ghost" size="sm">
-                      Details
-                    </Button>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {mockSignals.length === 0 && (
                 <div className="text-sm text-muted-foreground">Keine Signals gefunden.</div>
               )}
@@ -169,6 +175,18 @@ export default function Signals() {
           </CardContent>
         </Card>
       </div>
+
+      {/* JSON-Dialog */}
+      <Dialog open={!!selectedSignal} onOpenChange={() => setSelectedSignal(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Signal Details</DialogTitle>
+          </DialogHeader>
+          <pre className="text-xs bg-muted p-4 rounded overflow-x-auto">
+            {JSON.stringify(selectedSignal, null, 2)}
+          </pre>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

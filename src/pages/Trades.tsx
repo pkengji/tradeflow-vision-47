@@ -9,6 +9,7 @@ import ResponsivePanel from '@/components/ui/ResponsivePanel';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import MiniRange from '@/components/app/MiniRange';
 import TradeDetailPanel from '@/components/app/TradeDetailPanel';
+import { Card } from '@/components/ui/card';
 
 // ==============================
 // 2) LOCAL TYPES
@@ -183,12 +184,12 @@ export default function Trades() {
   // ---- 4.5 RENDER ----
   return (
     <div className="space-y-4">
-      {/* Header: Tabs links, Filter rechts */}
-      <div className="flex items-center justify-between">
+      {/* Header: Tabs und Filter in einer Leiste */}
+      <div className="flex items-center justify-between gap-4">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)}>
-          <TabsList>
-            <TabsTrigger value="open">Offen</TabsTrigger>
-            <TabsTrigger value="closed">Geschlossen</TabsTrigger>
+          <TabsList className="h-12 px-2">
+            <TabsTrigger value="open" className="px-6 text-base">Offen</TabsTrigger>
+            <TabsTrigger value="closed" className="px-6 text-base">Geschlossen</TabsTrigger>
           </TabsList>
         </Tabs>
         <TradesFiltersBar
@@ -212,25 +213,27 @@ export default function Trades() {
           <div className="grid gap-3">
             {openTrades.length === 0 && !loading && (<div className="text-sm text-muted-foreground">Keine offenen Trades.</div>)}
             {openTrades.map((t) => (
-              <div key={t.id} className="space-y-2">
+              <Card
+                key={t.id}
+                onClick={() => handleCardClick(t)}
+                className="cursor-pointer hover:bg-muted/50 transition-colors p-0 overflow-hidden"
+              >
                 <TradeCardCompact
                   symbol={t.symbol}
                   side={t.side as 'long' | 'short'}
                   pnl={safeNumber(t.pnl, 0)}
                   botName={t.bot_name ?? undefined}
                   deltaPct={undefined}
-                  onClick={() => handleCardClick(t)}
+                  onClick={() => {}}
                 />
-                <div onClick={() => handleCardClick(t)} className="cursor-pointer">
-                  <MiniRange
-                    labelEntry={t.side === 'short' ? 'SELL' : 'BUY'}
-                    entry={t.entry_price ?? null}
-                    sl={t.sl ?? null}
-                    tp={t.tp ?? null}
-                    mark={null}
-                  />
-                </div>
-              </div>
+                <MiniRange
+                  labelEntry={t.side === 'short' ? 'SELL' : 'BUY'}
+                  entry={t.entry_price ?? null}
+                  sl={t.sl ?? null}
+                  tp={t.tp ?? null}
+                  mark={null}
+                />
+              </Card>
             ))}
           </div>
         </section>
@@ -243,25 +246,27 @@ export default function Trades() {
           <div className="grid gap-3">
             {closedTrades.length === 0 && !loading && (<div className="text-sm text-muted-foreground">Keine geschlossenen Trades.</div>)}
             {closedTrades.map((t) => (
-              <div key={t.id} className="space-y-2">
+              <Card
+                key={t.id}
+                onClick={() => handleCardClick(t)}
+                className="cursor-pointer hover:bg-muted/50 transition-colors p-0 overflow-hidden"
+              >
                 <TradeCardCompact
                   symbol={t.symbol}
                   side={t.side as 'long' | 'short'}
                   pnl={safeNumber(t.pnl, 0)}
                   botName={t.bot_name ?? undefined}
                   deltaPct={undefined}
-                  onClick={() => handleCardClick(t)}
+                  onClick={() => {}}
                 />
-                <div onClick={() => handleCardClick(t)} className="cursor-pointer">
-                  <MiniRange
-                    labelEntry={t.side === 'short' ? 'SELL' : 'BUY'}
-                    entry={t.entry_price ?? null}
-                    sl={t.sl ?? null}
-                    tp={t.tp ?? null}
-                    mark={t.exit_price ?? null}
-                  />
-                </div>
-              </div>
+                <MiniRange
+                  labelEntry={t.side === 'short' ? 'SELL' : 'BUY'}
+                  entry={t.entry_price ?? null}
+                  sl={t.sl ?? null}
+                  tp={t.tp ?? null}
+                  mark={t.exit_price ?? null}
+                />
+              </Card>
             ))}
           </div>
         </section>
