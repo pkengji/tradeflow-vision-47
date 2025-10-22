@@ -237,3 +237,22 @@ export function generateMockFunding(positionId: number) {
     },
   ];
 }
+
+// Mock Available Trading Pairs (für Bot-Details)
+export const MOCK_AVAILABLE_PAIRS = [
+  { symbol: 'BTCUSDT', name: 'Bitcoin', icon: '₿' },
+  { symbol: 'ETHUSDT', name: 'Ethereum', icon: 'Ξ' },
+  { symbol: 'BNBUSDT', name: 'Binance Coin', icon: 'BNB' },
+  { symbol: 'ADAUSDT', name: 'Cardano', icon: 'ADA' },
+  { symbol: 'DOGEUSDT', name: 'Dogecoin', icon: 'Ð' },
+  { symbol: 'XRPUSDT', name: 'Ripple', icon: 'XRP' },
+  { symbol: 'DOTUSDT', name: 'Polkadot', icon: 'DOT' },
+  { symbol: 'UNIUSDT', name: 'Uniswap', icon: 'UNI' },
+  { symbol: 'LINKUSDT', name: 'Chainlink', icon: 'LINK' },
+  { symbol: 'LTCUSDT', name: 'Litecoin', icon: 'Ł' },
+  { symbol: 'MATICUSDT', name: 'Polygon', icon: 'MATIC' },
+  { symbol: 'SOLUSDT', name: 'Solana', icon: 'SOL' },
+  { symbol: 'AVAXUSDT', name: 'Avalanche', icon: 'AVAX' },
+  { symbol: 'ATOMUSDT', name: 'Cosmos', icon: 'ATOM' },
+  { symbol: 'FTMUSDT', name: 'Fantom', icon: 'FTM' },
+];

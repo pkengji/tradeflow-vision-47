@@ -336,6 +336,18 @@ async function logAction(event: string, payload?: any): Promise<null | any> {
   });
 }
 
+async function getAvailablePairs(): Promise<Array<{ symbol: string; name: string; icon: string }>> {
+  try {
+    // TODO: Replace with actual API call when available
+    // return http<Array<{ symbol: string; name: string; icon: string }>>('/api/v1/pairs');
+    throw new Error('Not implemented');
+  } catch (error) {
+    console.warn('API Error, using mock data:', error);
+    const { MOCK_AVAILABLE_PAIRS } = await import('./mockData');
+    return MOCK_AVAILABLE_PAIRS;
+  }
+}
+
 // ---------- Export-Objekt ----------
 
 export const api = {
@@ -359,6 +371,7 @@ export const api = {
   // Symbols / PnL
   getSymbols,
   getDailyPnl,
+  getAvailablePairs,
 
   // Outbox
   getOutbox,
