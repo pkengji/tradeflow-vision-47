@@ -14,6 +14,7 @@ type Summary = {
   pnl_today: number;                 // realized heute
   winrate_today: number;             // 0..1
   open_trades_count: number;
+  pnl_filtered: number;              // realized P&L nach Filtern
   portfolio_filtered: number;        // nach Filtern
   winrate_filtered: number;          // 0..1, nach Filtern
   fees_pct_filtered: number;         // gesamt in %
@@ -85,6 +86,7 @@ export default function Dashboard() {
           pnl_today: 120.55,
           winrate_today: 0.62,
           open_trades_count: 3,
+          pnl_filtered: 456.78,
           portfolio_filtered: 9876.54,
           winrate_filtered: 0.58,
           fees_pct_filtered: 0.8,
@@ -125,7 +127,7 @@ export default function Dashboard() {
 
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6 p-4 pb-24 max-w-7xl mx-auto">
       {/* Filterzeile */}
       <div className="flex justify-end">
         <TradesFiltersBar
@@ -141,55 +143,56 @@ export default function Dashboard() {
 
       {/* 1. Portfoliowert total - ungefiltert, groß */}
       {summary && (
-        <Card className="border-primary">
-          <CardContent className="pt-6">
+        <Card className="border-primary shadow-lg">
+          <CardContent className="pt-8 pb-8">
             <div className="text-center">
-              <div className="text-sm text-muted-foreground mb-2">Portfoliowert Total</div>
-              <div className="text-4xl font-bold">{currency(summary.portfolio_total)}</div>
-              <div className="text-xs text-muted-foreground mt-1">exkl. unrealized P&L</div>
+              <div className="text-sm text-muted-foreground mb-3 uppercase tracking-wide">Portfoliowert Total</div>
+              <div className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                {currency(summary.portfolio_total)}
+              </div>
+              <div className="text-xs text-muted-foreground mt-2">exkl. unrealized P&L</div>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* 2. Gesamtview (gefiltert) */}
+      {/* 2. Gesamtansicht (gefiltert) */}
       {summary && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Gesamtansicht (gefiltert)</CardTitle>
+        <Card className="shadow-md">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-xl font-semibold">Gesamtansicht (gefiltert)</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
-            <div className="flex flex-col">
-              <span className="text-muted-foreground">Portfoliowert</span>
-              <span className="font-semibold">{currency(summary.portfolio_filtered)}</span>
+          <CardContent className="space-y-6">
+            {/* Main Metrics */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <MetricCard label="Realized P&L" value={currency(summary.pnl_filtered)} />
+              <MetricCard label="Portfoliowert" value={currency(summary.portfolio_filtered)} />
+              <MetricCard label="Win Rate" value={pct(summary.winrate_filtered)} />
             </div>
-            <div className="flex flex-col">
-              <span className="text-muted-foreground">Win Rate</span>
-              <span className="font-semibold">{pct(summary.winrate_filtered)}</span>
+
+            {/* Transaktionskosten */}
+            <div className="space-y-3">
+              <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                <span className="font-medium">Transaktionskosten Total</span>
+                <span className="font-bold text-lg">{pct(summary.fees_pct_filtered_total)}</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pl-4">
+                <SubMetric label="Fees" value={pct(summary.fees_pct_filtered)} />
+                <SubMetric label="Slippage (Liquidität)" value={pct(summary.slippage_liq_pct_filtered)} />
+                <SubMetric label="Slippage (Timelag)" value={pct(summary.slippage_time_pct_filtered)} />
+              </div>
             </div>
-            <div className="flex flex-col">
-              <span className="text-muted-foreground">Transaktionskosten Total</span>
-              <span className="font-semibold">{pct(summary.fees_pct_filtered_total)}</span>
-            </div>
-            <div className="flex flex-col pl-4">
-              <span className="text-muted-foreground text-xs">• Fees</span>
-              <span className="font-semibold text-xs">{pct(summary.fees_pct_filtered)}</span>
-            </div>
-            <div className="flex flex-col pl-4">
-              <span className="text-muted-foreground text-xs">• Slippage (Liquidität)</span>
-              <span className="font-semibold text-xs">{pct(summary.slippage_liq_pct_filtered)}</span>
-            </div>
-            <div className="flex flex-col pl-4">
-              <span className="text-muted-foreground text-xs">• Slippage (Timelag)</span>
-              <span className="font-semibold text-xs">{pct(summary.slippage_time_pct_filtered)}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-muted-foreground">Timelag TV→Bot</span>
-              <span className="font-semibold">{ms(summary.timelag_tv_to_bot_ms_filtered)}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-muted-foreground">Timelag Bot→Exchange</span>
-              <span className="font-semibold">{ms(summary.timelag_bot_to_ex_ms_filtered)}</span>
+
+            {/* Timelag */}
+            <div className="space-y-3">
+              <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                <span className="font-medium">Timelag Total</span>
+                <span className="font-bold text-lg">{ms(summary.timelag_tv_to_bot_ms_filtered + summary.timelag_bot_to_ex_ms_filtered)}</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-4">
+                <SubMetric label="Timelag TV → Bot" value={ms(summary.timelag_tv_to_bot_ms_filtered)} />
+                <SubMetric label="Timelag Bot → Exchange" value={ms(summary.timelag_bot_to_ex_ms_filtered)} />
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -197,52 +200,45 @@ export default function Dashboard() {
 
       {/* 3. Heute (nur wenn kein Zeitfilter aktiv) */}
       {summary && !hasTimeFilter && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Heute</CardTitle>
+        <Card className="shadow-md">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-xl font-semibold">Heute</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
-            <Link to="/trades?status=closed" className="flex flex-col hover:opacity-80 transition-opacity">
-              <span className="text-muted-foreground">P&L realized heute</span>
-              <span className="font-semibold flex items-center gap-1">
-                {currency(summary.pnl_today)}
-                <ArrowRight className="h-3 w-3" />
-              </span>
-            </Link>
-            <div className="flex flex-col">
-              <span className="text-muted-foreground">Win Rate heute</span>
-              <span className="font-semibold">{pct(summary.winrate_today)}</span>
+          <CardContent className="space-y-6">
+            {/* Main Metrics */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Link to="/trades?status=closed">
+                <MetricCard label="P&L realized heute" value={currency(summary.pnl_today)} hoverable />
+              </Link>
+              <MetricCard label="Win Rate heute" value={pct(summary.winrate_today)} />
+              <Link to="/trades?status=open">
+                <MetricCard label="Offene Trades aktuell" value={summary.open_trades_count} hoverable />
+              </Link>
             </div>
-            <Link to="/trades?status=open" className="flex flex-col hover:opacity-80 transition-opacity">
-              <span className="text-muted-foreground">Offene Trades aktuell</span>
-              <span className="font-semibold flex items-center gap-1">
-                {summary.open_trades_count}
-                <ArrowRight className="h-3 w-3" />
-              </span>
-            </Link>
-            <div className="flex flex-col">
-              <span className="text-muted-foreground">Transaktionskosten Total</span>
-              <span className="font-semibold">{pct(summary.fees_pct_today_total)}</span>
+
+            {/* Transaktionskosten */}
+            <div className="space-y-3">
+              <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                <span className="font-medium">Transaktionskosten Total</span>
+                <span className="font-bold text-lg">{pct(summary.fees_pct_today_total)}</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pl-4">
+                <SubMetric label="Fees" value={pct(summary.fees_pct_today)} />
+                <SubMetric label="Slippage (Liquidität)" value={pct(summary.slippage_liq_pct_today)} />
+                <SubMetric label="Slippage (Timelag)" value={pct(summary.slippage_time_pct_today)} />
+              </div>
             </div>
-            <div className="flex flex-col pl-4">
-              <span className="text-muted-foreground text-xs">• Fees</span>
-              <span className="font-semibold text-xs">{pct(summary.fees_pct_today)}</span>
-            </div>
-            <div className="flex flex-col pl-4">
-              <span className="text-muted-foreground text-xs">• Slippage (Liquidität)</span>
-              <span className="font-semibold text-xs">{pct(summary.slippage_liq_pct_today)}</span>
-            </div>
-            <div className="flex flex-col pl-4">
-              <span className="text-muted-foreground text-xs">• Slippage (Timelag)</span>
-              <span className="font-semibold text-xs">{pct(summary.slippage_time_pct_today)}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-muted-foreground">Timelag TV→Bot</span>
-              <span className="font-semibold">{ms(summary.timelag_tv_to_bot_ms_today)}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-muted-foreground">Timelag Bot→Exchange</span>
-              <span className="font-semibold">{ms(summary.timelag_bot_to_ex_ms_today)}</span>
+
+            {/* Timelag */}
+            <div className="space-y-3">
+              <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                <span className="font-medium">Timelag Total</span>
+                <span className="font-bold text-lg">{ms(summary.timelag_tv_to_bot_ms_today + summary.timelag_bot_to_ex_ms_today)}</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-4">
+                <SubMetric label="Timelag TV → Bot" value={ms(summary.timelag_tv_to_bot_ms_today)} />
+                <SubMetric label="Timelag Bot → Exchange" value={ms(summary.timelag_bot_to_ex_ms_today)} />
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -250,42 +246,40 @@ export default function Dashboard() {
 
       {/* 4. Aktueller Monat */}
       {summary && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Aktueller Monat</CardTitle>
+        <Card className="shadow-md">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-xl font-semibold">Aktueller Monat</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
-            <div className="flex flex-col">
-              <span className="text-muted-foreground">Realized P&L</span>
-              <span className="font-semibold">{currency(summary.mtd.pnl)}</span>
+          <CardContent className="space-y-6">
+            {/* Main Metrics */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <MetricCard label="Realized P&L" value={currency(summary.mtd.pnl)} />
+              <MetricCard label="Win Rate" value={pct(summary.mtd.winrate)} />
             </div>
-            <div className="flex flex-col">
-              <span className="text-muted-foreground">Win Rate</span>
-              <span className="font-semibold">{pct(summary.mtd.winrate)}</span>
+
+            {/* Transaktionskosten */}
+            <div className="space-y-3">
+              <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                <span className="font-medium">Transaktionskosten Total</span>
+                <span className="font-bold text-lg">{pct(summary.mtd.fees_pct_total)}</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pl-4">
+                <SubMetric label="Fees" value={pct(summary.mtd.fees_pct)} />
+                <SubMetric label="Slippage (Liquidität)" value={pct(summary.mtd.slippage_liq_pct)} />
+                <SubMetric label="Slippage (Timelag)" value={pct(summary.mtd.slippage_time_pct)} />
+              </div>
             </div>
-            <div className="flex flex-col">
-              <span className="text-muted-foreground">Transaktionskosten Total</span>
-              <span className="font-semibold">{pct(summary.mtd.fees_pct_total)}</span>
-            </div>
-            <div className="flex flex-col pl-4">
-              <span className="text-muted-foreground text-xs">• Fees</span>
-              <span className="font-semibold text-xs">{pct(summary.mtd.fees_pct)}</span>
-            </div>
-            <div className="flex flex-col pl-4">
-              <span className="text-muted-foreground text-xs">• Slippage (Liquidität)</span>
-              <span className="font-semibold text-xs">{pct(summary.mtd.slippage_liq_pct)}</span>
-            </div>
-            <div className="flex flex-col pl-4">
-              <span className="text-muted-foreground text-xs">• Slippage (Timelag)</span>
-              <span className="font-semibold text-xs">{pct(summary.mtd.slippage_time_pct)}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-muted-foreground">Timelag TV→Bot</span>
-              <span className="font-semibold">{ms(summary.mtd.timelag_tv_to_bot_ms)}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-muted-foreground">Timelag Bot→Exchange</span>
-              <span className="font-semibold">{ms(summary.mtd.timelag_bot_to_ex_ms)}</span>
+
+            {/* Timelag */}
+            <div className="space-y-3">
+              <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                <span className="font-medium">Timelag Total</span>
+                <span className="font-bold text-lg">{ms(summary.mtd.timelag_tv_to_bot_ms + summary.mtd.timelag_bot_to_ex_ms)}</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-4">
+                <SubMetric label="Timelag TV → Bot" value={ms(summary.mtd.timelag_tv_to_bot_ms)} />
+                <SubMetric label="Timelag Bot → Exchange" value={ms(summary.mtd.timelag_bot_to_ex_ms)} />
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -293,68 +287,97 @@ export default function Dashboard() {
 
       {/* 5. Letzte 30 Tage */}
       {summary && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Letzte 30 Tage</CardTitle>
+        <Card className="shadow-md">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-xl font-semibold">Letzte 30 Tage</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
-            <div className="flex flex-col">
-              <span className="text-muted-foreground">Realized P&L</span>
-              <span className="font-semibold">{currency(summary.last30d.pnl)}</span>
+          <CardContent className="space-y-6">
+            {/* Main Metrics */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <MetricCard label="Realized P&L" value={currency(summary.last30d.pnl)} />
+              <MetricCard label="Win Rate" value={pct(summary.last30d.winrate)} />
             </div>
-            <div className="flex flex-col">
-              <span className="text-muted-foreground">Win Rate</span>
-              <span className="font-semibold">{pct(summary.last30d.winrate)}</span>
+
+            {/* Transaktionskosten */}
+            <div className="space-y-3">
+              <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                <span className="font-medium">Transaktionskosten Total</span>
+                <span className="font-bold text-lg">{pct(summary.last30d.fees_pct_total)}</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pl-4">
+                <SubMetric label="Fees" value={pct(summary.last30d.fees_pct)} />
+                <SubMetric label="Slippage (Liquidität)" value={pct(summary.last30d.slippage_liq_pct)} />
+                <SubMetric label="Slippage (Timelag)" value={pct(summary.last30d.slippage_time_pct)} />
+              </div>
             </div>
-            <div className="flex flex-col">
-              <span className="text-muted-foreground">Transaktionskosten Total</span>
-              <span className="font-semibold">{pct(summary.last30d.fees_pct_total)}</span>
-            </div>
-            <div className="flex flex-col pl-4">
-              <span className="text-muted-foreground text-xs">• Fees</span>
-              <span className="font-semibold text-xs">{pct(summary.last30d.fees_pct)}</span>
-            </div>
-            <div className="flex flex-col pl-4">
-              <span className="text-muted-foreground text-xs">• Slippage (Liquidität)</span>
-              <span className="font-semibold text-xs">{pct(summary.last30d.slippage_liq_pct)}</span>
-            </div>
-            <div className="flex flex-col pl-4">
-              <span className="text-muted-foreground text-xs">• Slippage (Timelag)</span>
-              <span className="font-semibold text-xs">{pct(summary.last30d.slippage_time_pct)}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-muted-foreground">Timelag TV→Bot</span>
-              <span className="font-semibold">{ms(summary.last30d.timelag_tv_to_bot_ms)}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-muted-foreground">Timelag Bot→Exchange</span>
-              <span className="font-semibold">{ms(summary.last30d.timelag_bot_to_ex_ms)}</span>
+
+            {/* Timelag */}
+            <div className="space-y-3">
+              <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                <span className="font-medium">Timelag Total</span>
+                <span className="font-bold text-lg">{ms(summary.last30d.timelag_tv_to_bot_ms + summary.last30d.timelag_bot_to_ex_ms)}</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-4">
+                <SubMetric label="Timelag TV → Bot" value={ms(summary.last30d.timelag_tv_to_bot_ms)} />
+                <SubMetric label="Timelag Bot → Exchange" value={ms(summary.last30d.timelag_bot_to_ex_ms)} />
+              </div>
             </div>
           </CardContent>
         </Card>
       )}
 
       {/* 6. Equity-Chart (nur nach Datumsrange filterbar) */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Portfoliowert / Tages-P&L</CardTitle>
+      <Card className="shadow-md">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-xl font-semibold">Portfoliowert / Tages-P&L</CardTitle>
         </CardHeader>
-        <CardContent className="h-72">
+        <CardContent className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={series}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-              <XAxis dataKey="date" className="text-xs" />
-              <YAxis yAxisId="left" className="text-xs" />
+              <CartesianGrid strokeDasharray="3 3" className="stroke-muted/50" />
+              <XAxis 
+                dataKey="date" 
+                className="text-xs" 
+                tickFormatter={(value) => formatDate(value)}
+              />
+              <YAxis yAxisId="left" className="text-xs" tickFormatter={(value) => formatCurrencyShort(value)} />
               <Tooltip
-                contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
-                labelStyle={{ color: 'hsl(var(--foreground))' }}
-                formatter={(value: any, name: string) => {
-                  if (name === 'equity') return [currency(value), 'Portfoliowert'];
-                  if (name === 'pnl') return [currency(value), 'P&L'];
+                contentStyle={{ 
+                  backgroundColor: 'hsl(var(--card))', 
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                }}
+                labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 'bold', marginBottom: '8px' }}
+                labelFormatter={(value) => formatDate(value)}
+                formatter={(value: any, name: string, props: any) => {
+                  const index = props.payload ? series.findIndex(d => d.date === props.payload.date) : -1;
+                  const prevEquity = index > 0 ? series[index - 1].equity : props.payload?.equity || 0;
+                  const currentEquity = props.payload?.equity || 0;
+                  const dailyPnl = currentEquity - prevEquity;
+                  
+                  if (name === 'equity') {
+                    return [
+                      <div key="equity" className="space-y-1">
+                        <div>{currency(value)} (Portfoliowert)</div>
+                        <div className={dailyPnl >= 0 ? 'text-green-500' : 'text-red-500'}>
+                          {currency(dailyPnl)} (Tages-P&L)
+                        </div>
+                      </div>
+                    ];
+                  }
                   return [value, name];
                 }}
               />
-              <Line yAxisId="left" type="monotone" dataKey="equity" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+              <Line 
+                yAxisId="left" 
+                type="monotone" 
+                dataKey="equity" 
+                stroke="hsl(var(--primary))" 
+                strokeWidth={3} 
+                dot={false}
+                name="equity"
+              />
             </LineChart>
           </ResponsiveContainer>
         </CardContent>
@@ -363,11 +386,29 @@ export default function Dashboard() {
   );
 }
 
-// Format-Helper
+// Helper Components
+function MetricCard({ label, value, hoverable = false }: { label: string; value: string | number; hoverable?: boolean }) {
+  return (
+    <div className={`p-4 rounded-lg border bg-card shadow-sm ${hoverable ? 'hover:shadow-md hover:border-primary/50 transition-all cursor-pointer' : ''}`}>
+      <div className="text-xs text-muted-foreground mb-1 uppercase tracking-wide">{label}</div>
+      <div className="text-2xl font-bold">{value}</div>
+    </div>
+  );
+}
+
+function SubMetric({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="flex flex-col p-2 rounded bg-background">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="font-semibold text-sm mt-1">{value}</span>
+    </div>
+  );
+}
+
+// Format-Helper mit Schweizer Format (TT.MM.JJJJ, ' als Tausendertrennzeichen, . als Dezimaltrennzeichen)
 function currency(
   value: number | null | undefined,
-  currencyCode: string = 'USD',
-  locale: string = 'de-CH'
+  currencyCode: string = 'USD'
 ) {
   const n =
     typeof value === 'number' && isFinite(value)
@@ -376,11 +417,23 @@ function currency(
       ? parseFloat(value)
       : 0;
 
-  try {
-    return n.toLocaleString(locale, { style: 'currency', currency: currencyCode });
-  } catch {
-    return `${n.toFixed(2)} ${currencyCode}`;
+  // Schweizer Format: ' als Tausendertrennzeichen, . als Dezimaltrennzeichen
+  const formatted = n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+  return `${formatted} ${currencyCode}`;
+}
+
+function formatCurrencyShort(value: number) {
+  if (Math.abs(value) >= 1000000) {
+    return (value / 1000000).toFixed(1).replace('.', ',') + 'M';
+  } else if (Math.abs(value) >= 1000) {
+    return (value / 1000).toFixed(1).replace('.', ',') + 'K';
   }
+  return value.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+}
+
+function formatDate(dateStr: string) {
+  const [year, month, day] = dateStr.split('-');
+  return `${day}.${month}.${year}`;
 }
 
 const num = (v: unknown, fallback = 0) =>
@@ -391,12 +444,12 @@ const num = (v: unknown, fallback = 0) =>
     : fallback;
 
 function pct(v: number | string | null | undefined) {
-  const n = num(v, 0);          // 0..1 oder 0..100
+  const n = num(v, 0);
   const x = n > 1 ? n : n * 100;
-  return `${x.toFixed(1)}%`;
+  return `${x.toFixed(1).replace('.', ',')}%`;
 }
 
 function ms(x: number | string | null | undefined) {
   const n = Math.round(num(x, 0));
-  return `${n} ms`;
+  return `${n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, "'")} ms`;
 }
