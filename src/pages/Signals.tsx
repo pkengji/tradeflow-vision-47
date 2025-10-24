@@ -1,5 +1,5 @@
 // src/pages/Signals.tsx
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
 import TradesFiltersBar, { type TradesFilters } from '@/components/app/TradesFiltersBar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -86,6 +86,17 @@ export default function Signals() {
   const [selectedSignal, setSelectedSignal] = useState<any>(null);
   const [showFilters, setShowFilters] = useState(false);
 
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filters.botIds.length > 0) count++;
+    if (filters.symbols.length > 0) count++;
+    if (filters.side && filters.side !== 'all') count++;
+    if (filters.dateFrom || filters.dateTo) count++;
+    if (filters.timeFrom || filters.timeTo) count++;
+    if (filters.signalKind && filters.signalKind !== 'all') count++;
+    return count;
+  }, [filters]);
+
   useEffect(() => {
     (async () => {
       try {
@@ -115,14 +126,36 @@ export default function Signals() {
       variant="ghost" 
       size="icon"
       onClick={() => setShowFilters(!showFilters)}
-      className="lg:hidden"
+      className="relative"
     >
       <SlidersHorizontal className="h-5 w-5" />
+      {activeFilterCount > 0 && (
+        <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-medium">
+          {activeFilterCount}
+        </span>
+      )}
     </Button>
   );
 
   return (
     <DashboardLayout pageTitle="Signals" mobileHeaderRight={FilterButton}>
+      {/* Filter-Modal - Mobile */}
+      {showFilters && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 lg:hidden" onClick={() => setShowFilters(false)}>
+          <div className="fixed inset-x-0 top-14 bottom-16 bg-background overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <TradesFiltersBar
+              value={filters}
+              onChange={setFilters}
+              availableBots={bots}
+              availableSymbols={symbols}
+              showDateRange={true}
+              showTimeRange={true}
+              showSignalKind={true}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="space-y-4 p-4 pb-24">
         {/* Filter & Export - Desktop */}
         <div className="hidden lg:flex items-center justify-between gap-2">
@@ -137,21 +170,6 @@ export default function Signals() {
           />
           <ExportCSV url={`/api/v1/export/signals`} filename="signals.csv" />
         </div>
-
-        {/* Filter - Mobile (conditional) */}
-        {showFilters && (
-          <div className="lg:hidden">
-            <TradesFiltersBar
-              value={filters}
-              onChange={setFilters}
-              availableBots={bots}
-              availableSymbols={symbols}
-              showDateRange={true}
-              showTimeRange={true}
-              showSignalKind={true}
-            />
-          </div>
-        )}
 
         {/* Liste */}
         <Card>

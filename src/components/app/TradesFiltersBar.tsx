@@ -38,7 +38,7 @@ export default function TradesFiltersBar({
   showTimeRange = true,
   showSignalKind = false,
 }: Props) {
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters] = useState(true);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [botSearch, setBotSearch] = useState('');
   const [symbolSearch, setSymbolSearch] = useState('');
@@ -97,24 +97,11 @@ export default function TradesFiltersBar({
   }, [value]);
 
   return (
-    <div className="flex items-center justify-end gap-2">
-      <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
-        <Filter className="h-4 w-4 mr-2" />
-        Filter
-        {activeFilterCount > 0 && (
-          <span className="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-primary text-primary-foreground">
-            {activeFilterCount}
-          </span>
-        )}
-      </Button>
-
+    <div className="w-full p-4 space-y-3">
       {showFilters && (
-        <div className="absolute top-16 right-4 z-50 bg-card border rounded-lg shadow-lg p-4 min-w-[300px] space-y-3">
+        <div className="bg-card border rounded-lg shadow-lg p-4 space-y-3">
           <div className="flex items-center justify-between border-b pb-2">
-            <span className="font-medium text-sm">Filter</span>
-            <Button variant="ghost" size="sm" onClick={() => setShowFilters(false)}>
-              <X className="h-4 w-4" />
-            </Button>
+            <span className="font-medium">Filter</span>
           </div>
 
           {/* Bot-Filter */}
@@ -317,24 +304,11 @@ export default function TradesFiltersBar({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => {
-                resetFilters();
-                setShowFilters(false);
-              }}
+              onClick={resetFilters}
               className="flex-1"
             >
               <X className="h-4 w-4 mr-1" />
               Zurücksetzen
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => {
-                closeAllDropdowns();
-                setShowFilters(false);
-              }}
-              className="flex-1"
-            >
-              Fertig
             </Button>
           </div>
         </div>

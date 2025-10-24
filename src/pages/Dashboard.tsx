@@ -53,6 +53,7 @@ export default function Dashboard() {
   });
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
+  const [showFilters, setShowFilters] = useState(false);
 
   // Bots & Symbols laden
   useEffect(() => {
@@ -129,21 +130,51 @@ export default function Dashboard() {
   const hasDateFilter = !!(filters.dateFrom || filters.dateTo);
   const hasTimeFilter = !!(filters.timeFrom || filters.timeTo);
 
-  const [showFilters, setShowFilters] = useState(false);
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filters.botIds.length > 0) count++;
+    if (filters.symbols.length > 0) count++;
+    if (filters.side && filters.side !== 'all') count++;
+    if (filters.dateFrom || filters.dateTo) count++;
+    if (filters.timeFrom || filters.timeTo) count++;
+    return count;
+  }, [filters]);
 
   const FilterButton = (
     <Button 
       variant="ghost" 
       size="icon"
       onClick={() => setShowFilters(!showFilters)}
-      className="lg:hidden"
+      className="relative"
     >
       <SlidersHorizontal className="h-5 w-5" />
+      {activeFilterCount > 0 && (
+        <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-medium">
+          {activeFilterCount}
+        </span>
+      )}
     </Button>
   );
 
   return (
     <DashboardLayout pageTitle="Dashboard" mobileHeaderRight={FilterButton}>
+      {/* Filter-Modal - Mobile */}
+      {showFilters && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 lg:hidden" onClick={() => setShowFilters(false)}>
+          <div className="fixed inset-x-0 top-14 bottom-16 bg-background overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <TradesFiltersBar
+              value={filters}
+              onChange={setFilters}
+              availableBots={bots}
+              availableSymbols={symbols}
+              showDateRange={true}
+              showTimeRange={true}
+              showSignalKind={false}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="space-y-4 p-4 pb-24 max-w-7xl mx-auto">
         {/* Filterzeile - Desktop */}
         <div className="hidden lg:flex justify-end">
@@ -157,21 +188,6 @@ export default function Dashboard() {
             showSignalKind={false}
           />
         </div>
-
-        {/* Filter-Panel - Mobile */}
-        {showFilters && (
-          <div className="lg:hidden">
-            <TradesFiltersBar
-              value={filters}
-              onChange={setFilters}
-              availableBots={bots}
-              availableSymbols={symbols}
-              showDateRange={true}
-              showTimeRange={true}
-              showSignalKind={false}
-            />
-          </div>
-        )}
 
         {/* 1. Portfoliowert total - ungefiltert */}
         {summary && (
@@ -190,10 +206,10 @@ export default function Dashboard() {
         {/* 2. Gesamtansicht (gefiltert) */}
         {summary && (
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-[var(--font-size-section-title)] font-semibold">Gesamtansicht</CardTitle>
+            <CardHeader className="pb-1 pt-3">
+              <CardTitle className="text-[var(--font-size-page-title)] font-semibold">Gesamtansicht</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 py-3">
+            <CardContent className="space-y-0 py-2 pb-3">
               {/* Main Metrics - Simple List */}
               <div className="space-y-0">
                 <MetricRow label="Realized P&L" value={formatCurrency(summary.pnl_filtered)} />
@@ -232,10 +248,10 @@ export default function Dashboard() {
         {/* 3. Heute (nur wenn kein Datumsfilter aktiv) */}
         {summary && !hasDateFilter && (
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-[var(--font-size-section-title)] font-semibold">Heute</CardTitle>
+            <CardHeader className="pb-1 pt-3">
+              <CardTitle className="text-[var(--font-size-page-title)] font-semibold">Heute</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 py-3">
+            <CardContent className="space-y-0 py-2 pb-3">
               <div className="space-y-0">
                 <Link to="/trades?status=closed">
                   <MetricRow label="P&L realized heute" value={formatCurrency(summary.pnl_today)} hoverable />
@@ -275,10 +291,10 @@ export default function Dashboard() {
         {/* 4. Aktueller Monat (nur wenn kein Datumsfilter) */}
         {summary && !hasDateFilter && (
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-[var(--font-size-section-title)] font-semibold">Aktueller Monat</CardTitle>
+            <CardHeader className="pb-1 pt-3">
+              <CardTitle className="text-[var(--font-size-page-title)] font-semibold">Aktueller Monat</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 py-3">
+            <CardContent className="space-y-0 py-2 pb-3">
               <div className="space-y-0">
                 <MetricRow label="Realized P&L" value={formatCurrency(summary.mtd.pnl)} />
                 <MetricRow label="Win Rate" value={pct(summary.mtd.winrate)} />
@@ -313,10 +329,10 @@ export default function Dashboard() {
         {/* 5. Letzte 30 Tage (nur wenn kein Datumsfilter) */}
         {summary && !hasDateFilter && (
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-[var(--font-size-section-title)] font-semibold">Letzte 30 Tage</CardTitle>
+            <CardHeader className="pb-1 pt-3">
+              <CardTitle className="text-[var(--font-size-page-title)] font-semibold">Letzte 30 Tage</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 py-3">
+            <CardContent className="space-y-0 py-2 pb-3">
               <div className="space-y-0">
                 <MetricRow label="Realized P&L" value={formatCurrency(summary.last30d.pnl)} />
                 <MetricRow label="Win Rate" value={pct(summary.last30d.winrate)} />
@@ -350,10 +366,10 @@ export default function Dashboard() {
 
         {/* 6. Equity-Chart */}
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-[var(--font-size-section-title)] font-semibold">Portfoliowert / Tages-P&L</CardTitle>
+          <CardHeader className="pb-1 pt-3">
+            <CardTitle className="text-[var(--font-size-page-title)] font-semibold">Portfoliowert / Tages-P&L</CardTitle>
           </CardHeader>
-          <CardContent className="h-64 sm:h-80">
+          <CardContent className="h-64 sm:h-80 pb-3">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={series}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted/50" />
