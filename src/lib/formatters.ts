@@ -8,7 +8,8 @@
 export function formatCurrency(value: number | null | undefined, showSign = false): string {
   if (value == null) return '—';
   const formatted = value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, "'");
-  return showSign && value >= 0 ? `+${formatted}` : formatted;
+  const withSign = showSign && value >= 0 ? `+${formatted}` : formatted;
+  return `$ ${withSign}`;
 }
 
 /**
@@ -28,7 +29,7 @@ export function formatPercent(value: number | null | undefined, showSign = false
  */
 export function formatPrice(value: number | null | undefined): string {
   if (value == null) return '—';
-  return value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+  return `$ ${value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, "'")}`;
 }
 
 /**

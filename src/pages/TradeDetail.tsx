@@ -99,10 +99,10 @@ export default function TradeDetail() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 p-4 pb-24">
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Position #{pid}</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <CardTitle className="text-base sm:text-lg">Position #{pid}</CardTitle>
           {position?.status && (
             <Badge variant={isOpen ? 'default' : 'secondary'} className="uppercase">
               {position.status}
@@ -111,10 +111,10 @@ export default function TradeDetail() {
         </CardHeader>
         <CardContent className="space-y-3">
           {!posLoading && position && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-2 text-sm">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-2 text-xs sm:text-sm">
               <div><span className="text-muted-foreground">Symbol:</span> <b>{position.symbol}</b></div>
               <div><span className="text-muted-foreground">Side:</span> <b className="uppercase">{position.side}</b></div>
-              <div><span className="text-muted-foreground">Entry:</span> <b>{position.entry_price ?? '—'}</b></div>
+              <div><span className="text-muted-foreground">Entry:</span> <b>$ {position.entry_price?.toFixed(2) ?? '—'}</b></div>
               <div><span className="text-muted-foreground">QTY:</span> <b>{position.qty ?? position.tv_qty ?? '—'}</b></div>
             </div>
           )}
@@ -201,16 +201,16 @@ export default function TradeDetail() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Orders</CardTitle></CardHeader>
+        <CardHeader className="pb-3"><CardTitle className="text-base sm:text-lg">Orders</CardTitle></CardHeader>
         <CardContent>
-          <pre className="text-xs overflow-auto">{JSON.stringify(orders, null, 2)}</pre>
+          <pre className="text-[10px] sm:text-xs overflow-auto">{JSON.stringify(orders, null, 2)}</pre>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Funding</CardTitle></CardHeader>
+        <CardHeader className="pb-3"><CardTitle className="text-base sm:text-lg">Funding</CardTitle></CardHeader>
         <CardContent>
-          <pre className="text-xs overflow-auto">{JSON.stringify(funding, null, 2)}</pre>
+          <pre className="text-[10px] sm:text-xs overflow-auto">{JSON.stringify(funding, null, 2)}</pre>
         </CardContent>
       </Card>
     </div>

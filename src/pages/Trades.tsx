@@ -183,13 +183,13 @@ export default function Trades() {
 
   // ---- 4.5 RENDER ----
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 p-4 pb-24">
       {/* Header: Tabs und Filter in einer Leiste */}
       <div className="flex items-center justify-between gap-4">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)}>
-          <TabsList className="h-12 px-2">
-            <TabsTrigger value="open" className="px-6 text-base">Offen</TabsTrigger>
-            <TabsTrigger value="closed" className="px-6 text-base">Geschlossen</TabsTrigger>
+          <TabsList className="h-10 px-2">
+            <TabsTrigger value="open" className="px-4 text-sm">Offen</TabsTrigger>
+            <TabsTrigger value="closed" className="px-4 text-sm">Geschlossen</TabsTrigger>
           </TabsList>
         </Tabs>
         <TradesFiltersBar

@@ -144,13 +144,13 @@ export default function Dashboard() {
       {/* 1. Portfoliowert total - ungefiltert, groß */}
       {summary && (
         <Card className="border-primary shadow-lg">
-          <CardContent className="pt-8 pb-8">
+          <CardContent className="pt-6 pb-6">
             <div className="text-center">
-              <div className="text-sm text-muted-foreground mb-3 uppercase tracking-wide">Portfoliowert Total</div>
-              <div className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+              <div className="text-xs sm:text-sm text-muted-foreground mb-2 uppercase tracking-wide">Portfoliowert Total</div>
+              <div className="text-3xl sm:text-4xl md:text-5xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
                 {currency(summary.portfolio_total)}
               </div>
-              <div className="text-xs text-muted-foreground mt-2">exkl. unrealized P&L</div>
+              <div className="text-[10px] sm:text-xs text-muted-foreground mt-1">exkl. unrealized P&L</div>
             </div>
           </CardContent>
         </Card>
@@ -159,22 +159,22 @@ export default function Dashboard() {
       {/* 2. Gesamtansicht (gefiltert) */}
       {summary && (
         <Card className="shadow-md">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-xl font-semibold">Gesamtansicht (gefiltert)</CardTitle>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base sm:text-lg font-semibold">Gesamtansicht (gefiltert)</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-4">
             {/* Main Metrics */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <MetricCard label="Realized P&L" value={currency(summary.pnl_filtered)} />
               <MetricCard label="Portfoliowert" value={currency(summary.portfolio_filtered)} />
               <MetricCard label="Win Rate" value={pct(summary.winrate_filtered)} />
             </div>
 
             {/* Transaktionskosten */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
-                <span className="font-medium">Transaktionskosten Total</span>
-                <span className="font-bold text-lg">{pct(summary.fees_pct_filtered_total)}</span>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center p-2 sm:p-3 bg-muted/30 rounded-lg">
+                <span className="text-sm sm:text-base font-medium">Transaktionskosten Total</span>
+                <span className="text-base sm:text-lg font-bold">{pct(summary.fees_pct_filtered_total)}</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pl-4">
                 <SubMetric label="Fees" value={pct(summary.fees_pct_filtered)} />
@@ -184,10 +184,10 @@ export default function Dashboard() {
             </div>
 
             {/* Timelag */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
-                <span className="font-medium">Timelag Total</span>
-                <span className="font-bold text-lg">{ms(summary.timelag_tv_to_bot_ms_filtered + summary.timelag_bot_to_ex_ms_filtered)}</span>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center p-2 sm:p-3 bg-muted/30 rounded-lg">
+                <span className="text-sm sm:text-base font-medium">Timelag Total</span>
+                <span className="text-base sm:text-lg font-bold">{ms(summary.timelag_tv_to_bot_ms_filtered + summary.timelag_bot_to_ex_ms_filtered)}</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-4">
                 <SubMetric label="Timelag TV → Bot" value={ms(summary.timelag_tv_to_bot_ms_filtered)} />
@@ -201,12 +201,12 @@ export default function Dashboard() {
       {/* 3. Heute (nur wenn kein Zeitfilter aktiv) */}
       {summary && !hasTimeFilter && (
         <Card className="shadow-md">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-xl font-semibold">Heute</CardTitle>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base sm:text-lg font-semibold">Heute</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-4">
             {/* Main Metrics */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Link to="/trades?status=closed">
                 <MetricCard label="P&L realized heute" value={currency(summary.pnl_today)} hoverable />
               </Link>
@@ -217,10 +217,10 @@ export default function Dashboard() {
             </div>
 
             {/* Transaktionskosten */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
-                <span className="font-medium">Transaktionskosten Total</span>
-                <span className="font-bold text-lg">{pct(summary.fees_pct_today_total)}</span>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center p-2 sm:p-3 bg-muted/30 rounded-lg">
+                <span className="text-sm sm:text-base font-medium">Transaktionskosten Total</span>
+                <span className="text-base sm:text-lg font-bold">{pct(summary.fees_pct_today_total)}</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pl-4">
                 <SubMetric label="Fees" value={pct(summary.fees_pct_today)} />
@@ -230,10 +230,10 @@ export default function Dashboard() {
             </div>
 
             {/* Timelag */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
-                <span className="font-medium">Timelag Total</span>
-                <span className="font-bold text-lg">{ms(summary.timelag_tv_to_bot_ms_today + summary.timelag_bot_to_ex_ms_today)}</span>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center p-2 sm:p-3 bg-muted/30 rounded-lg">
+                <span className="text-sm sm:text-base font-medium">Timelag Total</span>
+                <span className="text-base sm:text-lg font-bold">{ms(summary.timelag_tv_to_bot_ms_today + summary.timelag_bot_to_ex_ms_today)}</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-4">
                 <SubMetric label="Timelag TV → Bot" value={ms(summary.timelag_tv_to_bot_ms_today)} />
@@ -247,10 +247,10 @@ export default function Dashboard() {
       {/* 4. Aktueller Monat */}
       {summary && (
         <Card className="shadow-md">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-xl font-semibold">Aktueller Monat</CardTitle>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base sm:text-lg font-semibold">Aktueller Monat</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-4">
             {/* Main Metrics */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <MetricCard label="Realized P&L" value={currency(summary.mtd.pnl)} />
@@ -258,10 +258,10 @@ export default function Dashboard() {
             </div>
 
             {/* Transaktionskosten */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
-                <span className="font-medium">Transaktionskosten Total</span>
-                <span className="font-bold text-lg">{pct(summary.mtd.fees_pct_total)}</span>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center p-2 sm:p-3 bg-muted/30 rounded-lg">
+                <span className="text-sm sm:text-base font-medium">Transaktionskosten Total</span>
+                <span className="text-base sm:text-lg font-bold">{pct(summary.mtd.fees_pct_total)}</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pl-4">
                 <SubMetric label="Fees" value={pct(summary.mtd.fees_pct)} />
@@ -271,10 +271,10 @@ export default function Dashboard() {
             </div>
 
             {/* Timelag */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
-                <span className="font-medium">Timelag Total</span>
-                <span className="font-bold text-lg">{ms(summary.mtd.timelag_tv_to_bot_ms + summary.mtd.timelag_bot_to_ex_ms)}</span>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center p-2 sm:p-3 bg-muted/30 rounded-lg">
+                <span className="text-sm sm:text-base font-medium">Timelag Total</span>
+                <span className="text-base sm:text-lg font-bold">{ms(summary.mtd.timelag_tv_to_bot_ms + summary.mtd.timelag_bot_to_ex_ms)}</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-4">
                 <SubMetric label="Timelag TV → Bot" value={ms(summary.mtd.timelag_tv_to_bot_ms)} />
@@ -288,10 +288,10 @@ export default function Dashboard() {
       {/* 5. Letzte 30 Tage */}
       {summary && (
         <Card className="shadow-md">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-xl font-semibold">Letzte 30 Tage</CardTitle>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base sm:text-lg font-semibold">Letzte 30 Tage</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-4">
             {/* Main Metrics */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <MetricCard label="Realized P&L" value={currency(summary.last30d.pnl)} />
@@ -299,10 +299,10 @@ export default function Dashboard() {
             </div>
 
             {/* Transaktionskosten */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
-                <span className="font-medium">Transaktionskosten Total</span>
-                <span className="font-bold text-lg">{pct(summary.last30d.fees_pct_total)}</span>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center p-2 sm:p-3 bg-muted/30 rounded-lg">
+                <span className="text-sm sm:text-base font-medium">Transaktionskosten Total</span>
+                <span className="text-base sm:text-lg font-bold">{pct(summary.last30d.fees_pct_total)}</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pl-4">
                 <SubMetric label="Fees" value={pct(summary.last30d.fees_pct)} />
@@ -312,10 +312,10 @@ export default function Dashboard() {
             </div>
 
             {/* Timelag */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
-                <span className="font-medium">Timelag Total</span>
-                <span className="font-bold text-lg">{ms(summary.last30d.timelag_tv_to_bot_ms + summary.last30d.timelag_bot_to_ex_ms)}</span>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center p-2 sm:p-3 bg-muted/30 rounded-lg">
+                <span className="text-sm sm:text-base font-medium">Timelag Total</span>
+                <span className="text-base sm:text-lg font-bold">{ms(summary.last30d.timelag_tv_to_bot_ms + summary.last30d.timelag_bot_to_ex_ms)}</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-4">
                 <SubMetric label="Timelag TV → Bot" value={ms(summary.last30d.timelag_tv_to_bot_ms)} />
@@ -328,10 +328,10 @@ export default function Dashboard() {
 
       {/* 6. Equity-Chart (nur nach Datumsrange filterbar) */}
       <Card className="shadow-md">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-xl font-semibold">Portfoliowert / Tages-P&L</CardTitle>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base sm:text-lg font-semibold">Portfoliowert / Tages-P&L</CardTitle>
         </CardHeader>
-        <CardContent className="h-80">
+        <CardContent className="h-64 sm:h-80">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={series}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-muted/50" />
@@ -389,9 +389,9 @@ export default function Dashboard() {
 // Helper Components
 function MetricCard({ label, value, hoverable = false }: { label: string; value: string | number; hoverable?: boolean }) {
   return (
-    <div className={`p-4 rounded-lg border bg-card shadow-sm ${hoverable ? 'hover:shadow-md hover:border-primary/50 transition-all cursor-pointer' : ''}`}>
-      <div className="text-xs text-muted-foreground mb-1 uppercase tracking-wide">{label}</div>
-      <div className="text-2xl font-bold">{value}</div>
+    <div className={`p-3 rounded-lg border bg-card shadow-sm ${hoverable ? 'hover:shadow-md hover:border-primary/50 transition-all cursor-pointer' : ''}`}>
+      <div className="text-[10px] sm:text-xs text-muted-foreground mb-1 uppercase tracking-wide">{label}</div>
+      <div className="text-lg sm:text-xl font-bold">{value}</div>
     </div>
   );
 }
@@ -399,36 +399,23 @@ function MetricCard({ label, value, hoverable = false }: { label: string; value:
 function SubMetric({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="flex flex-col p-2 rounded bg-background">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="font-semibold text-sm mt-1">{value}</span>
+      <span className="text-[10px] sm:text-xs text-muted-foreground">{label}</span>
+      <span className="font-semibold text-sm sm:text-base mt-1">{value}</span>
     </div>
   );
 }
 
 // Format-Helper mit Schweizer Format (TT.MM.JJJJ, ' als Tausendertrennzeichen, . als Dezimaltrennzeichen)
-function currency(
-  value: number | null | undefined,
-  currencyCode: string = 'USD'
-) {
-  const n =
-    typeof value === 'number' && isFinite(value)
-      ? value
-      : typeof value === 'string' && !isNaN(parseFloat(value))
-      ? parseFloat(value)
-      : 0;
-
-  // Schweizer Format: ' als Tausendertrennzeichen, . als Dezimaltrennzeichen
-  const formatted = n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, "'");
-  return `${formatted} ${currencyCode}`;
+function currency(value: number | null | undefined) {
+  if (value == null) return '—';
+  return `$ ${value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, "'")}`;
 }
 
 function formatCurrencyShort(value: number) {
-  if (Math.abs(value) >= 1000000) {
-    return (value / 1000000).toFixed(1).replace('.', ',') + 'M';
-  } else if (Math.abs(value) >= 1000) {
-    return (value / 1000).toFixed(1).replace('.', ',') + 'K';
+  if (Math.abs(value) >= 1000) {
+    return `$ ${(value / 1000).toFixed(1).replace(/\B(?=(\d{3})+(?!\d))/g, "'")}k`;
   }
-  return value.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+  return `$ ${value.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, "'")}`;
 }
 
 function formatDate(dateStr: string) {
@@ -436,20 +423,12 @@ function formatDate(dateStr: string) {
   return `${day}.${month}.${year}`;
 }
 
-const num = (v: unknown, fallback = 0) =>
-  typeof v === 'number' && isFinite(v)
-    ? v
-    : typeof v === 'string' && !isNaN(parseFloat(v))
-    ? parseFloat(v)
-    : fallback;
-
-function pct(v: number | string | null | undefined) {
-  const n = num(v, 0);
-  const x = n > 1 ? n : n * 100;
-  return `${x.toFixed(1).replace('.', ',')}%`;
+function pct(v: number | null | undefined) {
+  if (v == null) return '—';
+  return `${(v * 100).toFixed(2).replace('.', ',')} %`;
 }
 
-function ms(x: number | string | null | undefined) {
-  const n = Math.round(num(x, 0));
-  return `${n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, "'")} ms`;
+function ms(x: number | null | undefined) {
+  if (x == null) return '—';
+  return `${x.toFixed(0)} ms`;
 }

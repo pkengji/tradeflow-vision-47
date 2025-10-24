@@ -25,8 +25,8 @@ export default function Bots() {
   return (
     <div className="space-y-6 p-4 lg:p-6 pb-24">
       <div>
-        <h1 className="text-3xl font-bold">Trading-Bots</h1>
-        <p className="text-muted-foreground">Übersicht deiner Trading-Bots</p>
+        <h1 className="text-2xl sm:text-3xl font-bold">Trading-Bots</h1>
+        <p className="text-sm text-muted-foreground">Übersicht deiner Trading-Bots</p>
       </div>
 
       {isLoading ? (
@@ -55,8 +55,8 @@ export default function Bots() {
       )}
 
       {/* Sticky Button unten */}
-      <div className="fixed bottom-6 left-0 right-0 flex justify-center px-4 z-50">
-        <Button asChild size="lg" className="shadow-lg">
+      <div className="fixed bottom-20 left-0 right-0 flex justify-center px-4 z-50 pointer-events-none">
+        <Button asChild size="lg" className="shadow-lg pointer-events-auto bg-primary">
           <Link to="/bots/new">
             <Plus className="mr-2 h-5 w-5" />
             Neuer Bot
