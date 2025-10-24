@@ -141,17 +141,22 @@ export default function Signals() {
     <DashboardLayout pageTitle="Signals" mobileHeaderRight={FilterButton}>
       {/* Filter-Modal - Mobile */}
       {showFilters && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 lg:hidden" onClick={() => setShowFilters(false)}>
-          <div className="fixed inset-x-0 top-14 bottom-16 bg-background overflow-auto" onClick={(e) => e.stopPropagation()}>
-            <TradesFiltersBar
-              value={filters}
-              onChange={setFilters}
-              availableBots={bots}
-              availableSymbols={symbols}
-              showDateRange={true}
-              showTimeRange={true}
-              showSignalKind={true}
-            />
+        <div className="fixed inset-0 bg-background/80 z-50 lg:hidden" onClick={() => setShowFilters(false)}>
+          <div className="fixed inset-x-0 top-14 bottom-16 bg-background flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="overflow-auto">
+              <TradesFiltersBar
+                value={filters}
+                onChange={setFilters}
+                availableBots={bots}
+                availableSymbols={symbols}
+                showDateRange={true}
+                showTimeRange={true}
+                showSignalKind={true}
+              />
+            </div>
+            <div className="border-t p-3">
+              <Button className="w-full" onClick={() => setShowFilters(false)}>Fertig</Button>
+            </div>
           </div>
         </div>
       )}

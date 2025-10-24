@@ -32,9 +32,7 @@ const App = () => (
               path="/"
               element={
                 <ProtectedRoute>
-                  <DashboardLayout>
-                    <Dashboard />
-                  </DashboardLayout>
+                  <Dashboard />
                 </ProtectedRoute>
               }
             />
@@ -42,9 +40,7 @@ const App = () => (
               path="/trades"
               element={
                 <ProtectedRoute>
-                  <DashboardLayout>
-                    <Trades />
-                  </DashboardLayout>
+                  <Trades />
                 </ProtectedRoute>
               }
             />
@@ -62,9 +58,7 @@ const App = () => (
               path="/bots"
               element={
                 <ProtectedRoute>
-                  <DashboardLayout>
-                    <Bots />
-                  </DashboardLayout>
+                  <Bots />
                 </ProtectedRoute>
               }
             />
@@ -82,9 +76,7 @@ const App = () => (
               path="/signals"
               element={
                 <ProtectedRoute>
-                  <DashboardLayout>
-                    <Signals />
-                  </DashboardLayout>
+                  <Signals />
                 </ProtectedRoute>
               }
             />
@@ -92,9 +84,7 @@ const App = () => (
               path="/settings"
               element={
                 <ProtectedRoute>
-                  <DashboardLayout>
-                    <Settings />
-                  </DashboardLayout>
+                  <Settings />
                 </ProtectedRoute>
               }
             />

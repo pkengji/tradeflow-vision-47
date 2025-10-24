@@ -160,17 +160,22 @@ export default function Dashboard() {
     <DashboardLayout pageTitle="Dashboard" mobileHeaderRight={FilterButton}>
       {/* Filter-Modal - Mobile */}
       {showFilters && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 lg:hidden" onClick={() => setShowFilters(false)}>
-          <div className="fixed inset-x-0 top-14 bottom-16 bg-background overflow-auto" onClick={(e) => e.stopPropagation()}>
-            <TradesFiltersBar
-              value={filters}
-              onChange={setFilters}
-              availableBots={bots}
-              availableSymbols={symbols}
-              showDateRange={true}
-              showTimeRange={true}
-              showSignalKind={false}
-            />
+        <div className="fixed inset-0 bg-background/80 z-50 lg:hidden" onClick={() => setShowFilters(false)}>
+          <div className="fixed inset-x-0 top-14 bottom-16 bg-background flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="overflow-auto">
+              <TradesFiltersBar
+                value={filters}
+                onChange={setFilters}
+                availableBots={bots}
+                availableSymbols={symbols}
+                showDateRange={true}
+                showTimeRange={true}
+                showSignalKind={false}
+              />
+            </div>
+            <div className="border-t p-3">
+              <Button className="w-full" onClick={() => setShowFilters(false)}>Fertig</Button>
+            </div>
           </div>
         </div>
       )}
@@ -218,7 +223,7 @@ export default function Dashboard() {
               </div>
 
               {/* Transaktionskosten */}
-              <div className="space-y-0 pt-1">
+              <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Transaktionskosten" 
                   value={pct(summary.fees_pct_filtered_total)} 
@@ -231,7 +236,7 @@ export default function Dashboard() {
               </div>
 
               {/* Timelag */}
-              <div className="space-y-0 pt-1">
+              <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Timelag" 
                   value={ms(summary.timelag_tv_to_bot_ms_filtered + summary.timelag_bot_to_ex_ms_filtered)} 
@@ -262,7 +267,7 @@ export default function Dashboard() {
                 </Link>
               </div>
 
-              <div className="space-y-0 pt-1">
+              <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Transaktionskosten" 
                   value={pct(summary.fees_pct_today_total)} 
@@ -274,7 +279,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="space-y-0 pt-1">
+              <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Timelag" 
                   value={ms(summary.timelag_tv_to_bot_ms_today + summary.timelag_bot_to_ex_ms_today)} 
@@ -300,7 +305,7 @@ export default function Dashboard() {
                 <MetricRow label="Win Rate" value={pct(summary.mtd.winrate)} />
               </div>
 
-              <div className="space-y-0 pt-1">
+              <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Transaktionskosten" 
                   value={pct(summary.mtd.fees_pct_total)} 
@@ -312,7 +317,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="space-y-0 pt-1">
+              <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Timelag" 
                   value={ms(summary.mtd.timelag_tv_to_bot_ms + summary.mtd.timelag_bot_to_ex_ms)} 
@@ -338,7 +343,7 @@ export default function Dashboard() {
                 <MetricRow label="Win Rate" value={pct(summary.last30d.winrate)} />
               </div>
 
-              <div className="space-y-0 pt-1">
+              <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Transaktionskosten" 
                   value={pct(summary.last30d.fees_pct_total)} 
@@ -350,7 +355,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="space-y-0 pt-1">
+              <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Timelag" 
                   value={ms(summary.last30d.timelag_tv_to_bot_ms + summary.last30d.timelag_bot_to_ex_ms)} 
