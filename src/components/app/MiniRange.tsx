@@ -34,7 +34,7 @@ export default function MiniRange({
     const maxPrice = mark != null ? Math.max(entry, mark) : entry;
     const hasProfit = mark != null && entry != null && 
       ((side === 'long' && mark > entry) || (side === 'short' && mark < entry));
-    const barColor = mark != null ? (hasProfit ? 'bg-emerald-600' : 'bg-red-600') : 'bg-zinc-400';
+    const barColor = mark != null ? (hasProfit ? 'bg-success' : 'bg-danger') : 'bg-zinc-400';
     
     return (
       <div className="py-3 px-0">
@@ -92,8 +92,8 @@ export default function MiniRange({
   const pct = mark != null && entry ? ((mark - entry) / entry) * 100 : null;
   const hasProfit = mark != null && entry != null && 
     ((side === 'long' && mark > entry) || (side === 'short' && mark < entry));
-  const gainColor = hasProfit ? 'text-emerald-500' : 'text-red-500';
-  const segmentColor = hasProfit ? 'bg-emerald-600' : 'bg-red-600';
+  const gainColor = hasProfit ? '#2DFB68' : '#EA3A10';
+  const segmentColor = hasProfit ? 'bg-success' : 'bg-danger';
 
   // tick heights (relative to bar thickness)
   const H_BAR = BAR_THICK_PX;
@@ -130,10 +130,10 @@ export default function MiniRange({
               align={alignSL}
               direction="down"
               heightPx={H_SLTP}
-              colorClass="bg-red-600"
+              colorClass="bg-danger"
               barHeightPx={H_BAR}
               labelGapPx={LABEL_GAP_PX}
-              title={<span className="text-red-500">SL</span>}
+              title={<span style={{ color: '#EA3A10' }}>SL</span>}
               value={<span className="text-foreground tabular-nums">{fmt(sl)}</span>}
             />
 
@@ -156,10 +156,10 @@ export default function MiniRange({
               align={alignTP}
               direction="down"
               heightPx={H_SLTP}
-              colorClass="bg-emerald-600"
+              colorClass="bg-success"
               barHeightPx={H_BAR}
               labelGapPx={LABEL_GAP_PX}
-              title={<span className="text-emerald-500">TP</span>}
+              title={<span style={{ color: '#2DFB68' }}>TP</span>}
               value={<span className="text-foreground tabular-nums">{fmt(tp)}</span>}
             />
 
@@ -282,7 +282,7 @@ function MarkLabel({
       style={{ left: labelLeft(xPct, align), top, transform: tx }}
     >
       {percent != null && (
-        <span className={percentClass}>
+        <span style={{ color: percentClass }}>
           {`${percent >= 0 ? '+' : ''}${percent.toFixed(2)}%`}
         </span>
       )}

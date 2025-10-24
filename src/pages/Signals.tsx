@@ -134,8 +134,8 @@ export default function Signals() {
   };
 
   const getStatusBadge = (status: string) => {
-    if (status === 'completed') return <Badge variant="default" className="text-xs bg-long text-long-foreground">completed</Badge>;
-    if (status === 'failed') return <Badge variant="destructive" className="text-xs bg-short text-short-foreground">failed</Badge>;
+    if (status === 'completed') return <Badge variant="default" className="text-xs bg-[#0D3512] text-[#2DFB68]">completed</Badge>;
+    if (status === 'failed') return <Badge variant="destructive" className="text-xs bg-[#641812] text-[#EA3A10]">failed</Badge>;
     if (status === 'rejected') return <Badge variant="secondary" className="text-xs">rejected</Badge>;
     return <Badge variant="outline" className="text-xs">{status}</Badge>;
   };

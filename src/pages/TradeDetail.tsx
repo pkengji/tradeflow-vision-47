@@ -141,7 +141,7 @@ export default function TradeDetail() {
                       {position.symbol}
                       <Badge 
                         variant={isLong ? "default" : "destructive"}
-                        className={`${isLong ? 'bg-long hover:bg-long/80 text-long-foreground' : 'bg-short hover:bg-short/80 text-short-foreground'} text-[10px] px-1.5 py-0 h-4`}
+                        className={`${isLong ? 'bg-[#0D3512] hover:bg-[#0D3512]/80 text-[#2DFB68]' : 'bg-[#641812] hover:bg-[#641812]/80 text-[#EA3A10]'} text-[10px] px-1.5 py-0 h-4`}
                       >
                         {position.side === 'long' ? 'Long' : 'Short'}
                       </Badge>

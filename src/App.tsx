@@ -13,6 +13,7 @@ import TradeDetail from "./pages/TradeDetail";
 import Bots from "@/pages/Bots";
 import BotDetail from "./pages/BotDetail";
 import Signals from "./pages/Signals";
+import SignalDetail from "./pages/SignalDetail";
 import Settings from "./pages/Settings";
 import NotFound from "@/pages/NotFound";
 import OutboxPage from "./pages/Outbox";
@@ -45,12 +46,18 @@ const App = () => (
               }
             />
             <Route
-              path="/trades/:id"
+              path="/trade/:id"
               element={
                 <ProtectedRoute>
-                  <DashboardLayout>
-                    <TradeDetail />
-                  </DashboardLayout>
+                  <TradeDetail />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/signal/:id"
+              element={
+                <ProtectedRoute>
+                  <SignalDetail />
                 </ProtectedRoute>
               }
             />

@@ -29,14 +29,14 @@ All colors MUST be HSL.
     --accent: 220 16% 20%;
     --accent-foreground: 210 15% 95%;
 
-    --success: 147 90% 56%;
-    --success-foreground: 145 71% 8%;
+    --success: 137 96% 58%;
+    --success-foreground: 128 61% 13%;
     
-    --danger: 10 90% 49%;
-    --danger-foreground: 10 43% 8%;
+    --danger: 12 87% 49%;
+    --danger-foreground: 4 69% 23%;
 
-    --destructive: 10 90% 49%;
-    --destructive-foreground: 10 43% 8%;
+    --destructive: 12 87% 49%;
+    --destructive-foreground: 4 69% 23%;
 
     --border: 220 16% 22%;
     --input: 220 16% 22%;
@@ -51,10 +51,10 @@ All colors MUST be HSL.
     --chart-5: 280 60% 58%;
 
     /* Trading-specific colors */
-    --long: 147 90% 56%;
-    --long-foreground: 145 71% 8%;
-    --short: 10 90% 49%;
-    --short-foreground: 10 43% 8%;
+    --long: 137 96% 58%;
+    --long-foreground: 128 61% 13%;
+    --short: 12 87% 49%;
+    --short-foreground: 4 69% 23%;
   }
 }
 
