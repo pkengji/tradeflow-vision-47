@@ -30,7 +30,7 @@ export default function MiniRange({
     const barColor = mark != null ? (hasProfit ? 'bg-success' : 'bg-danger') : 'bg-zinc-400';
     
     return (
-      <div className="py-3 px-0 pb-4">
+      <div className="py-3 px-0 pb-5">
         <div className="relative h-2">
           <div className={`absolute inset-y-0 left-0 right-0 ${barColor} rounded`} />
           <div className="absolute -bottom-5 left-0 text-[10px] text-muted-foreground">
@@ -73,11 +73,14 @@ export default function MiniRange({
     return 'center';
   };
   
-  // SL is always on the left side, TP always on the right
-  const alignSL: 'left' = 'left';
-  const alignTP: 'right' = 'right';
-  const alignEN = alignFor(xEN);
-  const alignMK = xMK == null ? 'center' : alignFor(xMK);
+  // SL/TP alignment based on which is leftmost/rightmost on the track
+  const isSLLeft = xSL <= xTP;
+  const alignSL: 'left' | 'right' = isSLLeft ? 'left' : 'right';
+  const alignTP: 'left' | 'right' = isSLLeft ? 'right' : 'left';
+
+  // Entry/Mark prefer label to the right of the tick (left-aligned) unless near the right edge
+  const alignEN: 'left' | 'right' = xEN > 85 ? 'right' : 'left';
+  const alignMK: 'left' | 'right' = xMK == null ? 'left' : (xMK > 85 ? 'right' : 'left');
 
   const fmt = (v: number | null | undefined) =>
     v == null ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: 6 });
@@ -96,8 +99,8 @@ export default function MiniRange({
   const H_MARK = Math.round(H_BAR * 2.4);  // 1.5×
 
   return (
-    <div className="py-1 px-0 pb-4">
-      <div className="relative" style={{ height: H_BAR + 36 }}>
+    <div className="py-1 px-0 pb-5">
+      <div className="relative" style={{ height: H_BAR + H_SLTP + LABEL_GAP_PX + 18 }}>
         {/* TRACK WRAPPER: everything inside respects gutters via inset-x style */}
         <div className="absolute inset-x-0" style={{ height: H_BAR, top: '50%', transform: 'translateY(-50%)' }}>
           {/* thick neutral bar */}
