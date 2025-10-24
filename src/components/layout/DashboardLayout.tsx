@@ -65,7 +65,7 @@ export function DashboardLayout({
   return (
     <div className="min-h-screen bg-background pb-16 lg:pb-0">
       {/* Header - Mobile */}
-      <header className="lg:hidden sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <header className="lg:hidden sticky top-0 z-40 border-b bg-background">
         <div className="flex h-14 items-center px-4">
           {/* Back button on left (if enabled) */}
           {showBackButton && (
@@ -92,7 +92,7 @@ export function DashboardLayout({
       </header>
 
       {/* Header - Desktop */}
-      <header className="hidden lg:block sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <header className="hidden lg:block sticky top-0 z-40 border-b bg-background">
         <div className="flex h-14 items-center px-4 gap-4">
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
             <SheetTrigger asChild>
@@ -144,7 +144,7 @@ export function DashboardLayout({
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t bg-background">
         <div className="grid grid-cols-5 h-16">
           {navigation.map((item) => {
             const Icon = item.icon;

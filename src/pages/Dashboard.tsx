@@ -414,25 +414,23 @@ function MetricRow({
   label, 
   value, 
   hoverable = false, 
-  bold = false, 
   small = false 
 }: { 
   label: string; 
   value: string | number; 
   hoverable?: boolean; 
-  bold?: boolean; 
   small?: boolean; 
 }) {
   return (
     <div 
-      className={`flex justify-between items-center py-1.5 ${
+      className={`flex justify-between items-center py-0.5 ${
         hoverable ? 'hover:bg-muted/30 rounded px-2 -mx-2 cursor-pointer transition-colors' : ''
       }`}
     >
-      <span className={`${small ? 'text-xs' : 'text-sm'} ${bold ? 'font-medium' : 'text-muted-foreground'}`}>
+      <span className={`${small ? 'text-xs text-muted-foreground' : 'text-sm text-foreground'}`}>
         {label}
       </span>
-      <span className={`${small ? 'text-xs' : 'text-sm'} ${bold ? 'font-bold' : 'font-semibold'}`}>
+      <span className={`${small ? 'text-xs text-muted-foreground' : 'text-sm text-foreground'}`}>
         {value}
       </span>
     </div>
