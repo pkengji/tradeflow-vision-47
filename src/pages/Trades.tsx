@@ -239,9 +239,9 @@ export default function Trades() {
       <div className="space-y-4 p-4 pb-24">
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)}>
-          <TabsList className="h-9 px-2">
-            <TabsTrigger value="open" className="px-4 text-sm">Offen</TabsTrigger>
-            <TabsTrigger value="closed" className="px-4 text-sm">Geschlossen</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 h-9">
+            <TabsTrigger value="open" className="text-sm">Offen</TabsTrigger>
+            <TabsTrigger value="closed" className="text-sm">Geschlossen</TabsTrigger>
           </TabsList>
         </Tabs>
 
@@ -265,13 +265,13 @@ export default function Trades() {
             <div className="text-sm text-muted-foreground">{loading ? 'Lade…' : `${openTrades.length} Einträge`}</div>
             {error && <div className="text-sm text-red-500">{error}</div>}
           </div>
-          <div className="grid gap-3">
-            {openTrades.length === 0 && !loading && (<div className="text-sm text-muted-foreground">Keine offenen Trades.</div>)}
+          <div className="divide-y divide-border">
+            {openTrades.length === 0 && !loading && (<div className="text-sm text-muted-foreground py-4">Keine offenen Trades.</div>)}
             {openTrades.map((t) => (
-              <Card
+              <div
                 key={t.id}
                 onClick={() => handleCardClick(t)}
-                className="cursor-pointer hover:bg-muted/50 transition-colors p-0 overflow-hidden"
+                className="cursor-pointer hover:bg-muted/30 transition-colors py-3"
               >
                 <TradeCardCompact
                   symbol={t.symbol}
@@ -282,13 +282,14 @@ export default function Trades() {
                   onClick={() => {}}
                 />
                 <MiniRange
-                  labelEntry={t.side === 'short' ? 'SELL' : 'BUY'}
+                  labelEntry={t.side === 'short' ? 'Sell' : 'Buy'}
                   entry={t.entry_price ?? null}
                   sl={t.sl ?? null}
                   tp={t.tp ?? null}
                   mark={null}
+                  side={t.side as 'long' | 'short'}
                 />
-              </Card>
+              </div>
             ))}
           </div>
         </section>
@@ -298,13 +299,13 @@ export default function Trades() {
             <div className="text-sm text-muted-foreground">{loading ? 'Lade…' : `${closedTrades.length} Einträge`}</div>
             {error && <div className="text-sm text-red-500">{error}</div>}
           </div>
-          <div className="grid gap-3">
-            {closedTrades.length === 0 && !loading && (<div className="text-sm text-muted-foreground">Keine geschlossenen Trades.</div>)}
+          <div className="divide-y divide-border">
+            {closedTrades.length === 0 && !loading && (<div className="text-sm text-muted-foreground py-4">Keine geschlossenen Trades.</div>)}
             {closedTrades.map((t) => (
-              <Card
+              <div
                 key={t.id}
                 onClick={() => handleCardClick(t)}
-                className="cursor-pointer hover:bg-muted/50 transition-colors p-0 overflow-hidden"
+                className="cursor-pointer hover:bg-muted/30 transition-colors py-3"
               >
                 <TradeCardCompact
                   symbol={t.symbol}
@@ -315,13 +316,14 @@ export default function Trades() {
                   onClick={() => {}}
                 />
                 <MiniRange
-                  labelEntry={t.side === 'short' ? 'SELL' : 'BUY'}
+                  labelEntry={t.side === 'short' ? 'Sell' : 'Buy'}
                   entry={t.entry_price ?? null}
                   sl={t.sl ?? null}
                   tp={t.tp ?? null}
                   mark={t.exit_price ?? null}
+                  side={t.side as 'long' | 'short'}
                 />
-              </Card>
+              </div>
             ))}
           </div>
         </section>

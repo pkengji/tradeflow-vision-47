@@ -41,6 +41,7 @@ type DailyPnl = { date: string; pnl: number; equity: number };
 export default function Dashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [series, setSeries] = useState<DailyPnl[]>([]);
+  const [signalsCount, setSignalsCount] = useState({ total: 0, today: 0 });
   const [filters, setFilters] = useState<TradesFilters>({
     botIds: [],
     symbols: [],
@@ -81,8 +82,19 @@ export default function Dashboard() {
 
     (async () => {
       try {
-        const s = await apiRequest<Summary>(`/api/v1/dashboard/summary?${qs.toString()}`);
+        const [s, outboxRes] = await Promise.all([
+          apiRequest<Summary>(`/api/v1/dashboard/summary?${qs.toString()}`),
+          api.getOutbox()
+        ]);
         setSummary(s);
+        
+        // Count TradingView signals
+        const tvSignals = outboxRes.filter((item: any) => item.kind === 'tradingview');
+        const today = new Date().toISOString().split('T')[0];
+        const tvSignalsToday = tvSignals.filter((item: any) => 
+          item.created_at?.startsWith(today)
+        );
+        setSignalsCount({ total: tvSignals.length, today: tvSignalsToday.length });
       } catch {
         // Stub, falls Endpoint noch nicht fertig ist
         setSummary({
@@ -220,6 +232,7 @@ export default function Dashboard() {
                 <MetricRow label="Realized P&L" value={formatCurrency(summary.pnl_filtered)} />
                 <MetricRow label="Portfoliowert" value={formatCurrency(summary.portfolio_filtered)} />
                 <MetricRow label="Win Rate" value={pct(summary.winrate_filtered)} />
+                <MetricRow label="Anzahl Signale" value={String(signalsCount.total)} />
               </div>
 
               {/* Transaktionskosten */}
@@ -262,6 +275,7 @@ export default function Dashboard() {
                   <MetricRow label="P&L realized heute" value={formatCurrency(summary.pnl_today)} hoverable />
                 </Link>
                 <MetricRow label="Win Rate heute" value={pct(summary.winrate_today)} />
+                <MetricRow label="Anzahl Signale" value={String(signalsCount.today)} />
                 <Link to="/trades?status=open">
                   <MetricRow label="Offene Trades aktuell" value={summary.open_trades_count} hoverable />
                 </Link>

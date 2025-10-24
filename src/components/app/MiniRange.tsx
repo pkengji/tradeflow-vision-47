@@ -11,6 +11,7 @@ type Props = {
   tp?: number | null;
   mark?: number | null;      // current or exit price
   labelEntry?: string;       // default: 'ENTRY'
+  side?: 'long' | 'short';   // trade side for orientation
 };
 
 // Layout-Feinjustage (global)
@@ -25,14 +26,35 @@ function labelLeft(xPct: number, align: 'left'|'center'|'right') {
 }
 
 export default function MiniRange({
-  sl, entry, tp, mark, labelEntry = 'ENTRY',
+  sl, entry, tp, mark, labelEntry = 'ENTRY', side = 'long',
 }: Props) {
-  if (sl == null || entry == null || tp == null) {
+  // Simplified view: no SL/TP
+  if ((sl == null || tp == null) && entry != null) {
+    const minPrice = mark != null ? Math.min(entry, mark) : entry;
+    const maxPrice = mark != null ? Math.max(entry, mark) : entry;
+    const hasProfit = mark != null && entry != null && 
+      ((side === 'long' && mark > entry) || (side === 'short' && mark < entry));
+    const barColor = mark != null ? (hasProfit ? 'bg-emerald-600' : 'bg-red-600') : 'bg-zinc-400';
+    
     return (
-      <div className="h-12 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-background flex items-center justify-center text-xs text-muted-foreground">
-        No SL/TP
+      <div className="py-3 px-0">
+        <div className="relative h-2">
+          <div className={`absolute inset-y-0 left-0 right-0 ${barColor} rounded`} />
+          <div className="absolute -bottom-5 left-0 text-[10px] text-muted-foreground">
+            {labelEntry} {minPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+          </div>
+          {mark != null && (
+            <div className="absolute -bottom-5 right-0 text-[10px] text-muted-foreground text-right">
+              {maxPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            </div>
+          )}
+        </div>
       </div>
     );
+  }
+  
+  if (sl == null || entry == null || tp == null) {
+    return null;
   }
 
   // --- layout constants
@@ -40,15 +62,15 @@ export default function MiniRange({
   const BAR_THICK_PX = 6;       // ~2x thicker bar
   const LABEL_GAP_PX = 3;       // distance between tick tip and label
 
-  // fixed orientation: left = SL, right = TP
-  const leftVal = sl;
-  const rightVal = tp;
+  // Dynamic orientation: lowest left, highest right
+  const leftVal = Math.min(sl, tp);
+  const rightVal = Math.max(sl, tp);
   const span = Math.max(1e-12, Math.abs(rightVal - leftVal));
-  const toPct = (v: number) => ((v - leftVal) / span) * (rightVal >= leftVal ? 100 : -100);
+  const toPct = (v: number) => ((v - leftVal) / span) * 100;
   const clamp01 = (x: number) => Math.max(0, Math.min(100, x));
 
-  const xSL = 0;
-  const xTP = 100;
+  const xSL = clamp01(toPct(sl));
+  const xTP = clamp01(toPct(tp));
   const xEN = clamp01(toPct(entry));
   const xMK = mark == null ? null : clamp01(toPct(mark));
 
@@ -62,12 +84,12 @@ export default function MiniRange({
   const fmt = (v: number | null | undefined) =>
     v == null ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: 6 });
 
-  // gain/loss logic
+  // gain/loss logic based on side
   const pct = mark != null && entry ? ((mark - entry) / entry) * 100 : null;
-  const inGain = mark != null && entry != null && mark >= entry && mark <= tp;
-  const inLoss = mark != null && entry != null && mark <= entry && mark >= sl;
-  const gainColor = inGain ? 'text-emerald-500' : inLoss ? 'text-red-500' : 'text-zinc-400';
-  const segmentColor = inGain ? 'bg-emerald-600' : inLoss ? 'bg-red-600' : 'bg-zinc-400/50';
+  const hasProfit = mark != null && entry != null && 
+    ((side === 'long' && mark > entry) || (side === 'short' && mark < entry));
+  const gainColor = hasProfit ? 'text-emerald-500' : 'text-red-500';
+  const segmentColor = hasProfit ? 'bg-emerald-600' : 'bg-red-600';
 
   // tick heights (relative to bar thickness)
   const H_BAR = BAR_THICK_PX;
@@ -76,10 +98,10 @@ export default function MiniRange({
   const H_MARK = Math.round(H_BAR * 2.4);  // 1.5×
 
   return (
-    <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-background px-3 py-2">
+    <div className="py-3 px-0">
       <div className="relative" style={{ height: H_BAR + 28 }}>
         {/* TRACK WRAPPER: everything inside respects gutters via inset-x style */}
-        <div className="absolute inset-x-6 top-1/2 -translate-y-1/2" style={{ height: H_BAR }}>
+        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2" style={{ height: H_BAR }}>
           {/* thick neutral bar */}
           <div className="absolute inset-0 bg-zinc-300 dark:bg-zinc-600 rounded" />
 
