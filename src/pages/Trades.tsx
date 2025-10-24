@@ -10,6 +10,9 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import MiniRange from '@/components/app/MiniRange';
 import TradeDetailPanel from '@/components/app/TradeDetailPanel';
 import { Card } from '@/components/ui/card';
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { Button } from '@/components/ui/button';
+import { SlidersHorizontal } from 'lucide-react';
 
 // ==============================
 // 2) LOCAL TYPES
@@ -181,27 +184,58 @@ export default function Trades() {
   const handleCardClick = (t: PositionListItem) => { setSelected({ id: t.id, symbol: t.symbol }); setPanelOpen(true); };
   const closePanel = () => { setPanelOpen(false); setSelected(null); };
 
+  const [showFilters, setShowFilters] = useState(false);
+
+  const FilterButton = (
+    <Button 
+      variant="ghost" 
+      size="icon"
+      onClick={() => setShowFilters(!showFilters)}
+      className="lg:hidden"
+    >
+      <SlidersHorizontal className="h-5 w-5" />
+    </Button>
+  );
+
   // ---- 4.5 RENDER ----
   return (
-    <div className="space-y-4 p-4 pb-24">
-      {/* Header: Tabs und Filter in einer Leiste */}
-      <div className="flex items-center justify-between gap-4">
+    <DashboardLayout pageTitle="Trades" mobileHeaderRight={FilterButton}>
+      <div className="space-y-4 p-4 pb-24">
+        {/* Tabs */}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)}>
-          <TabsList className="h-10 px-2">
+          <TabsList className="h-9 px-2">
             <TabsTrigger value="open" className="px-4 text-sm">Offen</TabsTrigger>
             <TabsTrigger value="closed" className="px-4 text-sm">Geschlossen</TabsTrigger>
           </TabsList>
         </Tabs>
-        <TradesFiltersBar
-          value={filters}
-          onChange={setFilters}
-          availableBots={bots}
-          availableSymbols={symbols}
-          showDateRange={activeTab === 'closed'}
-          showTimeRange={activeTab === 'closed'}
-          showSignalKind={false}
-        />
-      </div>
+
+        {/* Filter - Desktop (always visible) */}
+        <div className="hidden lg:block">
+          <TradesFiltersBar
+            value={filters}
+            onChange={setFilters}
+            availableBots={bots}
+            availableSymbols={symbols}
+            showDateRange={activeTab === 'closed'}
+            showTimeRange={activeTab === 'closed'}
+            showSignalKind={false}
+          />
+        </div>
+
+        {/* Filter - Mobile (conditional) */}
+        {showFilters && (
+          <div className="lg:hidden">
+            <TradesFiltersBar
+              value={filters}
+              onChange={setFilters}
+              availableBots={bots}
+              availableSymbols={symbols}
+              showDateRange={activeTab === 'closed'}
+              showTimeRange={activeTab === 'closed'}
+              showSignalKind={false}
+            />
+          </div>
+        )}
 
       {/* Liste: Offene oder Geschlossene */}
       {activeTab === 'open' ? (
@@ -272,14 +306,15 @@ export default function Trades() {
         </section>
       )}
 
-      {/* Responsive Modal/Panel: gleiche BG wie Panel-Inhalt */}
-      <ResponsivePanel open={panelOpen} onClose={closePanel}>
-        {selected ? (
-          <div className="bg-white dark:bg-zinc-900">
-            <TradeDetailPanel positionId={selected.id} />
-          </div>
-        ) : null}
-      </ResponsivePanel>
-    </div>
+        {/* Responsive Modal/Panel: gleiche BG wie Panel-Inhalt */}
+        <ResponsivePanel open={panelOpen} onClose={closePanel}>
+          {selected ? (
+            <div className="bg-white dark:bg-zinc-900">
+              <TradeDetailPanel positionId={selected.id} />
+            </div>
+          ) : null}
+        </ResponsivePanel>
+      </div>
+    </DashboardLayout>
   );
 }

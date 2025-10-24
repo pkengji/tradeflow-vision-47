@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { LayoutDashboard, TrendingUp, Activity, Bot, Settings, LogOut, Menu, SlidersHorizontal } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Activity, Bot, Settings, LogOut, Menu, ChevronLeft } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useState, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
@@ -17,11 +17,13 @@ const navigation = [
 export function DashboardLayout({ 
   children, 
   pageTitle, 
-  mobileHeaderRight 
+  mobileHeaderRight,
+  showBackButton = false,
 }: { 
   children: React.ReactNode;
   pageTitle?: string;
   mobileHeaderRight?: ReactNode;
+  showBackButton?: boolean;
 }) {
   const { user, logout } = useAuth();
   const location = useLocation();
@@ -62,18 +64,38 @@ export function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-background pb-16 lg:pb-0">
-      {/* Header */}
-      <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div className="flex h-14 items-center px-4 gap-4">
-          {/* Mobile: Page Title + Filter Button on right */}
-          <div className="lg:hidden flex items-center justify-between w-full">
-            <h1 className="text-[var(--font-size-page-title)] font-semibold">{currentPageTitle}</h1>
-            {mobileHeaderRight && <div>{mobileHeaderRight}</div>}
+      {/* Header - Mobile */}
+      <header className="lg:hidden sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="flex h-14 items-center px-4">
+          {/* Back button on left (if enabled) */}
+          {showBackButton && (
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onClick={() => navigate(-1)}
+              className="mr-2"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+          )}
+          
+          {/* Centered title */}
+          <h1 className="flex-1 text-center text-[var(--font-size-page-title)] font-semibold">
+            {currentPageTitle}
+          </h1>
+          
+          {/* Filter button on right (if provided), or spacer */}
+          <div className="w-10">
+            {mobileHeaderRight}
           </div>
+        </div>
+      </header>
 
-          {/* Desktop: Logo + Navigation */}
+      {/* Header - Desktop */}
+      <header className="hidden lg:block sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="flex h-14 items-center px-4 gap-4">
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-            <SheetTrigger asChild className="hidden lg:block">
+            <SheetTrigger asChild>
               <Button variant="ghost" size="icon">
                 <Menu className="h-5 w-5" />
               </Button>
@@ -90,12 +112,12 @@ export function DashboardLayout({
             </SheetContent>
           </Sheet>
 
-          <div className="hidden lg:flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <TrendingUp className="h-6 w-6" />
             <h1 className="text-lg font-bold">TradingBot</h1>
           </div>
 
-          <div className="ml-auto hidden lg:flex items-center gap-4">
+          <div className="ml-auto flex items-center gap-4">
             <div className="text-right">
               <div className="text-sm font-medium">{user?.email}</div>
               <div className="text-xs text-muted-foreground capitalize">{user?.role}</div>
@@ -122,7 +144,7 @@ export function DashboardLayout({
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="grid grid-cols-5 h-16">
           {navigation.map((item) => {
             const Icon = item.icon;
@@ -143,13 +165,6 @@ export function DashboardLayout({
               </Link>
             );
           })}
-          <button
-            onClick={handleLogout}
-            className="flex flex-col items-center justify-center gap-1 text-xs text-muted-foreground transition-colors"
-          >
-            <LogOut className="h-5 w-5" />
-            <span className="text-[10px]">Logout</span>
-          </button>
         </div>
       </nav>
     </div>

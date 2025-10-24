@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiRequest } from '@/lib/api';
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { useNavigate } from 'react-router-dom';
 
 // ---- Zeitzone (Anzeige-Prefs) ----
 function PreferredTZ() {
@@ -164,69 +166,83 @@ function AddUserForm() {
 }
 
 export default function Settings() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   return (
-    <div className="space-y-6 p-4 lg:p-6">
-      <div>
-        <h1 className="text-3xl font-bold">Einstellungen</h1>
-        <p className="text-muted-foreground">
-          Verwalten Sie Ihr Konto und Ihre Präferenzen
-        </p>
-      </div>
+    <DashboardLayout pageTitle="Einstellungen">
+      <div className="space-y-4 p-4 pb-24">
+        {/* Präferenzen & User-Anlage */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <PreferredTZ />
+          <AddUserForm />
+        </div>
 
-      {/* Präferenzen & User-Anlage */}
-      <div className="grid gap-6 md:grid-cols-2">
-        <PreferredTZ />
-        <AddUserForm />
-      </div>
+        {/* Optional: Profil & Passwort ändern (statisch/Stub) */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Profil</CardTitle>
+              <CardDescription className="text-xs">Ihre persönlichen Informationen</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-1">
+                <Label htmlFor="name" className="text-xs">Name</Label>
+                <Input id="name" defaultValue={user?.name ?? ''} className="text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="email" className="text-xs">E-Mail</Label>
+                <Input id="email" type="email" defaultValue={user?.email ?? ''} disabled className="text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="role" className="text-xs">Rolle</Label>
+                <Input id="role" defaultValue={user?.role ?? ''} disabled className="text-sm" />
+              </div>
+              <Button disabled size="sm">Profil aktualisieren</Button>
+            </CardContent>
+          </Card>
 
-      {/* Optional: Profil & Passwort ändern (statisch/Stub) */}
-      <div className="grid gap-6 md:grid-cols-2">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Passwort ändern</CardTitle>
+              <CardDescription className="text-xs">Aktualisieren Sie Ihr Passwort</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-1">
+                <Label htmlFor="current-password" className="text-xs">Aktuelles Passwort</Label>
+                <Input id="current-password" type="password" className="text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="new-password" className="text-xs">Neues Passwort</Label>
+                <Input id="new-password" type="password" className="text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="confirm-password" className="text-xs">Passwort bestätigen</Label>
+                <Input id="confirm-password" type="password" className="text-sm" />
+              </div>
+              <Button disabled size="sm">Passwort ändern</Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Logout */}
         <Card>
-          <CardHeader>
-            <CardTitle>Profil</CardTitle>
-            <CardDescription>Ihre persönlichen Informationen</CardDescription>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Logout</CardTitle>
+            <CardDescription className="text-xs">Von Ihrem Konto abmelden</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
-              <Input id="name" defaultValue={user?.name ?? ''} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">E-Mail</Label>
-              <Input id="email" type="email" defaultValue={user?.email ?? ''} disabled />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="role">Rolle</Label>
-              <Input id="role" defaultValue={user?.role ?? ''} disabled />
-            </div>
-            <Button disabled>Profil aktualisieren</Button>
+          <CardContent>
+            <Button onClick={handleLogout} variant="destructive" size="sm">
+              Abmelden
+            </Button>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Passwort ändern</CardTitle>
-            <CardDescription>Aktualisieren Sie Ihr Passwort</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="current-password">Aktuelles Passwort</Label>
-              <Input id="current-password" type="password" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="new-password">Neues Passwort</Label>
-              <Input id="new-password" type="password" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="confirm-password">Passwort bestätigen</Label>
-              <Input id="confirm-password" type="password" />
-            </div>
-            <Button disabled>Passwort ändern</Button>
-          </CardContent>
-        </Card>
       </div>
-    </div>
+    </DashboardLayout>
   );
 }

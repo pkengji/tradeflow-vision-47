@@ -5,13 +5,14 @@ import TradesFiltersBar, { type TradesFilters } from '@/components/app/TradesFil
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Download } from 'lucide-react';
+import { Download, SlidersHorizontal } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
 
 // CSV-Export-Button (eigenständig, keine Lib nötig)
 function ExportCSV({ url, filename }: { url: string; filename: string }) {
@@ -83,6 +84,7 @@ export default function Signals() {
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
   const [selectedSignal, setSelectedSignal] = useState<any>(null);
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -108,11 +110,22 @@ export default function Signals() {
     });
   };
 
+  const FilterButton = (
+    <Button 
+      variant="ghost" 
+      size="icon"
+      onClick={() => setShowFilters(!showFilters)}
+      className="lg:hidden"
+    >
+      <SlidersHorizontal className="h-5 w-5" />
+    </Button>
+  );
+
   return (
-    <>
-      {/* Filter & Export */}
-      <div className="mb-3 flex items-center justify-between">
-        <div className="ml-auto flex gap-2">
+    <DashboardLayout pageTitle="Signals" mobileHeaderRight={FilterButton}>
+      <div className="space-y-4 p-4 pb-24">
+        {/* Filter & Export - Desktop */}
+        <div className="hidden lg:flex items-center justify-between gap-2">
           <TradesFiltersBar
             value={filters}
             onChange={setFilters}
@@ -124,52 +137,57 @@ export default function Signals() {
           />
           <ExportCSV url={`/api/v1/export/signals`} filename="signals.csv" />
         </div>
-      </div>
 
-      {/* Überschrift */}
-      <div className="space-y-6 p-4 lg:p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Signal Log</h1>
-            <p className="text-muted-foreground">Überwachung aller Webhook-Events und Systemlogs</p>
+        {/* Filter - Mobile (conditional) */}
+        {showFilters && (
+          <div className="lg:hidden">
+            <TradesFiltersBar
+              value={filters}
+              onChange={setFilters}
+              availableBots={bots}
+              availableSymbols={symbols}
+              showDateRange={true}
+              showTimeRange={true}
+              showSignalKind={true}
+            />
           </div>
-        </div>
+        )}
 
         {/* Liste */}
         <Card>
-          <CardHeader>
-            <CardTitle>Letzte Signals</CardTitle>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Letzte Signals</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
+            <div className="space-y-2">
               {mockSignals.map((signal) => {
                 const bot = bots.find(b => b.id === signal.botId);
                 return (
                   <div
                     key={signal.id}
                     onClick={() => setSelectedSignal(signal)}
-                    className="flex flex-col gap-3 rounded-lg border border-border p-4 md:flex-row md:items-center md:justify-between cursor-pointer hover:bg-muted/50 transition-colors"
+                    className="flex flex-col gap-2 rounded-lg border border-border p-3 md:flex-row md:items-center md:justify-between cursor-pointer hover:bg-muted/50 transition-colors"
                   >
-                    <div className="flex-1 space-y-1">
+                    <div className="flex-1 space-y-0.5">
                       <div className="flex items-center gap-2">
-                        <Badge variant={signal.status === 'ok' ? 'default' : 'destructive'}>
+                        <Badge variant={signal.status === 'ok' ? 'default' : 'destructive'} className="text-xs">
                           {signal.type}
                         </Badge>
-                        <Badge variant="outline">{signal.symbol}</Badge>
-                        <span className="text-sm text-muted-foreground">{bot?.name || `Bot #${signal.botId}`}</span>
+                        <Badge variant="outline" className="text-xs">{signal.symbol}</Badge>
+                        <span className="text-xs text-muted-foreground">{bot?.name || `Bot #${signal.botId}`}</span>
                       </div>
-                      <p className="text-sm">{signal.humanMessage}</p>
-                      <p className="text-xs text-muted-foreground">{formatTime(signal.timestamp)}</p>
+                      <p className="text-xs">{signal.humanMessage}</p>
+                      <p className="text-[10px] text-muted-foreground">{formatTime(signal.timestamp)}</p>
                     </div>
                     <div className="text-right">
-                      <div className="text-sm text-muted-foreground">Latenz</div>
-                      <div className="font-medium">{signal.latencyMs}ms</div>
+                      <div className="text-xs text-muted-foreground">Latenz</div>
+                      <div className="text-sm font-medium">{signal.latencyMs}ms</div>
                     </div>
                   </div>
                 );
               })}
               {mockSignals.length === 0 && (
-                <div className="text-sm text-muted-foreground">Keine Signals gefunden.</div>
+                <div className="text-xs text-muted-foreground">Keine Signals gefunden.</div>
               )}
             </div>
           </CardContent>
@@ -187,6 +205,6 @@ export default function Signals() {
           </pre>
         </DialogContent>
       </Dialog>
-    </>
+    </DashboardLayout>
   );
 }
