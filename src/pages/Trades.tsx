@@ -2,14 +2,12 @@
 // 1) IMPORTS
 // ==============================
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api, { type PositionListItem, type Bot } from '@/lib/api';
 import TradesFiltersBar, { type TradesFilters } from '@/components/app/TradesFiltersBar';
 import TradeCardCompact from '@/components/app/TradeCardCompact';
-import ResponsivePanel from '@/components/ui/ResponsivePanel';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import MiniRange from '@/components/app/MiniRange';
-import TradeDetailPanel from '@/components/app/TradeDetailPanel';
-import { Card } from '@/components/ui/card';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { SlidersHorizontal } from 'lucide-react';
@@ -18,8 +16,6 @@ import { SlidersHorizontal } from 'lucide-react';
 // 2) LOCAL TYPES
 // ==============================
 type TabKey = 'open' | 'closed';
-
-interface SelectedTrade { id: number; symbol: string; }
 
 // ==============================
 // 3) HELPERS (klein & testbar)
@@ -56,6 +52,8 @@ function combineDateTime(dateStr?: string, timeStr?: string): Date | null {
 // 4) COMPONENT
 // ==============================
 export default function Trades() {
+  const navigate = useNavigate();
+  
   // ---- 4.1 STATE (UI & Daten) ----
   const [activeTab, setActiveTab] = useState<TabKey>('open');
   const [filters, setFilters] = useState<TradesFilters>({
@@ -76,9 +74,6 @@ export default function Trades() {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [selected, setSelected] = useState<SelectedTrade | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
   // ---- 4.2 EFFECTS: Daten laden ----
@@ -182,8 +177,9 @@ export default function Trades() {
   const closedTrades = useMemo(() => filtered.filter(t => t.status === 'closed'), [filtered]);
 
   // ---- 4.4 HANDLER ----
-  const handleCardClick = (t: PositionListItem) => { setSelected({ id: t.id, symbol: t.symbol }); setPanelOpen(true); };
-  const closePanel = () => { setPanelOpen(false); setSelected(null); };
+  const handleCardClick = (t: PositionListItem) => { 
+    navigate(`/trade/${t.id}`);
+  };
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -333,15 +329,6 @@ export default function Trades() {
           </div>
         </section>
       )}
-
-        {/* Responsive Modal/Panel: gleiche BG wie Panel-Inhalt */}
-        <ResponsivePanel open={panelOpen} onClose={closePanel}>
-          {selected ? (
-            <div className="bg-white dark:bg-zinc-900">
-              <TradeDetailPanel positionId={selected.id} />
-            </div>
-          ) : null}
-        </ResponsivePanel>
       </div>
     </DashboardLayout>
   );

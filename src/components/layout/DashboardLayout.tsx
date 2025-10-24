@@ -18,11 +18,13 @@ export function DashboardLayout({
   children, 
   pageTitle, 
   mobileHeaderRight,
+  mobileHeaderLeft,
   showBackButton = false,
 }: { 
   children: React.ReactNode;
   pageTitle?: string;
   mobileHeaderRight?: ReactNode;
+  mobileHeaderLeft?: ReactNode;
   showBackButton?: boolean;
 }) {
   const { user, logout } = useAuth();
@@ -67,17 +69,19 @@ export function DashboardLayout({
       {/* Header - Mobile */}
       <header className="lg:hidden sticky top-0 z-40 border-b bg-background">
         <div className="flex h-14 items-center px-4">
-          {/* Back button on left (if enabled) */}
-          {showBackButton && (
-            <Button 
-              variant="ghost" 
-              size="icon"
-              onClick={() => navigate(-1)}
-              className="mr-2"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </Button>
-          )}
+          {/* Left side: back button or custom left element */}
+          <div className="flex items-center gap-2">
+            {mobileHeaderLeft}
+            {showBackButton && !mobileHeaderLeft && (
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={() => navigate(-1)}
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+            )}
+          </div>
           
           {/* Centered title */}
           <h1 className="flex-1 text-center text-[var(--font-size-page-title)] font-semibold">

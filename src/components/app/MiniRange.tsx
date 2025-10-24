@@ -16,12 +16,12 @@ type Props = {
 
 // Layout-Feinjustage (global)
 const TRACK_Y_ADJUST_PX = 0;   // tick exactly meets bar edge
-const LABEL_GAP_PX = -6;        // vertical (Tip → Text)
-const LABEL_SIDE_GAP_PX = 5;   // seitlich (Text ↔ Strich)
+const LABEL_GAP_PX = 3;        // vertical (Tip → Text)
+const LABEL_SIDE_GAP_PX = 0;   // seitlich (Text ↔ Strich)
 
 function labelLeft(xPct: number, align: 'left'|'center'|'right') {
-  if (align === 'left')  return `calc(${xPct}% + ${LABEL_SIDE_GAP_PX}px)`;
-  if (align === 'right') return `calc(${xPct}% - ${LABEL_SIDE_GAP_PX}px)`;
+  if (align === 'left')  return `${xPct}%`;
+  if (align === 'right') return `${xPct}%`;
   return `${xPct}%`;
 }
 
@@ -74,9 +74,13 @@ export default function MiniRange({
   const xEN = clamp01(toPct(entry));
   const xMK = mark == null ? null : clamp01(toPct(mark));
 
-  // label align so we don’t overflow near edges
-  const alignFor = (x: number): 'left' | 'center' | 'right' => x > 90 ? 'right' : 'left';
-  const alignSL: 'left' = 'left';
+  // label align so we don't overflow near edges
+  const alignFor = (x: number): 'left' | 'center' | 'right' => {
+    if (x < 10) return 'left';
+    if (x > 90) return 'right';
+    return 'center';
+  };
+  const alignSL: 'left' | 'right' = 'left';
   const alignTP: 'right' = 'right';
   const alignEN = alignFor(xEN);
   const alignMK = xMK == null ? 'center' : alignFor(xMK);
@@ -98,10 +102,10 @@ export default function MiniRange({
   const H_MARK = Math.round(H_BAR * 2.4);  // 1.5×
 
   return (
-    <div className="py-1.5 px-0">
-      <div className="relative" style={{ height: H_BAR + 24 }}>
+    <div className="py-1 px-0">
+      <div className="relative" style={{ height: H_BAR + 32 }}>
         {/* TRACK WRAPPER: everything inside respects gutters via inset-x style */}
-        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2" style={{ height: H_BAR }}>
+        <div className="absolute inset-x-0" style={{ height: H_BAR, top: '50%', transform: 'translateY(-50%)' }}>
           {/* thick neutral bar */}
           <div className="absolute inset-0 bg-zinc-400 dark:bg-zinc-600 rounded" />
 
@@ -190,13 +194,6 @@ export default function MiniRange({
   );
 }
 
-/**
- * Tick draws ONLY the vertical line and (optionally) a label.
- * It is positioned inside the track wrapper, so % values already respect gutters.
- * For direction:
- *  - 'down': line starts at bar BOTTOM (100%) and goes downward by heightPx
- *  - 'up':   line starts at bar TOP (0%) and goes upward by heightPx
- */
 function Tick({
   xPct,
   align,
@@ -221,11 +218,11 @@ function Tick({
   const tx = align === 'left' ? 'translateX(0)' : align === 'right' ? 'translateX(-100%)' : 'translateX(-50%)';
 
   // vertical anchor at bar edge
-  const baseTop = direction === 'down' ? barHeightPx : -8;
+  const baseTop = direction === 'down' ? barHeightPx : 0;
   const lineTop  = baseTop + TRACK_Y_ADJUST_PX;
   const labelTop = direction === 'down'
-    ? (barHeightPx + heightPx + LABEL_GAP_PX + TRACK_Y_ADJUST_PX)   // unter der Spitze
-    : (0 - heightPx - LABEL_GAP_PX + TRACK_Y_ADJUST_PX);            // über der Spitze
+    ? (barHeightPx + heightPx + labelGapPx + TRACK_Y_ADJUST_PX)   // unter der Spitze
+    : (0 - heightPx - labelGapPx + TRACK_Y_ADJUST_PX);            // über der Spitze
   
     return (
     <>

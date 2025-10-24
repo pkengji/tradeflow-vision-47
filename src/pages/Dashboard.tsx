@@ -255,8 +255,9 @@ export default function Dashboard() {
                   value={ms(summary.timelag_tv_to_bot_ms_filtered + summary.timelag_bot_to_ex_ms_filtered)} 
                 />
                 <div className="pl-4 space-y-0">
-                  <MetricRow label="Timelag TV → Bot" value={ms(summary.timelag_tv_to_bot_ms_filtered)} small />
-                  <MetricRow label="Timelag Bot → Exchange" value={ms(summary.timelag_bot_to_ex_ms_filtered)} small />
+                  <MetricRow label="Entry" value={ms(summary.timelag_tv_to_bot_ms_filtered)} small />
+                  <MetricRow label="Processing time" value={ms(0)} small />
+                  <MetricRow label="Exit" value={ms(summary.timelag_bot_to_ex_ms_filtered)} small />
                 </div>
               </div>
             </CardContent>
@@ -299,8 +300,9 @@ export default function Dashboard() {
                   value={ms(summary.timelag_tv_to_bot_ms_today + summary.timelag_bot_to_ex_ms_today)} 
                 />
                 <div className="pl-4 space-y-0">
-                  <MetricRow label="Timelag TV → Bot" value={ms(summary.timelag_tv_to_bot_ms_today)} small />
-                  <MetricRow label="Timelag Bot → Exchange" value={ms(summary.timelag_bot_to_ex_ms_today)} small />
+                  <MetricRow label="Entry" value={ms(summary.timelag_tv_to_bot_ms_today)} small />
+                  <MetricRow label="Processing time" value={ms(0)} small />
+                  <MetricRow label="Exit" value={ms(summary.timelag_bot_to_ex_ms_today)} small />
                 </div>
               </div>
             </CardContent>
@@ -337,8 +339,9 @@ export default function Dashboard() {
                   value={ms(summary.mtd.timelag_tv_to_bot_ms + summary.mtd.timelag_bot_to_ex_ms)} 
                 />
                 <div className="pl-4 space-y-0">
-                  <MetricRow label="Timelag TV → Bot" value={ms(summary.mtd.timelag_tv_to_bot_ms)} small />
-                  <MetricRow label="Timelag Bot → Exchange" value={ms(summary.mtd.timelag_bot_to_ex_ms)} small />
+                  <MetricRow label="Entry" value={ms(summary.mtd.timelag_tv_to_bot_ms)} small />
+                  <MetricRow label="Processing time" value={ms(0)} small />
+                  <MetricRow label="Exit" value={ms(summary.mtd.timelag_bot_to_ex_ms)} small />
                 </div>
               </div>
             </CardContent>
@@ -375,8 +378,9 @@ export default function Dashboard() {
                   value={ms(summary.last30d.timelag_tv_to_bot_ms + summary.last30d.timelag_bot_to_ex_ms)} 
                 />
                 <div className="pl-4 space-y-0">
-                  <MetricRow label="Timelag TV → Bot" value={ms(summary.last30d.timelag_tv_to_bot_ms)} small />
-                  <MetricRow label="Timelag Bot → Exchange" value={ms(summary.last30d.timelag_bot_to_ex_ms)} small />
+                  <MetricRow label="Entry" value={ms(summary.last30d.timelag_tv_to_bot_ms)} small />
+                  <MetricRow label="Processing time" value={ms(0)} small />
+                  <MetricRow label="Exit" value={ms(summary.last30d.timelag_bot_to_ex_ms)} small />
                 </div>
               </div>
             </CardContent>
