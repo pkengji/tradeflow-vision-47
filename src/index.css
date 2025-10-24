@@ -66,4 +66,14 @@ All colors MUST be HSL.
   body {
     @apply bg-background text-foreground;
   }
+  
+  /* Typography Scale */
+  :root {
+    --font-size-page-title: 1rem; /* 16px - für Seitentitel auf Mobile */
+    --font-size-section-title: 0.875rem; /* 14px - Untertitel 1 (Gesamtansicht etc.) */
+    --font-size-subsection-title: 0.75rem; /* 12px - Untertitel 2 (Portfolio total etc.) */
+    --font-size-value-large: 1.5rem; /* 24px - Portfoliowert */
+    --font-size-value-medium: 1.125rem; /* 18px - Metriken */
+    --font-size-label: 0.75rem; /* 12px - Labels */
+  }
 }

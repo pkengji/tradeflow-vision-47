@@ -6,7 +6,10 @@ import TradesFiltersBar, { type TradesFilters } from '@/components/app/TradesFil
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Link } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, SlidersHorizontal } from 'lucide-react';
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { Button } from '@/components/ui/button';
+import { formatCurrency } from '@/lib/formatters';
 
 // Typen
 type Summary = {
@@ -122,295 +125,329 @@ export default function Dashboard() {
     })();
   }, [filters]);
 
-  // Prüfen ob Zeitfilter aktiv
+  // Prüfen ob Datums- oder Zeitfilter aktiv
+  const hasDateFilter = !!(filters.dateFrom || filters.dateTo);
   const hasTimeFilter = !!(filters.timeFrom || filters.timeTo);
 
+  const [showFilters, setShowFilters] = useState(false);
+
+  const FilterButton = (
+    <Button 
+      variant="ghost" 
+      size="icon"
+      onClick={() => setShowFilters(!showFilters)}
+      className="lg:hidden"
+    >
+      <SlidersHorizontal className="h-5 w-5" />
+    </Button>
+  );
 
   return (
-    <div className="space-y-6 p-4 pb-24 max-w-7xl mx-auto">
-      {/* Filterzeile */}
-      <div className="flex justify-end">
-        <TradesFiltersBar
-          value={filters}
-          onChange={setFilters}
-          availableBots={bots}
-          availableSymbols={symbols}
-          showDateRange={true}
-          showTimeRange={true}
-          showSignalKind={false}
-        />
-      </div>
+    <DashboardLayout pageTitle="Dashboard" mobileHeaderRight={FilterButton}>
+      <div className="space-y-4 p-4 pb-24 max-w-7xl mx-auto">
+        {/* Filterzeile - Desktop */}
+        <div className="hidden lg:flex justify-end">
+          <TradesFiltersBar
+            value={filters}
+            onChange={setFilters}
+            availableBots={bots}
+            availableSymbols={symbols}
+            showDateRange={true}
+            showTimeRange={true}
+            showSignalKind={false}
+          />
+        </div>
 
-      {/* 1. Portfoliowert total - ungefiltert, groß */}
-      {summary && (
-        <Card className="border-primary shadow-lg">
-          <CardContent className="pt-6 pb-6">
-            <div className="text-center">
-              <div className="text-xs sm:text-sm text-muted-foreground mb-2 uppercase tracking-wide">Portfoliowert Total</div>
-              <div className="text-3xl sm:text-4xl md:text-5xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-                {currency(summary.portfolio_total)}
+        {/* Filter-Panel - Mobile */}
+        {showFilters && (
+          <div className="lg:hidden">
+            <TradesFiltersBar
+              value={filters}
+              onChange={setFilters}
+              availableBots={bots}
+              availableSymbols={symbols}
+              showDateRange={true}
+              showTimeRange={true}
+              showSignalKind={false}
+            />
+          </div>
+        )}
+
+        {/* 1. Portfoliowert total - ungefiltert */}
+        {summary && (
+          <Card className="border-primary/50">
+            <CardContent className="pt-4 pb-4">
+              <div className="text-center">
+                <div className="text-[var(--font-size-subsection-title)] text-muted-foreground mb-1">Portfolio total</div>
+                <div className="text-[var(--font-size-value-large)] font-bold text-foreground">
+                  {formatCurrency(summary.portfolio_total)}
+                </div>
               </div>
-              <div className="text-[10px] sm:text-xs text-muted-foreground mt-1">exkl. unrealized P&L</div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </CardContent>
+          </Card>
+        )}
 
-      {/* 2. Gesamtansicht (gefiltert) */}
-      {summary && (
-        <Card className="shadow-md">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base sm:text-lg font-semibold">Gesamtansicht (gefiltert)</CardTitle>
+        {/* 2. Gesamtansicht (gefiltert) */}
+        {summary && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-[var(--font-size-section-title)] font-semibold">Gesamtansicht</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {/* Main Metrics - Simple List */}
+              <div className="space-y-2">
+                <MetricRow label="Realized P&L" value={formatCurrency(summary.pnl_filtered)} />
+                <MetricRow label="Portfoliowert" value={formatCurrency(summary.portfolio_filtered)} />
+                <MetricRow label="Win Rate" value={pct(summary.winrate_filtered)} />
+              </div>
+
+              {/* Transaktionskosten */}
+              <div className="space-y-1">
+                <MetricRow 
+                  label="Transaktionskosten" 
+                  value={pct(summary.fees_pct_filtered_total)} 
+                  bold 
+                />
+                <div className="pl-4 space-y-1">
+                  <MetricRow label="Fees" value={pct(summary.fees_pct_filtered)} small />
+                  <MetricRow label="Slippage (Liquidität)" value={pct(summary.slippage_liq_pct_filtered)} small />
+                  <MetricRow label="Slippage (Timelag)" value={pct(summary.slippage_time_pct_filtered)} small />
+                </div>
+              </div>
+
+              {/* Timelag */}
+              <div className="space-y-1">
+                <MetricRow 
+                  label="Timelag" 
+                  value={ms(summary.timelag_tv_to_bot_ms_filtered + summary.timelag_bot_to_ex_ms_filtered)} 
+                  bold 
+                />
+                <div className="pl-4 space-y-1">
+                  <MetricRow label="Timelag TV → Bot" value={ms(summary.timelag_tv_to_bot_ms_filtered)} small />
+                  <MetricRow label="Timelag Bot → Exchange" value={ms(summary.timelag_bot_to_ex_ms_filtered)} small />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 3. Heute (nur wenn kein Datumsfilter aktiv) */}
+        {summary && !hasDateFilter && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-[var(--font-size-section-title)] font-semibold">Heute</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-2">
+                <Link to="/trades?status=closed">
+                  <MetricRow label="P&L realized heute" value={formatCurrency(summary.pnl_today)} hoverable />
+                </Link>
+                <MetricRow label="Win Rate heute" value={pct(summary.winrate_today)} />
+                <Link to="/trades?status=open">
+                  <MetricRow label="Offene Trades aktuell" value={summary.open_trades_count} hoverable />
+                </Link>
+              </div>
+
+              <div className="space-y-1">
+                <MetricRow 
+                  label="Transaktionskosten" 
+                  value={pct(summary.fees_pct_today_total)} 
+                  bold 
+                />
+                <div className="pl-4 space-y-1">
+                  <MetricRow label="Fees" value={pct(summary.fees_pct_today)} small />
+                  <MetricRow label="Slippage (Liquidität)" value={pct(summary.slippage_liq_pct_today)} small />
+                  <MetricRow label="Slippage (Timelag)" value={pct(summary.slippage_time_pct_today)} small />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <MetricRow 
+                  label="Timelag" 
+                  value={ms(summary.timelag_tv_to_bot_ms_today + summary.timelag_bot_to_ex_ms_today)} 
+                  bold 
+                />
+                <div className="pl-4 space-y-1">
+                  <MetricRow label="Timelag TV → Bot" value={ms(summary.timelag_tv_to_bot_ms_today)} small />
+                  <MetricRow label="Timelag Bot → Exchange" value={ms(summary.timelag_bot_to_ex_ms_today)} small />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 4. Aktueller Monat (nur wenn kein Datumsfilter) */}
+        {summary && !hasDateFilter && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-[var(--font-size-section-title)] font-semibold">Aktueller Monat</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-2">
+                <MetricRow label="Realized P&L" value={formatCurrency(summary.mtd.pnl)} />
+                <MetricRow label="Win Rate" value={pct(summary.mtd.winrate)} />
+              </div>
+
+              <div className="space-y-1">
+                <MetricRow 
+                  label="Transaktionskosten" 
+                  value={pct(summary.mtd.fees_pct_total)} 
+                  bold 
+                />
+                <div className="pl-4 space-y-1">
+                  <MetricRow label="Fees" value={pct(summary.mtd.fees_pct)} small />
+                  <MetricRow label="Slippage (Liquidität)" value={pct(summary.mtd.slippage_liq_pct)} small />
+                  <MetricRow label="Slippage (Timelag)" value={pct(summary.mtd.slippage_time_pct)} small />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <MetricRow 
+                  label="Timelag" 
+                  value={ms(summary.mtd.timelag_tv_to_bot_ms + summary.mtd.timelag_bot_to_ex_ms)} 
+                  bold 
+                />
+                <div className="pl-4 space-y-1">
+                  <MetricRow label="Timelag TV → Bot" value={ms(summary.mtd.timelag_tv_to_bot_ms)} small />
+                  <MetricRow label="Timelag Bot → Exchange" value={ms(summary.mtd.timelag_bot_to_ex_ms)} small />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 5. Letzte 30 Tage (nur wenn kein Datumsfilter) */}
+        {summary && !hasDateFilter && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-[var(--font-size-section-title)] font-semibold">Letzte 30 Tage</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-2">
+                <MetricRow label="Realized P&L" value={formatCurrency(summary.last30d.pnl)} />
+                <MetricRow label="Win Rate" value={pct(summary.last30d.winrate)} />
+              </div>
+
+              <div className="space-y-1">
+                <MetricRow 
+                  label="Transaktionskosten" 
+                  value={pct(summary.last30d.fees_pct_total)} 
+                  bold 
+                />
+                <div className="pl-4 space-y-1">
+                  <MetricRow label="Fees" value={pct(summary.last30d.fees_pct)} small />
+                  <MetricRow label="Slippage (Liquidität)" value={pct(summary.last30d.slippage_liq_pct)} small />
+                  <MetricRow label="Slippage (Timelag)" value={pct(summary.last30d.slippage_time_pct)} small />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <MetricRow 
+                  label="Timelag" 
+                  value={ms(summary.last30d.timelag_tv_to_bot_ms + summary.last30d.timelag_bot_to_ex_ms)} 
+                  bold 
+                />
+                <div className="pl-4 space-y-1">
+                  <MetricRow label="Timelag TV → Bot" value={ms(summary.last30d.timelag_tv_to_bot_ms)} small />
+                  <MetricRow label="Timelag Bot → Exchange" value={ms(summary.last30d.timelag_bot_to_ex_ms)} small />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 6. Equity-Chart */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[var(--font-size-section-title)] font-semibold">Portfoliowert / Tages-P&L</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Main Metrics */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              <MetricCard label="Realized P&L" value={currency(summary.pnl_filtered)} />
-              <MetricCard label="Portfoliowert" value={currency(summary.portfolio_filtered)} />
-              <MetricCard label="Win Rate" value={pct(summary.winrate_filtered)} />
-            </div>
-
-            {/* Transaktionskosten */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center p-2 sm:p-3 bg-muted/30 rounded-lg">
-                <span className="text-sm sm:text-base font-medium">Transaktionskosten Total</span>
-                <span className="text-base sm:text-lg font-bold">{pct(summary.fees_pct_filtered_total)}</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pl-4">
-                <SubMetric label="Fees" value={pct(summary.fees_pct_filtered)} />
-                <SubMetric label="Slippage (Liquidität)" value={pct(summary.slippage_liq_pct_filtered)} />
-                <SubMetric label="Slippage (Timelag)" value={pct(summary.slippage_time_pct_filtered)} />
-              </div>
-            </div>
-
-            {/* Timelag */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center p-2 sm:p-3 bg-muted/30 rounded-lg">
-                <span className="text-sm sm:text-base font-medium">Timelag Total</span>
-                <span className="text-base sm:text-lg font-bold">{ms(summary.timelag_tv_to_bot_ms_filtered + summary.timelag_bot_to_ex_ms_filtered)}</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-4">
-                <SubMetric label="Timelag TV → Bot" value={ms(summary.timelag_tv_to_bot_ms_filtered)} />
-                <SubMetric label="Timelag Bot → Exchange" value={ms(summary.timelag_bot_to_ex_ms_filtered)} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 3. Heute (nur wenn kein Zeitfilter aktiv) */}
-      {summary && !hasTimeFilter && (
-        <Card className="shadow-md">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base sm:text-lg font-semibold">Heute</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Main Metrics */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Link to="/trades?status=closed">
-                <MetricCard label="P&L realized heute" value={currency(summary.pnl_today)} hoverable />
-              </Link>
-              <MetricCard label="Win Rate heute" value={pct(summary.winrate_today)} />
-              <Link to="/trades?status=open">
-                <MetricCard label="Offene Trades aktuell" value={summary.open_trades_count} hoverable />
-              </Link>
-            </div>
-
-            {/* Transaktionskosten */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center p-2 sm:p-3 bg-muted/30 rounded-lg">
-                <span className="text-sm sm:text-base font-medium">Transaktionskosten Total</span>
-                <span className="text-base sm:text-lg font-bold">{pct(summary.fees_pct_today_total)}</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pl-4">
-                <SubMetric label="Fees" value={pct(summary.fees_pct_today)} />
-                <SubMetric label="Slippage (Liquidität)" value={pct(summary.slippage_liq_pct_today)} />
-                <SubMetric label="Slippage (Timelag)" value={pct(summary.slippage_time_pct_today)} />
-              </div>
-            </div>
-
-            {/* Timelag */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center p-2 sm:p-3 bg-muted/30 rounded-lg">
-                <span className="text-sm sm:text-base font-medium">Timelag Total</span>
-                <span className="text-base sm:text-lg font-bold">{ms(summary.timelag_tv_to_bot_ms_today + summary.timelag_bot_to_ex_ms_today)}</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-4">
-                <SubMetric label="Timelag TV → Bot" value={ms(summary.timelag_tv_to_bot_ms_today)} />
-                <SubMetric label="Timelag Bot → Exchange" value={ms(summary.timelag_bot_to_ex_ms_today)} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 4. Aktueller Monat */}
-      {summary && (
-        <Card className="shadow-md">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base sm:text-lg font-semibold">Aktueller Monat</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Main Metrics */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <MetricCard label="Realized P&L" value={currency(summary.mtd.pnl)} />
-              <MetricCard label="Win Rate" value={pct(summary.mtd.winrate)} />
-            </div>
-
-            {/* Transaktionskosten */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center p-2 sm:p-3 bg-muted/30 rounded-lg">
-                <span className="text-sm sm:text-base font-medium">Transaktionskosten Total</span>
-                <span className="text-base sm:text-lg font-bold">{pct(summary.mtd.fees_pct_total)}</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pl-4">
-                <SubMetric label="Fees" value={pct(summary.mtd.fees_pct)} />
-                <SubMetric label="Slippage (Liquidität)" value={pct(summary.mtd.slippage_liq_pct)} />
-                <SubMetric label="Slippage (Timelag)" value={pct(summary.mtd.slippage_time_pct)} />
-              </div>
-            </div>
-
-            {/* Timelag */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center p-2 sm:p-3 bg-muted/30 rounded-lg">
-                <span className="text-sm sm:text-base font-medium">Timelag Total</span>
-                <span className="text-base sm:text-lg font-bold">{ms(summary.mtd.timelag_tv_to_bot_ms + summary.mtd.timelag_bot_to_ex_ms)}</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-4">
-                <SubMetric label="Timelag TV → Bot" value={ms(summary.mtd.timelag_tv_to_bot_ms)} />
-                <SubMetric label="Timelag Bot → Exchange" value={ms(summary.mtd.timelag_bot_to_ex_ms)} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 5. Letzte 30 Tage */}
-      {summary && (
-        <Card className="shadow-md">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base sm:text-lg font-semibold">Letzte 30 Tage</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Main Metrics */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <MetricCard label="Realized P&L" value={currency(summary.last30d.pnl)} />
-              <MetricCard label="Win Rate" value={pct(summary.last30d.winrate)} />
-            </div>
-
-            {/* Transaktionskosten */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center p-2 sm:p-3 bg-muted/30 rounded-lg">
-                <span className="text-sm sm:text-base font-medium">Transaktionskosten Total</span>
-                <span className="text-base sm:text-lg font-bold">{pct(summary.last30d.fees_pct_total)}</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pl-4">
-                <SubMetric label="Fees" value={pct(summary.last30d.fees_pct)} />
-                <SubMetric label="Slippage (Liquidität)" value={pct(summary.last30d.slippage_liq_pct)} />
-                <SubMetric label="Slippage (Timelag)" value={pct(summary.last30d.slippage_time_pct)} />
-              </div>
-            </div>
-
-            {/* Timelag */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center p-2 sm:p-3 bg-muted/30 rounded-lg">
-                <span className="text-sm sm:text-base font-medium">Timelag Total</span>
-                <span className="text-base sm:text-lg font-bold">{ms(summary.last30d.timelag_tv_to_bot_ms + summary.last30d.timelag_bot_to_ex_ms)}</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-4">
-                <SubMetric label="Timelag TV → Bot" value={ms(summary.last30d.timelag_tv_to_bot_ms)} />
-                <SubMetric label="Timelag Bot → Exchange" value={ms(summary.last30d.timelag_bot_to_ex_ms)} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 6. Equity-Chart (nur nach Datumsrange filterbar) */}
-      <Card className="shadow-md">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base sm:text-lg font-semibold">Portfoliowert / Tages-P&L</CardTitle>
-        </CardHeader>
-        <CardContent className="h-64 sm:h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={series}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-muted/50" />
-              <XAxis 
-                dataKey="date" 
-                className="text-xs" 
-                tickFormatter={(value) => formatDate(value)}
-              />
-              <YAxis yAxisId="left" className="text-xs" tickFormatter={(value) => formatCurrencyShort(value)} />
-              <Tooltip
-                contentStyle={{ 
-                  backgroundColor: 'hsl(var(--card))', 
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '8px',
-                  boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-                }}
-                labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 'bold', marginBottom: '8px' }}
-                labelFormatter={(value) => formatDate(value)}
-                formatter={(value: any, name: string, props: any) => {
-                  const index = props.payload ? series.findIndex(d => d.date === props.payload.date) : -1;
-                  const prevEquity = index > 0 ? series[index - 1].equity : props.payload?.equity || 0;
-                  const currentEquity = props.payload?.equity || 0;
-                  const dailyPnl = currentEquity - prevEquity;
-                  
-                  if (name === 'equity') {
-                    return [
-                      <div key="equity" className="space-y-1">
-                        <div>{currency(value)} (Portfoliowert)</div>
-                        <div className={dailyPnl >= 0 ? 'text-green-500' : 'text-red-500'}>
-                          {currency(dailyPnl)} (Tages-P&L)
+          <CardContent className="h-64 sm:h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={series}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted/50" />
+                <XAxis 
+                  dataKey="date" 
+                  className="text-xs" 
+                  tickFormatter={(value) => formatDate(value)}
+                />
+                <YAxis yAxisId="left" className="text-xs" tickFormatter={(value) => formatCurrencyShort(value)} />
+                <Tooltip
+                  contentStyle={{ 
+                    backgroundColor: 'hsl(var(--card))', 
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                  }}
+                  labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 'bold', marginBottom: '8px' }}
+                  labelFormatter={(value) => formatDate(value)}
+                  formatter={(value: any, name: string, props: any) => {
+                    const index = props.payload ? series.findIndex(d => d.date === props.payload.date) : -1;
+                    const prevEquity = index > 0 ? series[index - 1].equity : props.payload?.equity || 0;
+                    const currentEquity = props.payload?.equity || 0;
+                    const dailyPnl = currentEquity - prevEquity;
+                    
+                    if (name === 'equity') {
+                      return [
+                        <div key="equity" className="space-y-1">
+                          <div>{formatCurrency(value)} (Portfoliowert)</div>
+                          <div className={dailyPnl >= 0 ? 'text-green-500' : 'text-red-500'}>
+                            {formatCurrency(dailyPnl)} (Tages-P&L)
+                          </div>
                         </div>
-                      </div>
-                    ];
-                  }
-                  return [value, name];
-                }}
-              />
-              <Line 
-                yAxisId="left" 
-                type="monotone" 
-                dataKey="equity" 
-                stroke="hsl(var(--primary))" 
-                strokeWidth={3} 
-                dot={false}
-                name="equity"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
-    </div>
+                      ];
+                    }
+                    return [value, name];
+                  }}
+                />
+                <Line 
+                  yAxisId="left" 
+                  type="monotone" 
+                  dataKey="equity" 
+                  stroke="hsl(var(--primary))" 
+                  strokeWidth={3} 
+                  dot={false}
+                  name="equity"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+    </DashboardLayout>
   );
 }
 
 // Helper Components
-function MetricCard({ label, value, hoverable = false }: { label: string; value: string | number; hoverable?: boolean }) {
+function MetricRow({ 
+  label, 
+  value, 
+  hoverable = false, 
+  bold = false, 
+  small = false 
+}: { 
+  label: string; 
+  value: string | number; 
+  hoverable?: boolean; 
+  bold?: boolean; 
+  small?: boolean; 
+}) {
   return (
-    <div className={`p-3 rounded-lg border bg-card shadow-sm ${hoverable ? 'hover:shadow-md hover:border-primary/50 transition-all cursor-pointer' : ''}`}>
-      <div className="text-[10px] sm:text-xs text-muted-foreground mb-1 uppercase tracking-wide">{label}</div>
-      <div className="text-lg sm:text-xl font-bold">{value}</div>
+    <div 
+      className={`flex justify-between items-center py-1.5 ${
+        hoverable ? 'hover:bg-muted/30 rounded px-2 -mx-2 cursor-pointer transition-colors' : ''
+      }`}
+    >
+      <span className={`${small ? 'text-xs' : 'text-sm'} ${bold ? 'font-medium' : 'text-muted-foreground'}`}>
+        {label}
+      </span>
+      <span className={`${small ? 'text-xs' : 'text-sm'} ${bold ? 'font-bold' : 'font-semibold'}`}>
+        {value}
+      </span>
     </div>
   );
 }
 
-function SubMetric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="flex flex-col p-2 rounded bg-background">
-      <span className="text-[10px] sm:text-xs text-muted-foreground">{label}</span>
-      <span className="font-semibold text-sm sm:text-base mt-1">{value}</span>
-    </div>
-  );
-}
-
-// Format-Helper mit Schweizer Format (TT.MM.JJJJ, ' als Tausendertrennzeichen, . als Dezimaltrennzeichen)
-function currency(value: number | null | undefined) {
-  if (value == null) return '—';
-  return `$ ${value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, "'")}`;
-}
-
+// Format-Helper
 function formatCurrencyShort(value: number) {
   if (Math.abs(value) >= 1000) {
     return `$ ${(value / 1000).toFixed(1).replace(/\B(?=(\d{3})+(?!\d))/g, "'")}k`;

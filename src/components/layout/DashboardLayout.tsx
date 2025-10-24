@@ -1,9 +1,9 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { LayoutDashboard, TrendingUp, Activity, Bot, Settings, LogOut, Menu } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Activity, Bot, Settings, LogOut, Menu, SlidersHorizontal } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { useState } from 'react';
+import { useState, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 const navigation = [
@@ -14,11 +14,22 @@ const navigation = [
   { name: 'Einstellungen', href: '/settings', icon: Settings },
 ];
 
-export function DashboardLayout({ children }: { children: React.ReactNode }) {
+export function DashboardLayout({ 
+  children, 
+  pageTitle, 
+  mobileHeaderRight 
+}: { 
+  children: React.ReactNode;
+  pageTitle?: string;
+  mobileHeaderRight?: ReactNode;
+}) {
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Auto-detect page title if not provided
+  const currentPageTitle = pageTitle || navigation.find(item => item.href === location.pathname)?.name || 'TradingBot';
 
   const handleLogout = () => {
     logout();
@@ -54,8 +65,15 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       {/* Header */}
       <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="flex h-14 items-center px-4 gap-4">
+          {/* Mobile: Page Title + Filter Button on right */}
+          <div className="lg:hidden flex items-center justify-between w-full">
+            <h1 className="text-[var(--font-size-page-title)] font-semibold">{currentPageTitle}</h1>
+            {mobileHeaderRight && <div>{mobileHeaderRight}</div>}
+          </div>
+
+          {/* Desktop: Logo + Navigation */}
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-            <SheetTrigger asChild className="lg:hidden">
+            <SheetTrigger asChild className="hidden lg:block">
               <Button variant="ghost" size="icon">
                 <Menu className="h-5 w-5" />
               </Button>
@@ -72,17 +90,17 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             </SheetContent>
           </Sheet>
 
-          <div className="flex items-center gap-2">
+          <div className="hidden lg:flex items-center gap-2">
             <TrendingUp className="h-6 w-6" />
-            <h1 className="text-lg font-bold hidden sm:block">TradingBot</h1>
+            <h1 className="text-lg font-bold">TradingBot</h1>
           </div>
 
-          <div className="ml-auto flex items-center gap-4">
-            <div className="text-right hidden sm:block">
+          <div className="ml-auto hidden lg:flex items-center gap-4">
+            <div className="text-right">
               <div className="text-sm font-medium">{user?.email}</div>
               <div className="text-xs text-muted-foreground capitalize">{user?.role}</div>
             </div>
-            <Button variant="ghost" size="icon" onClick={handleLogout} className="hidden lg:flex">
+            <Button variant="ghost" size="icon" onClick={handleLogout}>
               <LogOut className="h-5 w-5" />
             </Button>
           </div>
