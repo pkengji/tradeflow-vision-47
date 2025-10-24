@@ -98,12 +98,12 @@ export default function MiniRange({
   const H_MARK = Math.round(H_BAR * 2.4);  // 1.5×
 
   return (
-    <div className="py-3 px-0">
-      <div className="relative" style={{ height: H_BAR + 28 }}>
+    <div className="py-1.5 px-0">
+      <div className="relative" style={{ height: H_BAR + 24 }}>
         {/* TRACK WRAPPER: everything inside respects gutters via inset-x style */}
         <div className="absolute inset-x-0 top-1/2 -translate-y-1/2" style={{ height: H_BAR }}>
           {/* thick neutral bar */}
-          <div className="absolute inset-0 bg-zinc-300 dark:bg-zinc-600 rounded" />
+          <div className="absolute inset-0 bg-zinc-400 dark:bg-zinc-600 rounded" />
 
           {/* colored segment (fills full bar height) */}
           {xMK != null && (

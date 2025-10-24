@@ -236,14 +236,17 @@ export default function Trades() {
         </div>
       )}
 
-      <div className="space-y-4 p-4 pb-24">
-        {/* Tabs */}
+      {/* Tabs integrated into header area */}
+      <div className="border-b">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)}>
-          <TabsList className="grid w-full grid-cols-2 h-9">
-            <TabsTrigger value="open" className="text-sm">Offen</TabsTrigger>
-            <TabsTrigger value="closed" className="text-sm">Geschlossen</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 h-10 rounded-none border-0 bg-transparent p-0">
+            <TabsTrigger value="open" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary">Offen</TabsTrigger>
+            <TabsTrigger value="closed" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary">Geschlossen</TabsTrigger>
           </TabsList>
         </Tabs>
+      </div>
+
+      <div className="space-y-4 p-4 pb-24">
 
         {/* Filter - Desktop (always visible) */}
         <div className="hidden lg:block">
@@ -271,7 +274,7 @@ export default function Trades() {
               <div
                 key={t.id}
                 onClick={() => handleCardClick(t)}
-                className="cursor-pointer hover:bg-muted/30 transition-colors py-3"
+                className="cursor-pointer hover:bg-muted/30 transition-colors py-2"
               >
                 <TradeCardCompact
                   symbol={t.symbol}
@@ -280,6 +283,7 @@ export default function Trades() {
                   botName={t.bot_name ?? undefined}
                   deltaPct={undefined}
                   onClick={() => {}}
+                  variant="plain"
                 />
                 <MiniRange
                   labelEntry={t.side === 'short' ? 'Sell' : 'Buy'}
@@ -305,7 +309,7 @@ export default function Trades() {
               <div
                 key={t.id}
                 onClick={() => handleCardClick(t)}
-                className="cursor-pointer hover:bg-muted/30 transition-colors py-3"
+                className="cursor-pointer hover:bg-muted/30 transition-colors py-2"
               >
                 <TradeCardCompact
                   symbol={t.symbol}
@@ -314,6 +318,7 @@ export default function Trades() {
                   botName={t.bot_name ?? undefined}
                   deltaPct={undefined}
                   onClick={() => {}}
+                  variant="plain"
                 />
                 <MiniRange
                   labelEntry={t.side === 'short' ? 'Sell' : 'Buy'}
