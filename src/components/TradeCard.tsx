@@ -1,59 +1,63 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { ArrowUpRight, ArrowDownRight, ExternalLink } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Position } from '@/types/api';
+import { formatPrice, formatCurrency } from '@/lib/formatters';
 
 interface TradeCardProps {
   position: Position;
 }
 
 export function TradeCard({ position }: TradeCardProps) {
-  const formatPrice = (price: number, symbol: string) => {
-    const decimals = symbol.includes('XRP') || symbol.includes('ADA') ? 4 : 2;
-    return price.toFixed(decimals);
-  };
+  const isLong = position.side === 'long';
 
   const entryPrice = position.entryFillPrice || position.entrySignalPrice;
-  const minPrice = Math.min(entryPrice, position.tp || entryPrice, position.sl || entryPrice);
-  const maxPrice = Math.max(entryPrice, position.tp || entryPrice, position.sl || entryPrice);
+  const currentPrice = position.currentPrice || entryPrice;
+  
+  // For shorts, reverse the display so higher values are on the right
+  const sl = position.sl || entryPrice;
+  const tp = position.tp || entryPrice;
+  
+  const minPrice = Math.min(entryPrice, sl, tp, currentPrice);
+  const maxPrice = Math.max(entryPrice, sl, tp, currentPrice);
   const priceRange = maxPrice - minPrice;
 
   const getPosition = (price: number) => {
     if (priceRange === 0) return 50;
-    return ((price - minPrice) / priceRange) * 100;
+    if (isLong) {
+      return ((price - minPrice) / priceRange) * 100;
+    } else {
+      // For shorts, reverse the scale
+      return ((maxPrice - price) / priceRange) * 100;
+    }
   };
 
   return (
-    <Card className="hover:bg-accent/50 transition-colors">
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between mb-3">
-          <div>
+    <Card className="hover:bg-accent/50 transition-colors shadow-md">
+      <CardContent className="p-3">
+        <div className="flex items-start justify-between mb-2">
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <h3 className="font-semibold text-lg">{position.symbol}</h3>
+              <h3 className="font-semibold text-base truncate">{position.symbol}</h3>
               <Badge 
-                variant={position.side === 'long' ? 'default' : 'destructive'}
-                className={`${position.side === 'long' ? 'bg-success hover:bg-success/80' : 'bg-danger hover:bg-danger/80'} text-xs h-5`}
+                variant={isLong ? 'default' : 'destructive'}
+                className={`${isLong ? 'bg-[hsl(var(--long))] hover:bg-[hsl(var(--long))]/80 text-[hsl(var(--long-foreground))]' : 'bg-[hsl(var(--short))] hover:bg-[hsl(var(--short))]/80 text-[hsl(var(--short-foreground))]'} text-xs px-2 py-0`}
               >
-                {position.side === 'long' ? (
-                  <ArrowUpRight className="h-3 w-3 mr-1" />
-                ) : (
-                  <ArrowDownRight className="h-3 w-3 mr-1" />
-                )}
                 {position.side.toUpperCase()}
                 {position.leverage && ` ×${position.leverage}`}
               </Badge>
             </div>
-            <p className="text-sm text-muted-foreground">{position.botName}</p>
+            <p className="text-xs text-muted-foreground truncate">{position.botName}</p>
           </div>
           
-          <div className="text-right">
-            <div className={`text-xl font-bold ${position.pnl !== undefined && position.pnl >= 0 ? 'text-success' : 'text-danger'}`}>
-              {position.pnl !== undefined ? `${position.pnl >= 0 ? '+' : ''}$${position.pnl.toFixed(2)}` : '-'}
+          <div className="text-right ml-2">
+            <div className={`text-lg font-bold ${position.pnl !== undefined && position.pnl >= 0 ? 'text-[hsl(var(--long))]' : 'text-[hsl(var(--short))]'}`}>
+              {position.pnl !== undefined ? `${formatCurrency(position.pnl, true)}` : '—'}
             </div>
             {position.pnlPct !== undefined && (
-              <div className={`text-sm ${position.pnlPct >= 0 ? 'text-success' : 'text-danger'}`}>
+              <div className={`text-xs ${position.pnlPct >= 0 ? 'text-[hsl(var(--long))]' : 'text-[hsl(var(--short))]'}`}>
                 {position.pnlPct > 0 ? '+' : ''}{position.pnlPct.toFixed(2)}%
               </div>
             )}
@@ -61,19 +65,19 @@ export function TradeCard({ position }: TradeCardProps) {
         </div>
 
         {/* Price Visualization Widget */}
-        <div className="mb-3">
-          <div className="relative h-12 rounded bg-secondary/50">
+        <div className="mb-2">
+          <div className="relative h-10 rounded bg-secondary/50">
             {/* Entry Point */}
             <div
               className="absolute top-1/2 -translate-y-1/2 z-10"
               style={{ left: `${getPosition(entryPrice)}%` }}
             >
               <div className="relative flex flex-col items-center">
-                <div className="text-[10px] font-medium whitespace-nowrap mb-1">
-                  {formatPrice(entryPrice, position.symbol)}
+                <div className="text-[10px] font-medium whitespace-nowrap mb-0.5">
+                  {formatPrice(entryPrice)}
                 </div>
-                <div className={`h-6 w-0.5 ${position.side === 'long' ? 'bg-success' : 'bg-danger'}`} />
-                <div className="text-[10px] text-muted-foreground mt-1">ENTRY</div>
+                <div className={`h-5 w-0.5 ${isLong ? 'bg-[hsl(var(--long))]' : 'bg-[hsl(var(--short))]'}`} />
+                <div className="text-[9px] text-muted-foreground mt-0.5">ENTRY</div>
               </div>
             </div>
 
@@ -84,11 +88,11 @@ export function TradeCard({ position }: TradeCardProps) {
                 style={{ left: `${getPosition(position.sl)}%` }}
               >
                 <div className="relative flex flex-col items-center">
-                  <div className="text-[10px] text-danger font-medium whitespace-nowrap mb-1">
-                    {formatPrice(position.sl, position.symbol)}
+                  <div className="text-[10px] text-[hsl(var(--short))] font-medium whitespace-nowrap mb-0.5">
+                    {formatPrice(position.sl)}
                   </div>
-                  <div className="h-6 w-0.5 bg-danger/60" />
-                  <div className="text-[10px] text-danger mt-1">SL</div>
+                  <div className="h-5 w-0.5 bg-[hsl(var(--short))]/60" />
+                  <div className="text-[9px] text-[hsl(var(--short))] mt-0.5">SL</div>
                 </div>
               </div>
             )}
@@ -100,11 +104,11 @@ export function TradeCard({ position }: TradeCardProps) {
                 style={{ left: `${getPosition(position.tp)}%` }}
               >
                 <div className="relative flex flex-col items-center">
-                  <div className="text-[10px] text-success font-medium whitespace-nowrap mb-1">
-                    {formatPrice(position.tp, position.symbol)}
+                  <div className="text-[10px] text-[hsl(var(--long))] font-medium whitespace-nowrap mb-0.5">
+                    {formatPrice(position.tp)}
                   </div>
-                  <div className="h-6 w-0.5 bg-success/60" />
-                  <div className="text-[10px] text-success mt-1">TP</div>
+                  <div className="h-5 w-0.5 bg-[hsl(var(--long))]/60" />
+                  <div className="text-[9px] text-[hsl(var(--long))] mt-0.5">TP</div>
                 </div>
               </div>
             )}
@@ -116,11 +120,11 @@ export function TradeCard({ position }: TradeCardProps) {
                 style={{ left: `${getPosition(position.currentPrice)}%` }}
               >
                 <div className="relative flex flex-col items-center">
-                  <div className="text-[10px] font-bold whitespace-nowrap mb-1 text-primary">
-                    {formatPrice(position.currentPrice, position.symbol)}
+                  <div className="text-[10px] font-bold whitespace-nowrap mb-0.5 text-primary">
+                    {formatPrice(position.currentPrice)}
                   </div>
-                  <div className="h-6 w-1 bg-primary" />
-                  <div className="text-[10px] font-medium text-primary mt-1">NOW</div>
+                  <div className="h-5 w-1 bg-primary" />
+                  <div className="text-[9px] font-medium text-primary mt-0.5">NOW</div>
                 </div>
               </div>
             )}
@@ -129,14 +133,14 @@ export function TradeCard({ position }: TradeCardProps) {
 
         {/* Additional Info */}
         <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <div className="flex gap-4">
-            <span>Entry: {formatPrice(entryPrice, position.symbol)}</span>
+          <div className="flex gap-3">
+            <span>Entry: {formatPrice(entryPrice)}</span>
             {position.currentPrice && (
-              <span>Now: {formatPrice(position.currentPrice, position.symbol)}</span>
+              <span>Now: {formatPrice(position.currentPrice)}</span>
             )}
           </div>
           <Link to={`/trades/${position.id}`}>
-            <Button variant="ghost" size="sm" className="h-7 px-2">
+            <Button variant="ghost" size="sm" className="h-6 px-2">
               <ExternalLink className="h-3 w-3" />
             </Button>
           </Link>

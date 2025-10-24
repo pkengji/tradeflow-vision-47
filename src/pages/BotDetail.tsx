@@ -176,12 +176,12 @@ export default function BotDetail() {
             />
           </div>
 
-          {!isNew && bot && (
-            <>
-              <MaskedSecret label="UUID" value={bot.uuid || '—'} copyOnly />
-              <MaskedSecret label="Secret" value={bot.secret || '—'} />
-            </>
-          )}
+      {!isNew && bot && (
+        <>
+          <MaskedSecret label="UUID" value={bot.uuid || '—'} copyOnly />
+          <MaskedSecret label="Secret" value={bot.secret || '—'} />
+        </>
+      )}
 
           <div className="flex items-center justify-between pt-2 border-t">
             <Label htmlFor="autoApprove" className="text-sm">Auto-Approve</Label>
@@ -343,10 +343,11 @@ export default function BotDetail() {
                         tvMultiplier: parseFloat(e.target.value) || 1.0
                       })}
                     />
+                  <div>
                     <Button
                       size="sm"
                       variant={pair.directions.long ? 'default' : 'outline'}
-                      className="h-7 px-2 text-xs"
+                      className={`h-7 px-2 text-xs ${pair.directions.long ? 'bg-long hover:bg-long/80 text-long-foreground' : ''}`}
                       onClick={() => updatePair(pair.symbol, {
                         directions: { ...pair.directions, long: !pair.directions.long }
                       })}
@@ -355,14 +356,15 @@ export default function BotDetail() {
                     </Button>
                     <Button
                       size="sm"
-                      variant={pair.directions.short ? 'default' : 'outline'}
-                      className="h-7 px-2 text-xs"
+                      variant={pair.directions.short ? 'destructive' : 'outline'}
+                      className={`h-7 px-2 text-xs ml-1 ${pair.directions.short ? 'bg-short hover:bg-short/80 text-short-foreground' : ''}`}
                       onClick={() => updatePair(pair.symbol, {
                         directions: { ...pair.directions, short: !pair.directions.short }
                       })}
                     >
                       S
                     </Button>
+                  </div>
                   </div>
 
                   <Button

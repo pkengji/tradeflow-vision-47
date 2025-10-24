@@ -49,6 +49,12 @@ All colors MUST be HSL.
     --chart-3: 0 70% 50%;
     --chart-4: 43 80% 55%;
     --chart-5: 280 60% 58%;
+
+    /* Trading-specific colors */
+    --long: 142 70% 45%;
+    --long-foreground: 144 61% 95%;
+    --short: 0 70% 50%;
+    --short-foreground: 0 86% 97%;
   }
 }
 

@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import MiniRange from '@/components/app/MiniRange';
+import { formatPrice, formatCurrency, formatMs } from '@/lib/formatters';
 
 type Props = { positionId: number };
 
@@ -103,69 +104,71 @@ export default function TradeDetailPanel({ positionId }: Props) {
     }
   };
 
-  const fmt = (v: number | null | undefined) =>
-    v == null ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: 6 });
-
-  const fmtMs = (ms: number | null | undefined) =>
-    ms == null ? '—' : `${ms}ms`;
+  const isLong = position?.side === 'long';
 
   return (
-    <div className="relative pb-20">
-      <div className="space-y-4">
+    <div className="relative pb-24">
+      <div className="space-y-3">
         {/* Header Card */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Position #{pid}</CardTitle>
+        <Card className="shadow-md">
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <CardTitle className="text-base">Position #{pid}</CardTitle>
             {position?.status && (
-              <Badge variant={isOpen ? 'default' : 'secondary'} className="uppercase">
+              <Badge variant={isOpen ? 'default' : 'secondary'} className="uppercase text-xs">
                 {position.status}
               </Badge>
             )}
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3">
             {!posLoading && position && (
               <>
-                {/* Basis-Infos */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
-                    <div className="text-muted-foreground text-xs mb-1">Symbol</div>
-                    <div className="font-semibold">{position.symbol}</div>
+                    <div className="text-muted-foreground mb-0.5">Symbol</div>
+                    <div className="font-semibold flex items-center gap-1.5">
+                      {position.symbol}
+                      <Badge 
+                        variant={isLong ? "default" : "destructive"}
+                        className={`${isLong ? 'bg-long hover:bg-long/80 text-long-foreground' : 'bg-short hover:bg-short/80 text-short-foreground'} text-[10px] px-1.5 py-0 h-4`}
+                      >
+                        {position.side.toUpperCase()}
+                      </Badge>
+                    </div>
                   </div>
                   <div>
-                    <div className="text-muted-foreground text-xs mb-1">Seite</div>
-                    <div className="font-semibold uppercase">{position.side}</div>
+                    <div className="text-muted-foreground mb-0.5">Leverage</div>
+                    <div className="font-semibold">{position.leverage_size || '—'}x</div>
                   </div>
                   <div>
-                    <div className="text-muted-foreground text-xs mb-1">Entry Preis</div>
-                    <div className="font-semibold">{fmt(position.entry_price)}</div>
+                    <div className="text-muted-foreground mb-0.5">Entry Preis</div>
+                    <div className="font-semibold">{formatPrice(position.entry_price)}</div>
                   </div>
                   <div>
-                    <div className="text-muted-foreground text-xs mb-1">Trigger Preis</div>
-                    <div className="font-semibold">{fmt(position.trigger_price)}</div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                  <div>
-                    <div className="text-muted-foreground text-xs mb-1">QTY (Base)</div>
-                    <div className="font-semibold">{fmt(position.qty ?? position.tv_qty)}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground text-xs mb-1">Positionsgröße</div>
-                    <div className="font-semibold">{fmt(position.position_size_usdt)} USDT</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground text-xs mb-1">Trade ID</div>
-                    <div className="font-mono text-xs">{position.trade_id || '—'}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground text-xs mb-1">Leverage</div>
-                    <div className="font-semibold">{position.leverage_size || '—'}x ({position.leverage_type || '—'})</div>
+                    <div className="text-muted-foreground mb-0.5">Trigger Preis</div>
+                    <div className="font-semibold">{formatPrice(position.trigger_price)}</div>
                   </div>
                 </div>
 
-                {/* Mini-Grafik */}
-                <div className="pt-2">
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <div className="text-muted-foreground mb-0.5">QTY (Base)</div>
+                    <div className="font-semibold">{formatPrice(position.qty ?? position.tv_qty)}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground mb-0.5">Positionsgröße</div>
+                    <div className="font-semibold">{formatPrice(position.position_size_usdt)} USDT</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground mb-0.5">Trade ID</div>
+                    <div className="font-mono text-[10px]">{position.trade_id || '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground mb-0.5">Leverage Type</div>
+                    <div className="font-semibold">{position.leverage_type || '—'}</div>
+                  </div>
+                </div>
+
+                <div className="pt-1">
                   <MiniRange
                     labelEntry={position.side === 'short' ? 'SELL' : 'BUY'}
                     entry={position.entry_price ?? null}
@@ -181,33 +184,33 @@ export default function TradeDetailPanel({ positionId }: Props) {
 
         {/* Transaktionskosten */}
         {position && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Transaktionskosten</CardTitle>
+          <Card className="shadow-md">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Transaktionskosten</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+            <CardContent className="space-y-2">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
                 <div>
-                  <div className="text-muted-foreground text-xs mb-1">Fees Total</div>
+                  <div className="text-muted-foreground mb-0.5">Fees Total</div>
                   <div className="font-semibold">
-                    {fmt((position.fee_open_usdt || 0) + (position.fee_close_usdt || 0))} USDT
+                    {formatCurrency((position.fee_open_usdt || 0) + (position.fee_close_usdt || 0))}
                   </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    Open: {fmt(position.fee_open_usdt)} / Close: {fmt(position.fee_close_usdt)}
+                  <div className="text-[10px] text-muted-foreground mt-0.5">
+                    Open: {formatCurrency(position.fee_open_usdt)} / Close: {formatCurrency(position.fee_close_usdt)}
                   </div>
                 </div>
                 <div>
-                  <div className="text-muted-foreground text-xs mb-1">Slippage Liquidität</div>
+                  <div className="text-muted-foreground mb-0.5">Slippage Liquidität</div>
                   <div className="font-semibold">
-                    {fmt((position.slippage_liquidity_open || 0) + (position.slippage_liquidity_close || 0))} USDT
+                    {formatCurrency((position.slippage_liquidity_open || 0) + (position.slippage_liquidity_close || 0))}
                   </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    Open: {fmt(position.slippage_liquidity_open)} / Close: {fmt(position.slippage_liquidity_close)}
+                  <div className="text-[10px] text-muted-foreground mt-0.5">
+                    Open: {formatCurrency(position.slippage_liquidity_open)} / Close: {formatCurrency(position.slippage_liquidity_close)}
                   </div>
                 </div>
                 <div>
-                  <div className="text-muted-foreground text-xs mb-1">Slippage Timelag</div>
-                  <div className="font-semibold">{fmt(position.slippage_timelag)} USDT</div>
+                  <div className="text-muted-foreground mb-0.5">Slippage Timelag</div>
+                  <div className="font-semibold">{formatCurrency(position.slippage_timelag)}</div>
                 </div>
               </div>
             </CardContent>
@@ -216,23 +219,23 @@ export default function TradeDetailPanel({ positionId }: Props) {
 
         {/* Timelag Open */}
         {position && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Timelag Open</CardTitle>
+          <Card className="shadow-md">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Timelag Open</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-3 gap-3 text-sm">
+            <CardContent>
+              <div className="grid grid-cols-3 gap-2 text-xs">
                 <div>
-                  <div className="text-muted-foreground text-xs mb-1">TradingView → Bot</div>
-                  <div className="font-semibold font-mono">{fmtMs(position.timelag_tv_to_bot)}</div>
+                  <div className="text-muted-foreground mb-0.5">TV → Bot</div>
+                  <div className="font-semibold font-mono">{formatMs(position.timelag_tv_to_bot)}</div>
                 </div>
                 <div>
-                  <div className="text-muted-foreground text-xs mb-1">Bot Processing</div>
-                  <div className="font-semibold font-mono">{fmtMs(position.timelag_bot_processing)}</div>
+                  <div className="text-muted-foreground mb-0.5">Bot Processing</div>
+                  <div className="font-semibold font-mono">{formatMs(position.timelag_bot_processing)}</div>
                 </div>
                 <div>
-                  <div className="text-muted-foreground text-xs mb-1">Bot → Exchange</div>
-                  <div className="font-semibold font-mono">{fmtMs(position.timelag_bot_to_exchange)}</div>
+                  <div className="text-muted-foreground mb-0.5">Bot → Exchange</div>
+                  <div className="font-semibold font-mono">{formatMs(position.timelag_bot_to_exchange)}</div>
                 </div>
               </div>
             </CardContent>
@@ -241,23 +244,23 @@ export default function TradeDetailPanel({ positionId }: Props) {
 
         {/* Timelag Close */}
         {position && position.status === 'closed' && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Timelag Close</CardTitle>
+          <Card className="shadow-md">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Timelag Close</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-3 gap-3 text-sm">
+            <CardContent>
+              <div className="grid grid-cols-3 gap-2 text-xs">
                 <div>
-                  <div className="text-muted-foreground text-xs mb-1">TradingView → Bot</div>
-                  <div className="font-semibold font-mono">{fmtMs(position.timelag_close_tv_to_bot)}</div>
+                  <div className="text-muted-foreground mb-0.5">TV → Bot</div>
+                  <div className="font-semibold font-mono">{formatMs(position.timelag_close_tv_to_bot)}</div>
                 </div>
                 <div>
-                  <div className="text-muted-foreground text-xs mb-1">Bot Processing</div>
-                  <div className="font-semibold font-mono">{fmtMs(position.timelag_close_bot_processing)}</div>
+                  <div className="text-muted-foreground mb-0.5">Bot Processing</div>
+                  <div className="font-semibold font-mono">{formatMs(position.timelag_close_bot_processing)}</div>
                 </div>
                 <div>
-                  <div className="text-muted-foreground text-xs mb-1">Bot → Exchange</div>
-                  <div className="font-semibold font-mono">{fmtMs(position.timelag_close_bot_to_exchange)}</div>
+                  <div className="text-muted-foreground mb-0.5">Bot → Exchange</div>
+                  <div className="font-semibold font-mono">{formatMs(position.timelag_close_bot_to_exchange)}</div>
                 </div>
               </div>
             </CardContent>
@@ -265,17 +268,17 @@ export default function TradeDetailPanel({ positionId }: Props) {
         )}
 
         {/* Collapsible JSON Sections */}
-        <Card>
+        <Card className="shadow-sm">
           <Collapsible open={positionOpen} onOpenChange={setPositionOpen}>
-            <CardHeader className="cursor-pointer" onClick={() => setPositionOpen(!positionOpen)}>
+            <CardHeader className="cursor-pointer pb-2" onClick={() => setPositionOpen(!positionOpen)}>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Position (Raw JSON)</CardTitle>
-                {positionOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                <CardTitle className="text-sm">Position (Raw JSON)</CardTitle>
+                {positionOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
               </div>
             </CardHeader>
             <CollapsibleContent>
-              <CardContent>
-                <pre className="text-xs overflow-auto bg-muted/40 rounded p-2 max-h-60">
+              <CardContent className="pt-0">
+                <pre className="text-[10px] overflow-auto bg-muted/40 rounded p-2 max-h-48">
                   {JSON.stringify(position, null, 2)}
                 </pre>
               </CardContent>
@@ -283,17 +286,17 @@ export default function TradeDetailPanel({ positionId }: Props) {
           </Collapsible>
         </Card>
 
-        <Card>
+        <Card className="shadow-sm">
           <Collapsible open={ordersOpen} onOpenChange={setOrdersOpen}>
-            <CardHeader className="cursor-pointer" onClick={() => setOrdersOpen(!ordersOpen)}>
+            <CardHeader className="cursor-pointer pb-2" onClick={() => setOrdersOpen(!ordersOpen)}>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Orders (Raw JSON)</CardTitle>
-                {ordersOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                <CardTitle className="text-sm">Orders (Raw JSON)</CardTitle>
+                {ordersOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
               </div>
             </CardHeader>
             <CollapsibleContent>
-              <CardContent>
-                <pre className="text-xs overflow-auto bg-muted/40 rounded p-2 max-h-60">
+              <CardContent className="pt-0">
+                <pre className="text-[10px] overflow-auto bg-muted/40 rounded p-2 max-h-48">
                   {JSON.stringify(orders, null, 2)}
                 </pre>
               </CardContent>
@@ -301,17 +304,17 @@ export default function TradeDetailPanel({ positionId }: Props) {
           </Collapsible>
         </Card>
 
-        <Card>
+        <Card className="shadow-sm">
           <Collapsible open={fundingOpen} onOpenChange={setFundingOpen}>
-            <CardHeader className="cursor-pointer" onClick={() => setFundingOpen(!fundingOpen)}>
+            <CardHeader className="cursor-pointer pb-2" onClick={() => setFundingOpen(!fundingOpen)}>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Funding (Raw JSON)</CardTitle>
-                {fundingOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                <CardTitle className="text-sm">Funding (Raw JSON)</CardTitle>
+                {fundingOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
               </div>
             </CardHeader>
             <CollapsibleContent>
-              <CardContent>
-                <pre className="text-xs overflow-auto bg-muted/40 rounded p-2 max-h-60">
+              <CardContent className="pt-0">
+                <pre className="text-[10px] overflow-auto bg-muted/40 rounded p-2 max-h-48">
                   {JSON.stringify(funding, null, 2)}
                 </pre>
               </CardContent>
@@ -320,13 +323,13 @@ export default function TradeDetailPanel({ positionId }: Props) {
         </Card>
       </div>
 
-      {/* Sticky Action Bar (nur bei offenen Trades) */}
+      {/* Sticky Action Bar */}
       {isOpen && (
-        <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4 z-50">
+        <div className="fixed bottom-16 left-0 right-0 bg-card/95 backdrop-blur-sm border-t border-border p-3 z-[100] shadow-lg">
           <div className="max-w-lg mx-auto">
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
-                <Button className="w-full" size="lg">
+                <Button className="w-full" size="default">
                   Aktion (Close / SL / TP)
                 </Button>
               </DialogTrigger>
@@ -355,20 +358,20 @@ export default function TradeDetailPanel({ positionId }: Props) {
                 {action === 'sltp' && (
                   <div className="grid gap-3">
                     <div className="grid gap-1.5">
-                      <Label htmlFor="sl">SL-Trigger-Preis (optional)</Label>
+                      <Label htmlFor="sl" className="text-sm">SL-Trigger-Preis (optional)</Label>
                       <Input
                         id="sl"
-                        placeholder="z.B. 2.4512"
+                        placeholder="z.B. 2.45"
                         inputMode="decimal"
                         value={sl}
                         onChange={(e) => setSl(e.target.value)}
                       />
                     </div>
                     <div className="grid gap-1.5">
-                      <Label htmlFor="tp">TP-Preis (optional)</Label>
+                      <Label htmlFor="tp" className="text-sm">TP-Preis (optional)</Label>
                       <Input
                         id="tp"
-                        placeholder="z.B. 2.4890"
+                        placeholder="z.B. 2.48"
                         inputMode="decimal"
                         value={tp}
                         onChange={(e) => setTp(e.target.value)}
