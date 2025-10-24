@@ -17,13 +17,6 @@ type Props = {
 // Layout-Feinjustage (global)
 const TRACK_Y_ADJUST_PX = 0;   // tick exactly meets bar edge
 const LABEL_GAP_PX = 3;        // vertical (Tip → Text)
-const LABEL_SIDE_GAP_PX = 0;   // seitlich (Text ↔ Strich)
-
-function labelLeft(xPct: number, align: 'left'|'center'|'right') {
-  if (align === 'left')  return `${xPct}%`;
-  if (align === 'right') return `${xPct}%`;
-  return `${xPct}%`;
-}
 
 export default function MiniRange({
   sl, entry, tp, mark, labelEntry = 'ENTRY', side = 'long',
@@ -37,7 +30,7 @@ export default function MiniRange({
     const barColor = mark != null ? (hasProfit ? 'bg-success' : 'bg-danger') : 'bg-zinc-400';
     
     return (
-      <div className="py-3 px-0">
+      <div className="py-3 px-0 pb-4">
         <div className="relative h-2">
           <div className={`absolute inset-y-0 left-0 right-0 ${barColor} rounded`} />
           <div className="absolute -bottom-5 left-0 text-[10px] text-muted-foreground">
@@ -58,7 +51,6 @@ export default function MiniRange({
   }
 
   // --- layout constants
-  const GUTTER_PX = 24;         // inner left/right padding for everything
   const BAR_THICK_PX = 6;       // ~2x thicker bar
   const LABEL_GAP_PX = 3;       // distance between tick tip and label
 
@@ -76,11 +68,13 @@ export default function MiniRange({
 
   // label align so we don't overflow near edges
   const alignFor = (x: number): 'left' | 'center' | 'right' => {
-    if (x < 10) return 'left';
-    if (x > 90) return 'right';
+    if (x < 15) return 'left';
+    if (x > 85) return 'right';
     return 'center';
   };
-  const alignSL: 'left' | 'right' = 'left';
+  
+  // SL is always on the left side, TP always on the right
+  const alignSL: 'left' = 'left';
   const alignTP: 'right' = 'right';
   const alignEN = alignFor(xEN);
   const alignMK = xMK == null ? 'center' : alignFor(xMK);
@@ -102,8 +96,8 @@ export default function MiniRange({
   const H_MARK = Math.round(H_BAR * 2.4);  // 1.5×
 
   return (
-    <div className="py-1 px-0">
-      <div className="relative" style={{ height: H_BAR + 32 }}>
+    <div className="py-1 px-0 pb-4">
+      <div className="relative" style={{ height: H_BAR + 36 }}>
         {/* TRACK WRAPPER: everything inside respects gutters via inset-x style */}
         <div className="absolute inset-x-0" style={{ height: H_BAR, top: '50%', transform: 'translateY(-50%)' }}>
           {/* thick neutral bar */}
@@ -183,7 +177,7 @@ export default function MiniRange({
                   labelGapPx={LABEL_GAP_PX}
                   percent={pct}
                   price={mark}
-                  percentClass={gainColor}
+                  percentColor={gainColor}
                 />
               </>
             )}
@@ -215,16 +209,23 @@ function Tick({
   title?: React.ReactNode;
   value?: React.ReactNode;
 }) {
-  const tx = align === 'left' ? 'translateX(0)' : align === 'right' ? 'translateX(-100%)' : 'translateX(-50%)';
+  // Transform based on alignment to prevent overflow
+  const getTransform = () => {
+    if (align === 'left') return 'translateX(0)';      // Start at position
+    if (align === 'right') return 'translateX(-100%)'; // End at position
+    return 'translateX(-50%)';                         // Center at position
+  };
 
   // vertical anchor at bar edge
   const baseTop = direction === 'down' ? barHeightPx : 0;
   const lineTop  = baseTop + TRACK_Y_ADJUST_PX;
   const labelTop = direction === 'down'
-    ? (barHeightPx + heightPx + labelGapPx + TRACK_Y_ADJUST_PX)   // unter der Spitze
-    : (0 - heightPx - labelGapPx + TRACK_Y_ADJUST_PX);            // über der Spitze
+    ? (barHeightPx + heightPx + labelGapPx + TRACK_Y_ADJUST_PX)
+    : (0 - heightPx - labelGapPx + TRACK_Y_ADJUST_PX);
   
-    return (
+  const transform = getTransform();
+
+  return (
     <>
       {/* vertical line */}
       <div
@@ -234,14 +235,18 @@ function Tick({
           top: lineTop,
           width: 2,
           height: heightPx,
-          transform: tx,
+          transform,
         }}
       />
-      {/* SL/ENTRY/TP labels (only for 'down'; MARK uses its own label component) */}
+      {/* SL/ENTRY/TP labels */}
       {direction === 'down' && (title || value) && (
         <div
           className="absolute whitespace-nowrap text-[10px] leading-tight"
-          style={{ left: labelLeft(xPct, align), top: labelTop, transform: tx }}
+          style={{ 
+            left: `${xPct}%`, 
+            top: labelTop, 
+            transform,
+          }}
         >
           {title}
           {title && value ? <span className="mx-[3px]" /> : null}
@@ -260,7 +265,7 @@ function MarkLabel({
   labelGapPx,
   percent,
   price,
-  percentClass,
+  percentColor,
 }: {
   xPct: number;
   align: 'left' | 'center' | 'right';
@@ -269,9 +274,14 @@ function MarkLabel({
   labelGapPx: number;
   percent: number | null;
   price: number | null | undefined;
-  percentClass: string;
+  percentColor: string;
 }) {
-  const tx = align === 'left' ? 'translateX(0)' : align === 'right' ? 'translateX(-100%)' : 'translateX(-50%)';
+  const getTransform = () => {
+    if (align === 'left') return 'translateX(0)';
+    if (align === 'right') return 'translateX(-100%)';
+    return 'translateX(-50%)';
+  };
+
   const top = `calc(0px - ${tickHeightPx}px - ${labelGapPx}px)`;
   const fmt = (v: number | null | undefined) =>
     v == null ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: 6 });
@@ -279,10 +289,10 @@ function MarkLabel({
   return (
     <div
       className="absolute whitespace-nowrap text-[11px] font-medium"
-      style={{ left: labelLeft(xPct, align), top, transform: tx }}
+      style={{ left: `${xPct}%`, top, transform: getTransform() }}
     >
       {percent != null && (
-        <span style={{ color: percentClass }}>
+        <span style={{ color: percentColor }}>
           {`${percent >= 0 ? '+' : ''}${percent.toFixed(2)}%`}
         </span>
       )}
