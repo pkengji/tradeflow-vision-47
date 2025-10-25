@@ -84,64 +84,49 @@ export default function SettingsNotifications() {
   };
 
   return (
-    <div className="flex flex-col h-screen">
-      <header className="sticky top-0 z-40 border-b bg-background">
-        <div className="flex h-14 items-center px-4 gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate('/settings')}
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <h1 className="text-[var(--font-size-page-title)] font-semibold">Benachrichtigungen</h1>
-        </div>
-      </header>
+    <DashboardLayout pageTitle="Benachrichtigungen" showBackButton>
+      <div className="flex-1 overflow-y-auto p-4 pb-24">
+        <Card>
+          <CardContent className="p-0">
+            <div className="flex items-center border-b px-4 py-3">
+              <div className="flex-1 text-sm font-medium">Ereignis</div>
+              <div className="w-16 text-center text-sm font-medium">E-Mail</div>
+              <div className="w-16 text-center text-sm font-medium">Push</div>
+            </div>
 
-        <div className="flex-1 overflow-y-auto p-4 pb-24">
-          <Card>
-            <CardContent className="p-0">
-              {/* Header */}
-              <div className="flex items-center border-b px-4 py-3">
-                <div className="flex-1 text-sm font-medium">Ereignis</div>
-                <div className="w-16 text-center text-sm font-medium">E-Mail</div>
-                <div className="w-16 text-center text-sm font-medium">Push</div>
-              </div>
-
-              {/* Events */}
-              {Object.entries(EVENT_LABELS).map(([event, label]) => (
-                <div
-                  key={event}
-                  className="flex items-center border-b last:border-b-0 px-4 py-3"
-                >
-                  <div className="flex-1 text-sm">{label}</div>
-                  <div className="w-16 flex justify-center">
-                    <Checkbox
-                      checked={settings[event as NotificationEvent].email}
-                      onCheckedChange={() => handleToggle(event as NotificationEvent, 'email')}
-                    />
-                  </div>
-                  <div className="w-16 flex justify-center">
-                    <Checkbox
-                      checked={settings[event as NotificationEvent].push}
-                      onCheckedChange={() => handleToggle(event as NotificationEvent, 'push')}
-                    />
-                  </div>
+            {Object.entries(EVENT_LABELS).map(([event, label]) => (
+              <div
+                key={event}
+                className="flex items-center border-b last:border-b-0 px-4 py-3"
+              >
+                <div className="flex-1 text-sm">{label}</div>
+                <div className="w-16 flex justify-center">
+                  <Checkbox
+                    checked={settings[event as NotificationEvent].email}
+                    onCheckedChange={() => handleToggle(event as NotificationEvent, 'email')}
+                  />
                 </div>
-              ))}
-            </CardContent>
-          </Card>
+                <div className="w-16 flex justify-center">
+                  <Checkbox
+                    checked={settings[event as NotificationEvent].push}
+                    onCheckedChange={() => handleToggle(event as NotificationEvent, 'push')}
+                  />
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
 
-          <div className="mt-4 text-xs text-muted-foreground px-1">
-            Push-Benachrichtigungen werden pro Ereignis gruppiert
-          </div>
+        <div className="mt-4 text-xs text-muted-foreground px-1">
+          Push-Benachrichtigungen werden pro Ereignis gruppiert
         </div>
+      </div>
 
       <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 bg-card border-t p-4 z-50">
         <Button onClick={handleSave} className="w-full" disabled={saveMutation.isPending}>
           {saveMutation.isPending ? 'Speichern...' : 'Speichern'}
         </Button>
       </div>
-    </div>
+    </DashboardLayout>
   );
 }

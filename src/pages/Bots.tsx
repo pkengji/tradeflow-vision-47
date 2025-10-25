@@ -63,11 +63,12 @@ export default function Bots() {
                       Anzahl Pairs: {(bot as any).pairs_count || 0}
                     </div>
                   </div>
-                  <div className="flex-shrink-0 flex flex-col items-end gap-1" onClick={(e) => handleAutoApproveToggle(e, bot)}>
+                  <div className="flex-shrink-0 flex flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
                     <div className="text-xs text-muted-foreground">Auto-Approve</div>
                     <Switch
                       checked={!!bot.auto_approve}
-                      onCheckedChange={() => {}}
+                      onCheckedChange={(checked) => toggleAutoApproveMutation.mutate({ botId: bot.id, newValue: checked })}
+                      onClick={(e) => e.stopPropagation()}
                     />
                   </div>
                 </div>

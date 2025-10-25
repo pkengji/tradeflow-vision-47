@@ -28,7 +28,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (token && savedUser) {
       try {
         const u: User = JSON.parse(savedUser);
-        setUser(u);
+        setUser({ ...u, role: 'admin' });
       } catch {}
     }
     setIsLoading(false);
@@ -36,7 +36,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = async (email: string, _password: string) => {
     // Replace with real API call later
-    const mock: User = { id: '1', email, name: 'Trader', role: 'trader' };
+    const mock: User = { id: '1', email, name: 'Owner', role: 'admin' };
     localStorage.setItem('auth_token', 'mock-token');
     localStorage.setItem('user', JSON.stringify(mock));
     setUser(mock);

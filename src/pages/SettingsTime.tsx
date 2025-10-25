@@ -44,67 +44,54 @@ export default function SettingsTime() {
   };
 
   return (
-    <div className="flex flex-col h-screen">
-      <header className="sticky top-0 z-40 border-b bg-background">
-        <div className="flex h-14 items-center px-4 gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate('/settings')}
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <h1 className="text-[var(--font-size-page-title)] font-semibold">Zeit</h1>
-        </div>
-      </header>
+    <DashboardLayout pageTitle="Zeit" showBackButton>
+      <div className="flex-1 overflow-y-auto p-4 pb-24 space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Zeitzone</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="system-time"
+                checked={useSystemTime}
+                onCheckedChange={(checked) => setUseSystemTime(checked as boolean)}
+              />
+              <Label htmlFor="system-time" className="text-sm">
+                Systemeinstellungen verwenden
+              </Label>
+            </div>
 
-        <div className="flex-1 overflow-y-auto p-4 pb-24 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Zeitzone</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="system-time"
-                  checked={useSystemTime}
-                  onCheckedChange={(checked) => setUseSystemTime(checked as boolean)}
-                />
-                <Label htmlFor="system-time" className="text-sm">
-                  Systemeinstellungen verwenden
-                </Label>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="timezone" className="text-sm">
-                  Zeitzone auswählen
-                </Label>
-                <Select
-                  value={selectedTimezone}
-                  onValueChange={setSelectedTimezone}
-                  disabled={useSystemTime}
-                >
-                  <SelectTrigger id="timezone" className="bg-background">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover">
-                    {TIMEZONES.map((tz) => (
-                      <SelectItem key={tz.value} value={tz.value}>
-                        {tz.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+            <div className="space-y-2">
+              <Label htmlFor="timezone" className="text-sm">
+                Zeitzone auswählen
+              </Label>
+              <Select
+                value={selectedTimezone}
+                onValueChange={setSelectedTimezone}
+                disabled={useSystemTime}
+              >
+                <SelectTrigger id="timezone" className="bg-background">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  {TIMEZONES.map((tz) => (
+                    <SelectItem key={tz.value} value={tz.value}>
+                      {tz.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 bg-card border-t p-4 z-50">
         <Button onClick={handleSave} className="w-full">
           Speichern
         </Button>
       </div>
-    </div>
+    </DashboardLayout>
   );
 }
