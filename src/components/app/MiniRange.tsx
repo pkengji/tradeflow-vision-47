@@ -16,7 +16,7 @@ type Props = {
 
 // Layout-Feinjustage (global)
 const TRACK_Y_ADJUST_PX = 0;   // tick exactly meets bar edge
-const LABEL_GAP_PX = 3;        // vertical (Tip → Text)
+const LABEL_GAP_PX = 10;        // vertical (Tip → Text)
 
 export default function MiniRange({
   sl, entry, tp, mark, labelEntry = 'ENTRY', side = 'long',
