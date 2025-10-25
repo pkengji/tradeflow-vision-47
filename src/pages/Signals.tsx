@@ -93,6 +93,7 @@ export default function Signals() {
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [selectedSignal, setSelectedSignal] = useState<typeof mockSignals[0] | null>(null);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -129,14 +130,42 @@ export default function Signals() {
     });
   };
 
-  const handleSignalClick = (signalId: number) => {
-    navigate(`/signal/${signalId}`);
+  const handleSignalClick = (signal: typeof mockSignals[0]) => {
+    if (signal.status === 'waiting_for_approval') {
+      setSelectedSignal(signal);
+    } else {
+      navigate(`/signal/${signal.id}`);
+    }
+  };
+
+  const handleApprove = async () => {
+    if (!selectedSignal) return;
+    try {
+      await api.approveOutbox(selectedSignal.id);
+      // Reload signals or update state
+      setSelectedSignal(null);
+    } catch (error) {
+      console.error('Failed to approve signal:', error);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!selectedSignal) return;
+    try {
+      await api.rejectOutbox(selectedSignal.id);
+      // Reload signals or update state
+      setSelectedSignal(null);
+    } catch (error) {
+      console.error('Failed to reject signal:', error);
+    }
   };
 
   const getStatusBadge = (status: string) => {
     if (status === 'completed') return <Badge variant="default" className="text-xs bg-[#0D3512] text-[#2DFB68]">completed</Badge>;
     if (status === 'failed') return <Badge variant="destructive" className="text-xs bg-[#641812] text-[#EA3A10]">failed</Badge>;
     if (status === 'rejected') return <Badge variant="secondary" className="text-xs">rejected</Badge>;
+    if (status === 'pending') return <Badge variant="secondary" className="text-xs">pending</Badge>;
+    if (status === 'waiting_for_approval') return <Badge variant="default" className="text-xs">waiting for approval</Badge>;
     return <Badge variant="outline" className="text-xs">{status}</Badge>;
   };
 
@@ -200,7 +229,7 @@ export default function Signals() {
           {mockSignals.map((signal) => (
             <div
               key={signal.id}
-              onClick={() => handleSignalClick(signal.id)}
+              onClick={() => handleSignalClick(signal)}
               className="cursor-pointer hover:bg-muted/30 transition-colors py-2"
             >
               <div className="flex items-start gap-3">
@@ -239,6 +268,27 @@ export default function Signals() {
             <div className="text-sm text-muted-foreground py-4">Keine Signals gefunden.</div>
           )}
         </div>
+
+        {/* Action buttons for waiting_for_approval signals */}
+        {selectedSignal && selectedSignal.status === 'waiting_for_approval' && (
+          <div className="fixed inset-x-0 bottom-16 bg-background border-t p-3 flex gap-3">
+            <Button 
+              className="flex-1" 
+              onClick={handleApprove}
+              style={{ backgroundColor: '#0D3512', color: '#2DFB68' }}
+            >
+              Approve
+            </Button>
+            <Button 
+              className="flex-1" 
+              variant="outline"
+              onClick={handleCancel}
+              style={{ borderColor: '#641812', color: '#EA3A10' }}
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

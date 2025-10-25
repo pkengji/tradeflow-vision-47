@@ -41,7 +41,7 @@ type DailyPnl = { date: string; pnl: number; equity: number };
 export default function Dashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [series, setSeries] = useState<DailyPnl[]>([]);
-  const [signalsCount, setSignalsCount] = useState({ total: 0, today: 0 });
+  const [signalsCount, setSignalsCount] = useState({ total: 0, today: 0, mtd: 0, last30d: 0 });
   const [filters, setFilters] = useState<TradesFilters>({
     botIds: [],
     symbols: [],
@@ -94,7 +94,25 @@ export default function Dashboard() {
         const tvSignalsToday = tvSignals.filter((item: any) => 
           item.created_at?.startsWith(today)
         );
-        setSignalsCount({ total: tvSignals.length, today: tvSignalsToday.length });
+        
+        // Calculate MTD and Last30D signal counts
+        const now = new Date();
+        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        
+        const tvSignalsMTD = tvSignals.filter((item: any) => 
+          item.created_at && item.created_at >= firstDayOfMonth
+        );
+        const tvSignalsLast30D = tvSignals.filter((item: any) => 
+          item.created_at && item.created_at >= thirtyDaysAgo
+        );
+        
+        setSignalsCount({ 
+          total: tvSignals.length, 
+          today: tvSignalsToday.length,
+          mtd: tvSignalsMTD.length,
+          last30d: tvSignalsLast30D.length
+        });
       } catch {
         // Stub, falls Endpoint noch nicht fertig ist
         setSummary({
@@ -319,6 +337,7 @@ export default function Dashboard() {
               <div className="space-y-0">
                 <MetricRow label="Realized P&L" value={formatCurrency(summary.mtd.pnl)} />
                 <MetricRow label="Win Rate" value={pct(summary.mtd.winrate)} />
+                <MetricRow label="Anzahl Signale" value={String(signalsCount.mtd)} />
               </div>
 
               <div className="space-y-0 pt-0.5">
@@ -358,6 +377,7 @@ export default function Dashboard() {
               <div className="space-y-0">
                 <MetricRow label="Realized P&L" value={formatCurrency(summary.last30d.pnl)} />
                 <MetricRow label="Win Rate" value={pct(summary.last30d.winrate)} />
+                <MetricRow label="Anzahl Signale" value={String(signalsCount.last30d)} />
               </div>
 
               <div className="space-y-0 pt-0.5">
