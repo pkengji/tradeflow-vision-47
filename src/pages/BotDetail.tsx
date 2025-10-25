@@ -6,9 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Slider } from '@/components/ui/slider';
 import { useState, useMemo } from 'react';
-import { Plus, Search, Trash2, Save } from 'lucide-react';
-import MaskedSecret from '@/components/ui/MaskedSecret';
+import { Plus, Search, Trash2, Save, Copy } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,7 +30,6 @@ import {
   CommandInput,
   CommandItem,
 } from '@/components/ui/command';
-import { toast } from 'sonner';
 
 type BotPair = {
   symbol: string;
@@ -161,13 +161,18 @@ export default function BotDetail() {
 
   if (isLoading && !isNew) return <div>Lade Bot-Details…</div>;
 
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success(`${label} kopiert`);
+  };
+
   return (
-    <div className="space-y-3 p-3 lg:p-4 pb-32">
+    <div className="space-y-4 p-4 pb-24">
       {/* Header Card */}
       <Card>
-        <CardContent className="pt-4 space-y-3">
+        <CardContent className="pt-4 space-y-4">
           <div>
-            <Label className="text-sm">Bot Name</Label>
+            <Label>Bot Name</Label>
             <Input 
               value={name} 
               onChange={(e) => setName(e.target.value)} 
@@ -176,15 +181,48 @@ export default function BotDetail() {
             />
           </div>
 
-      {!isNew && bot && (
-        <>
-          <MaskedSecret label="UUID" value={bot.uuid || '—'} copyOnly />
-          <MaskedSecret label="Secret" value={bot.secret || '—'} />
-        </>
-      )}
+          {!isNew && bot && (
+            <>
+              <div>
+                <Label>UUID</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <Input 
+                    value={bot.uuid || '—'} 
+                    readOnly
+                    className="flex-1"
+                  />
+                  <Button 
+                    size="icon" 
+                    variant="outline"
+                    onClick={() => copyToClipboard(bot.uuid || '', 'UUID')}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <Label>Secret</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <Input 
+                    value={bot.secret || '—'} 
+                    type="password"
+                    readOnly
+                    className="flex-1"
+                  />
+                  <Button 
+                    size="icon" 
+                    variant="outline"
+                    onClick={() => copyToClipboard(bot.secret || '', 'Secret')}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
 
           <div className="flex items-center justify-between pt-2 border-t">
-            <Label htmlFor="autoApprove" className="text-sm">Auto-Approve</Label>
+            <Label htmlFor="autoApprove">Auto-Approve</Label>
             <Switch
               id="autoApprove"
               checked={autoApprove}
@@ -196,59 +234,68 @@ export default function BotDetail() {
 
       {/* Global Settings */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Globale Einstellungen</CardTitle>
+        <CardHeader>
+          <CardTitle>Globale Einstellungen</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-            <div>
-              <Label className="text-xs">Leverage (für alle)</Label>
+        <CardContent className="space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <Label>Leverage (für alle)</Label>
               <Input
-                placeholder="z.B. 10 oder 'max'"
-                value={globalLeverage}
-                className="mt-1 h-9 text-sm"
+                type="number"
+                min="0"
+                max="100"
+                placeholder="0-100"
+                value={globalLeverage === 'max' ? '' : globalLeverage}
+                className="w-20"
                 onChange={(e) => {
                   const val = e.target.value;
-                  if (val === 'max') setGlobalLeverage('max');
-                  else if (val === '') setGlobalLeverage('');
+                  if (val === '') setGlobalLeverage('');
                   else {
                     const num = parseFloat(val);
-                    if (!isNaN(num)) setGlobalLeverage(num);
+                    if (!isNaN(num) && num >= 0 && num <= 100) setGlobalLeverage(num);
                   }
                 }}
               />
             </div>
-            <div>
-              <Label className="text-xs">TV Multiplier (für alle)</Label>
-              <Input
-                type="number"
-                step="0.1"
-                placeholder="z.B. 1.5"
-                value={globalMultiplier}
-                className="mt-1 h-9 text-sm"
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setGlobalMultiplier(val === '' ? '' : parseFloat(val));
-                }}
-              />
-            </div>
-            <div className="flex items-end">
-              <Button onClick={applyGlobal} className="w-full h-9 text-sm">
-                Übernehmen
-              </Button>
-            </div>
+            <Slider
+              value={[globalLeverage === 'max' || globalLeverage === '' ? 0 : globalLeverage]}
+              onValueChange={([val]) => setGlobalLeverage(val)}
+              min={0}
+              max={100}
+              step={1}
+            />
           </div>
+
+          <div className="flex items-center justify-between">
+            <Label>TV Multiplier (für alle)</Label>
+            <Input
+              type="number"
+              step="0.1"
+              placeholder="z.B. 1.5"
+              value={globalMultiplier}
+              className="w-20"
+              onChange={(e) => {
+                const val = e.target.value;
+                setGlobalMultiplier(val === '' ? '' : parseFloat(val));
+              }}
+            />
+          </div>
+
+          <Button onClick={applyGlobal} className="w-full">
+            Übernehmen
+          </Button>
         </CardContent>
       </Card>
 
       {/* Pairs List */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-3">
-          <CardTitle className="text-base">Trading Pairs</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Trading Pairs</CardTitle>
           <Dialog open={addPairDialogOpen} onOpenChange={setAddPairDialogOpen}>
             <DialogTrigger asChild>
-              <Button size="sm" className="h-8">
-                <Plus className="mr-1 h-3 w-3" />
+              <Button size="sm">
+                <Plus className="mr-2 h-4 w-4" />
                 Pair
               </Button>
             </DialogTrigger>
@@ -287,20 +334,20 @@ export default function BotDetail() {
             </DialogContent>
           </Dialog>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-4">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
-              <Search className="absolute left-2 top-2 h-3 w-3 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Suchen..."
                 value={searchPair}
                 onChange={(e) => setSearchPair(e.target.value)}
-                className="pl-7 h-8 text-sm"
+                className="pl-9"
               />
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 text-xs">
+                <Button variant="outline" size="sm">
                   Sort
                 </Button>
               </DropdownMenuTrigger>
@@ -312,74 +359,92 @@ export default function BotDetail() {
             </DropdownMenu>
           </div>
 
-          <div className="space-y-1.5">
+          <div className="divide-y divide-border">
             {filteredPairs.map(pair => {
               const pairInfo = availablePairs.find(p => p.symbol === pair.symbol);
               return (
-                <div key={pair.symbol} className="flex items-center gap-2 p-2 border rounded-lg text-sm">
-                  <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
-                    <span className="text-base">{pairInfo?.icon || '●'}</span>
-                    <span className="font-medium text-xs">{pair.symbol}</span>
+                <div key={pair.symbol} className="py-3 flex items-center gap-4">
+                  {/* Icon + Symbol */}
+                  <div className="flex items-center gap-3 w-32 flex-shrink-0">
+                    <span className="text-2xl">{pairInfo?.icon || '●'}</span>
+                    <span className="font-semibold">{pair.symbol}</span>
                   </div>
-                  
-                  <div className="flex items-center gap-1 flex-1 min-w-0">
-                    <Input
-                      placeholder="max"
-                      value={pair.leverage}
-                      className="h-7 text-xs w-16"
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        updatePair(pair.symbol, {
-                          leverage: val === 'max' ? 'max' : parseFloat(val) || 10
-                        });
-                      }}
-                    />
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={pair.tvMultiplier}
-                      className="h-7 text-xs w-16"
-                      onChange={(e) => updatePair(pair.symbol, {
-                        tvMultiplier: parseFloat(e.target.value) || 1.0
-                      })}
-                    />
-                  <div>
+
+                  {/* Long/Short Buttons */}
+                  <div className="flex gap-2">
                     <Button
                       size="sm"
                       variant={pair.directions.long ? 'default' : 'outline'}
-                      className={`h-7 px-2 text-xs ${pair.directions.long ? 'bg-long hover:bg-long/80 text-long-foreground' : ''}`}
+                      className={`px-6 ${pair.directions.long ? 'bg-[#0D3512] hover:bg-[#0D3512]/90 text-[#2DFB68]' : ''}`}
                       onClick={() => updatePair(pair.symbol, {
                         directions: { ...pair.directions, long: !pair.directions.long }
                       })}
                     >
-                      L
+                      Long
                     </Button>
                     <Button
                       size="sm"
                       variant={pair.directions.short ? 'destructive' : 'outline'}
-                      className={`h-7 px-2 text-xs ml-1 ${pair.directions.short ? 'bg-short hover:bg-short/80 text-short-foreground' : ''}`}
+                      className={`px-6 ${pair.directions.short ? 'bg-[#641812] hover:bg-[#641812]/90 text-[#EA3A10]' : ''}`}
                       onClick={() => updatePair(pair.symbol, {
                         directions: { ...pair.directions, short: !pair.directions.short }
                       })}
                     >
-                      S
+                      Short
                     </Button>
                   </div>
+
+                  {/* Leverage */}
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm whitespace-nowrap">Leverage</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={pair.leverage === 'max' ? '' : pair.leverage}
+                      className="w-20"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '') {
+                          updatePair(pair.symbol, { leverage: 10 });
+                        } else {
+                          const num = parseFloat(val);
+                          if (!isNaN(num) && num >= 0 && num <= 100) {
+                            updatePair(pair.symbol, { leverage: num });
+                          }
+                        }
+                      }}
+                    />
                   </div>
 
+                  {/* Einsatz (Multiplier) */}
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm whitespace-nowrap">Einsatz</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={pair.tvMultiplier}
+                      className="w-20"
+                      onChange={(e) => updatePair(pair.symbol, {
+                        tvMultiplier: parseFloat(e.target.value) || 1.0
+                      })}
+                    />
+                  </div>
+
+                  {/* Delete Button */}
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="h-7 w-7 flex-shrink-0"
+                    className="ml-auto"
                     onClick={() => removePair(pair.symbol)}
                   >
-                    <Trash2 className="h-3 w-3 text-destructive" />
+                    <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
               );
             })}
             {filteredPairs.length === 0 && (
-              <div className="text-xs text-muted-foreground text-center py-4">
+              <div className="text-sm text-muted-foreground text-center py-8">
                 Keine Pairs gefunden.
               </div>
             )}
@@ -387,13 +452,12 @@ export default function BotDetail() {
         </CardContent>
       </Card>
 
-      {/* Sticky Action Buttons */}
-      <div className="fixed bottom-16 md:bottom-6 left-0 right-0 flex justify-center gap-2 px-4 z-[100]">
+      {/* Action Buttons */}
+      <div className="fixed bottom-16 left-0 right-0 bg-card border-t p-3 flex gap-3 z-50">
         <Button
-          size="lg"
           onClick={() => saveMutation.mutate()}
           disabled={saveMutation.isPending}
-          className="shadow-lg h-10"
+          className="flex-1"
         >
           <Save className="mr-2 h-4 w-4" />
           {isNew ? 'Speichern' : 'Speichern'}
@@ -402,11 +466,11 @@ export default function BotDetail() {
         {!isNew && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="lg" variant="outline" className="shadow-lg h-10">
+              <Button variant="outline" className="flex-1">
                 Aktionen
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="z-[100]">
+            <DropdownMenuContent className="z-50">
               <DropdownMenuItem onClick={() => pauseMutation.mutate()}>
                 Bot pausieren
               </DropdownMenuItem>
@@ -424,10 +488,9 @@ export default function BotDetail() {
 
         {isNew && (
           <Button
-            size="lg"
             variant="outline"
             onClick={() => navigate('/bots')}
-            className="shadow-lg h-10"
+            className="flex-1"
           >
             Abbrechen
           </Button>
