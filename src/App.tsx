@@ -14,7 +14,11 @@ import Bots from "@/pages/Bots";
 import BotDetail from "./pages/BotDetail";
 import Signals from "./pages/Signals";
 import SignalDetail from "./pages/SignalDetail";
-import Settings from "./pages/Settings";
+import Settings from './pages/Settings';
+import SettingsAccount from './pages/SettingsAccount';
+import SettingsNotifications from './pages/SettingsNotifications';
+import SettingsTime from './pages/SettingsTime';
+import SettingsOwner from './pages/SettingsOwner';
 import NotFound from "@/pages/NotFound";
 import OutboxPage from "./pages/Outbox";
 
@@ -92,6 +96,38 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Settings />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/settings/account"
+              element={
+                <ProtectedRoute>
+                  <SettingsAccount />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/settings/notifications"
+              element={
+                <ProtectedRoute>
+                  <SettingsNotifications />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/settings/time"
+              element={
+                <ProtectedRoute>
+                  <SettingsTime />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/settings/owner"
+              element={
+                <ProtectedRoute>
+                  <SettingsOwner />
                 </ProtectedRoute>
               }
             />

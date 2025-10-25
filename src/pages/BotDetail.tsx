@@ -66,7 +66,7 @@ export default function BotDetail() {
   const [searchPair, setSearchPair] = useState('');
   const [sortBy, setSortBy] = useState<'symbol' | 'leverage' | 'multiplier'>('symbol');
   const [addPairDialogOpen, setAddPairDialogOpen] = useState(false);
-  const [selectedNewPair, setSelectedNewPair] = useState('');
+  const [selectedNewPairs, setSelectedNewPairs] = useState<string[]>([]);
   const [showSecret, setShowSecret] = useState(false);
 
   const { data: availablePairs = [] } = useQuery({
@@ -146,17 +146,33 @@ export default function BotDetail() {
     }
   };
 
-  const addPair = () => {
-    if (selectedNewPair && !pairs.find(p => p.symbol === selectedNewPair)) {
-      setPairs(prev => [...prev, {
-        symbol: selectedNewPair,
+  const togglePairSelection = (symbol: string) => {
+    setSelectedNewPairs(prev =>
+      prev.includes(symbol)
+        ? prev.filter(s => s !== symbol)
+        : [...prev, symbol]
+    );
+  };
+
+  const addPairs = () => {
+    if (selectedNewPairs.length === 0) return;
+    
+    const newPairs = selectedNewPairs
+      .filter(symbol => !pairs.find(p => p.symbol === symbol))
+      .map(symbol => ({
+        symbol,
         leverage: 10,
         tvMultiplier: 1.0,
-        directions: { long: true, short: true },
-      }]);
-      setSelectedNewPair('');
-      setAddPairDialogOpen(false);
+        directions: { long: true, short: true }
+      }));
+    
+    if (newPairs.length > 0) {
+      setPairs([...pairs, ...newPairs]);
+      toast.success(`${newPairs.length} Pair(s) hinzugefügt`);
     }
+    
+    setSelectedNewPairs([]);
+    setAddPairDialogOpen(false);
   };
 
   const removePair = (symbol: string) => {
@@ -410,8 +426,12 @@ export default function BotDetail() {
                       <CommandItem
                         key={pair.symbol}
                         value={pair.symbol}
-                        onSelect={() => setSelectedNewPair(pair.symbol)}
-                        className="cursor-pointer"
+                        onSelect={() => togglePairSelection(pair.symbol)}
+                        className={`cursor-pointer ${
+                          selectedNewPairs.includes(pair.symbol) 
+                            ? 'bg-primary/20 border border-primary' 
+                            : ''
+                        }`}
                       >
                         <span className="mr-2 text-lg">{pair.icon}</span>
                         <span className="font-medium">{pair.symbol}</span>
@@ -421,11 +441,16 @@ export default function BotDetail() {
                 </CommandGroup>
               </Command>
               <div className="flex justify-end gap-2 mt-4">
-                <Button variant="outline" onClick={() => setAddPairDialogOpen(false)}>
+                <Button variant="outline" onClick={() => {
+                  setAddPairDialogOpen(false);
+                  setSelectedNewPairs([]);
+                }}>
                   Abbrechen
                 </Button>
-                <Button onClick={addPair} disabled={!selectedNewPair}>
-                  Hinzufügen
+                <Button onClick={addPairs} disabled={selectedNewPairs.length === 0}>
+                  {selectedNewPairs.length > 0 
+                    ? `${selectedNewPairs.length} Pair(s) hinzufügen` 
+                    : 'Hinzufügen'}
                 </Button>
               </div>
             </DialogContent>

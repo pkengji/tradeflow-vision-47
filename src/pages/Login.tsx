@@ -5,6 +5,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { TrendingUp } from 'lucide-react';
 
@@ -12,6 +20,9 @@ export default function Login() {
   const [email, setEmail] = useState('trader@example.com');
   const [password, setPassword] = useState('password');
   const [isLoading, setIsLoading] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -27,6 +38,23 @@ export default function Login() {
       toast.error('Anmeldung fehlgeschlagen');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsResetting(true);
+
+    try {
+      // TODO: Implement password reset API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      toast.success('Passwort-Reset-E-Mail wurde gesendet');
+      setResetDialogOpen(false);
+      setResetEmail('');
+    } catch (error) {
+      toast.error('Fehler beim Senden der E-Mail');
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -70,6 +98,38 @@ export default function Login() {
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? 'Anmeldung...' : 'Anmelden'}
             </Button>
+
+            <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+              <DialogTrigger asChild>
+                <Button type="button" variant="link" className="w-full text-sm">
+                  Passwort vergessen?
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="bg-card">
+                <DialogHeader>
+                  <DialogTitle>Passwort zurücksetzen</DialogTitle>
+                  <DialogDescription>
+                    Geben Sie Ihre E-Mail-Adresse ein und wir senden Ihnen einen Link zum Zurücksetzen Ihres Passworts.
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handlePasswordReset} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="reset-email">E-Mail</Label>
+                    <Input
+                      id="reset-email"
+                      type="email"
+                      placeholder="ihre@email.com"
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <Button type="submit" className="w-full" disabled={isResetting}>
+                    {isResetting ? 'Wird gesendet...' : 'Link senden'}
+                  </Button>
+                </form>
+              </DialogContent>
+            </Dialog>
           </form>
         </CardContent>
       </Card>
