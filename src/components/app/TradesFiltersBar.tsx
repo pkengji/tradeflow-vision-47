@@ -16,6 +16,7 @@ export type TradesFilters = {
   timeTo?: string; // HH:MM
   timeMode?: 'opened' | 'closed'; // für Tageszeitfilter
   signalKind?: 'all' | 'automatic' | 'manual'; // nur für Signals
+  signalStatus?: 'all' | 'completed' | 'failed' | 'rejected' | 'pending' | 'waiting_for_approval'; // nur für Signals
 };
 
 type Props = {
@@ -27,6 +28,7 @@ type Props = {
   showDateRange?: boolean;
   showTimeRange?: boolean;
   showSignalKind?: boolean;
+  showSignalStatus?: boolean;
 };
 
 export default function TradesFiltersBar({
@@ -37,6 +39,7 @@ export default function TradesFiltersBar({
   showDateRange = true,
   showTimeRange = true,
   showSignalKind = false,
+  showSignalStatus = false,
 }: Props) {
   const [showFilters] = useState(true);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
@@ -76,6 +79,7 @@ export default function TradesFiltersBar({
       timeTo: undefined,
       timeMode: 'opened',
       signalKind: 'all',
+      signalStatus: 'all',
     });
   };
 
@@ -93,6 +97,7 @@ export default function TradesFiltersBar({
     if (value.dateFrom || value.dateTo) count++;
     if (value.timeFrom || value.timeTo) count++;
     if (value.signalKind && value.signalKind !== 'all') count++;
+    if (value.signalStatus && value.signalStatus !== 'all') count++;
     return count;
   }, [value]);
 
@@ -296,6 +301,49 @@ export default function TradesFiltersBar({
                   Manuell
                 </Button>
               </div>
+            </div>
+          )}
+
+          {/* Signal-Status (nur für Signals-Seite) */}
+          {showSignalStatus && (
+            <div className="space-y-2 relative">
+              <div className="text-xs font-medium">Status</div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-between"
+                onClick={() => toggleDropdown('signalStatus')}
+              >
+                {value.signalStatus === 'all' ? 'Alle Status' : 
+                 value.signalStatus === 'completed' ? 'Completed' :
+                 value.signalStatus === 'failed' ? 'Failed' :
+                 value.signalStatus === 'rejected' ? 'Rejected' :
+                 value.signalStatus === 'pending' ? 'Pending' :
+                 value.signalStatus === 'waiting_for_approval' ? 'Waiting for approval' : 'Alle Status'}
+              </Button>
+              {openDropdown === 'signalStatus' && (
+                <div className="absolute top-full mt-1 z-10 bg-card border rounded shadow-md p-2 space-y-1 min-w-[200px]">
+                  {['all', 'completed', 'failed', 'rejected', 'pending', 'waiting_for_approval'].map((status) => (
+                    <button
+                      key={status}
+                      onClick={() => {
+                        onChange({ ...value, signalStatus: status as any });
+                        closeAllDropdowns();
+                      }}
+                      className={`w-full text-left px-3 py-2 rounded text-sm hover:bg-muted ${
+                        value.signalStatus === status ? 'bg-primary text-primary-foreground' : ''
+                      }`}
+                    >
+                      {status === 'all' ? 'Alle Status' :
+                       status === 'completed' ? 'Completed' :
+                       status === 'failed' ? 'Failed' :
+                       status === 'rejected' ? 'Rejected' :
+                       status === 'pending' ? 'Pending' :
+                       'Waiting for approval'}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

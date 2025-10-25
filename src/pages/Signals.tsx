@@ -46,12 +46,12 @@ const mockSignals = [
     id: 2,
     timestamp: new Date(Date.now() - 600000).toISOString(),
     type: 'modify',
-    status: 'completed',
+    status: 'pending',
     botId: 1,
     botName: 'Bot Alpha',
     symbol: 'ETHUSDT',
     positionSize: 5614.50,
-    humanMessage: 'TP/SL erfolgreich angepasst',
+    humanMessage: 'Warte auf Trade-Eröffnung',
   },
   {
     id: 3,
@@ -75,6 +75,17 @@ const mockSignals = [
     positionSize: 3420.80,
     humanMessage: 'Order rejected by exchange - Position not found',
   },
+  {
+    id: 5,
+    timestamp: new Date(Date.now() - 150000).toISOString(),
+    type: 'entry',
+    status: 'waiting_for_approval',
+    botId: 2,
+    botName: 'Bot Beta',
+    symbol: 'ADAUSDT',
+    positionSize: 8950.00,
+    humanMessage: 'Warte auf manuelle Freigabe',
+  },
 ];
 
 export default function Signals() {
@@ -89,6 +100,7 @@ export default function Signals() {
     timeTo: undefined,
     timeMode: 'opened',
     signalKind: 'all',
+    signalStatus: 'all',
   });
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
@@ -103,6 +115,7 @@ export default function Signals() {
     if (filters.dateFrom || filters.dateTo) count++;
     if (filters.timeFrom || filters.timeTo) count++;
     if (filters.signalKind && filters.signalKind !== 'all') count++;
+    if (filters.signalStatus && filters.signalStatus !== 'all') count++;
     return count;
   }, [filters]);
 
@@ -200,6 +213,7 @@ export default function Signals() {
                 showDateRange={true}
                 showTimeRange={true}
                 showSignalKind={true}
+                showSignalStatus={true}
               />
             </div>
             <div className="border-t p-3">
@@ -220,6 +234,7 @@ export default function Signals() {
             showDateRange={true}
             showTimeRange={true}
             showSignalKind={true}
+            showSignalStatus={true}
           />
           <ExportCSV url={`/api/v1/export/signals`} filename="signals.csv" />
         </div>
@@ -271,7 +286,7 @@ export default function Signals() {
 
         {/* Action buttons for waiting_for_approval signals */}
         {selectedSignal && selectedSignal.status === 'waiting_for_approval' && (
-          <div className="fixed inset-x-0 bottom-16 bg-background border-t p-3 flex gap-3">
+          <div className="fixed inset-x-0 bottom-16 bg-card border-t p-3 flex gap-3 z-50">
             <Button 
               className="flex-1" 
               onClick={handleApprove}
