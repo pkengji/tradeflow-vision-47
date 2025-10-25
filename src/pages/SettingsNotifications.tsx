@@ -84,9 +84,9 @@ export default function SettingsNotifications() {
   };
 
   return (
-    <DashboardLayout pageTitle="">
-      <div className="flex flex-col h-full">
-        <div className="flex items-center gap-3 p-4 border-b">
+    <div className="flex flex-col h-screen">
+      <header className="sticky top-0 z-40 border-b bg-background">
+        <div className="flex h-14 items-center px-4 gap-3">
           <Button
             variant="ghost"
             size="icon"
@@ -94,8 +94,9 @@ export default function SettingsNotifications() {
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="text-base font-semibold">Benachrichtigungen</h1>
+          <h1 className="text-[var(--font-size-page-title)] font-semibold">Benachrichtigungen</h1>
         </div>
+      </header>
 
         <div className="flex-1 overflow-y-auto p-4 pb-24">
           <Card>
@@ -136,12 +137,11 @@ export default function SettingsNotifications() {
           </div>
         </div>
 
-        <div className="fixed bottom-0 left-0 right-0 bg-card border-t p-4 z-50">
-          <Button onClick={handleSave} className="w-full" disabled={saveMutation.isPending}>
-            {saveMutation.isPending ? 'Speichern...' : 'Speichern'}
-          </Button>
-        </div>
+      <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 bg-card border-t p-4 z-50">
+        <Button onClick={handleSave} className="w-full" disabled={saveMutation.isPending}>
+          {saveMutation.isPending ? 'Speichern...' : 'Speichern'}
+        </Button>
       </div>
-    </DashboardLayout>
+    </div>
   );
 }

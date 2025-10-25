@@ -55,7 +55,7 @@ export default function Bots() {
                 <div className="flex items-start gap-4">
                   <div className={`w-3 h-3 rounded-full mt-1 ${getStatusColor(bot.status)}`} />
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium">{bot.name}</div>
+                    <div className="text-base font-medium">{bot.name}</div>
                     <div className="text-xs text-muted-foreground mt-1">
                       Am Laufen seit: {bot.created_at ? new Date(bot.created_at).toLocaleDateString('de-CH') : '—'}
                     </div>
@@ -63,9 +63,11 @@ export default function Bots() {
                       Anzahl Pairs: {(bot as any).pairs_count || 0}
                     </div>
                   </div>
-                  <div className="flex-shrink-0" onClick={(e) => handleAutoApproveToggle(e, bot)}>
+                  <div className="flex-shrink-0 flex flex-col items-end gap-1" onClick={(e) => handleAutoApproveToggle(e, bot)}>
+                    <div className="text-xs text-muted-foreground">Auto-Approve</div>
                     <Switch
                       checked={!!bot.auto_approve}
+                      onCheckedChange={() => {}}
                     />
                   </div>
                 </div>

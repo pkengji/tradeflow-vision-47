@@ -56,6 +56,10 @@ export default function BotDetail() {
   });
 
   const [name, setName] = useState('');
+  const [uuid, setUuid] = useState('');
+  const [userSecret, setUserSecret] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [apiSecret, setApiSecret] = useState('');
   const [autoApprove, setAutoApprove] = useState(false);
   const [pairs, setPairs] = useState<BotPair[]>([]);
   const [globalLeverage, setGlobalLeverage] = useState<number | 'max' | ''>('');
@@ -67,7 +71,27 @@ export default function BotDetail() {
   const [sortBy, setSortBy] = useState<'symbol' | 'leverage' | 'multiplier'>('symbol');
   const [addPairDialogOpen, setAddPairDialogOpen] = useState(false);
   const [selectedNewPairs, setSelectedNewPairs] = useState<string[]>([]);
-  const [showSecret, setShowSecret] = useState(false);
+  const [showUserSecret, setShowUserSecret] = useState(false);
+  const [showApiSecret, setShowApiSecret] = useState(false);
+
+  // Generate secure UUID and Secret for new bot
+  const generateSecureId = (length: number = 32): string => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    const randomValues = new Uint8Array(length);
+    crypto.getRandomValues(randomValues);
+    for (let i = 0; i < length; i++) {
+      result += chars[randomValues[i] % chars.length];
+    }
+    return result;
+  };
+
+  // Initialize UUID for new bot
+  useMemo(() => {
+    if (isNew && !uuid) {
+      setUuid(generateSecureId(48)); // Longer, secure UUID
+    }
+  }, [isNew, uuid]);
 
   const { data: availablePairs = [] } = useQuery({
     queryKey: ['availablePairs'],
@@ -85,6 +109,10 @@ export default function BotDetail() {
   useMemo(() => {
     if (bot) {
       setName(bot.name || '');
+      setUuid(bot.uuid || '');
+      setUserSecret((bot as any).user_secret || generateSecureId(64)); // Per-user secret
+      setApiKey((bot as any).api_key || '');
+      setApiSecret((bot as any).api_secret || '');
       setAutoApprove(!!bot.auto_approve);
       // TODO: Load pairs from bot data when available
       setPairs([
@@ -230,57 +258,85 @@ export default function BotDetail() {
             />
           </div>
 
-          {!isNew && bot && (
-            <>
-              <div>
-                <Label>UUID</Label>
-                <div className="relative mt-1">
-                  <Input 
-                    value={bot.uuid || '—'} 
-                    readOnly
-                    className="pr-10"
-                  />
-                  <Button 
-                    size="icon" 
-                    variant="ghost"
-                    onClick={() => copyToClipboard(bot.uuid || '', 'UUID')}
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
+          <div>
+            <Label>UUID</Label>
+            <div className="relative mt-1">
+              <Input 
+                value={uuid} 
+                readOnly
+                className="pr-10 bg-muted"
+              />
+              <Button 
+                size="icon" 
+                variant="ghost"
+                onClick={() => copyToClipboard(uuid, 'UUID')}
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div>
+            <Label>User Secret (einmalig pro User)</Label>
+            <div className="relative mt-1">
+              <Input 
+                value={userSecret} 
+                type={showUserSecret ? 'text' : 'password'}
+                readOnly
+                className="pr-20 bg-muted"
+              />
+              <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-1">
+                <Button 
+                  size="icon" 
+                  variant="ghost"
+                  onClick={() => setShowUserSecret(!showUserSecret)}
+                  className="h-8 w-8"
+                >
+                  {showUserSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+                <Button 
+                  size="icon" 
+                  variant="ghost"
+                  onClick={() => copyToClipboard(userSecret, 'User Secret')}
+                  className="h-8 w-8"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
               </div>
-              <div>
-                <Label>Secret</Label>
-                <div className="relative mt-1">
-                  <Input 
-                    value={bot.secret || '—'} 
-                    type={showSecret ? 'text' : 'password'}
-                    readOnly
-                    className="pr-20"
-                  />
-                  <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-1">
-                    <Button 
-                      size="icon" 
-                      variant="ghost"
-                      onClick={() => setShowSecret(!showSecret)}
-                      className="h-8 w-8"
-                    >
-                      {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </Button>
-                    <Button 
-                      size="icon" 
-                      variant="ghost"
-                      onClick={() => copyToClipboard(bot.secret || '', 'Secret')}
-                      className="h-8 w-8"
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
+            </div>
+          </div>
+
+          <div>
+            <Label>Exchange API Key</Label>
+            <Input 
+              value={apiKey} 
+              onChange={(e) => setApiKey(e.target.value)} 
+              placeholder="API Key von Exchange eingeben"
+              className="mt-1"
+            />
+          </div>
+
+          <div>
+            <Label>Exchange API Secret</Label>
+            <div className="relative mt-1">
+              <Input 
+                value={apiSecret} 
+                onChange={(e) => setApiSecret(e.target.value)}
+                type={showApiSecret ? 'text' : 'password'}
+                placeholder="API Secret von Exchange eingeben"
+                className="pr-10"
+              />
+              <Button 
+                size="icon" 
+                variant="ghost"
+                onClick={() => setShowApiSecret(!showApiSecret)}
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+              >
+                {showApiSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </Button>
+            </div>
+          </div>
 
           <div className="flex items-center justify-between pt-2 border-t">
             <Label htmlFor="autoApprove">Auto-Approve</Label>

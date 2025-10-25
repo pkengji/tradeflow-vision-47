@@ -9,9 +9,14 @@ export default function EquityChart({ data }: { data: Point[] }){
   const xs = data.map(d=>new Date(d.ts).getTime());
   const ys = data.map(d=>d.day_pnl);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
-  const minY = Math.min(0, ...ys), maxY = Math.max(...ys);
+  // Variable y-axis scaling (not forced to start at 0)
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const yPadding = (maxY - minY) * 0.1; // Add 10% padding
+  const scaledMinY = minY - yPadding;
+  const scaledMaxY = maxY + yPadding;
   const x = (t:number)=> pad + ( (t - minX) / (maxX - minX || 1) ) * (width - 2*pad);
-  const y = (v:number)=> height - pad - ( (v - minY) / (maxY - minY || 1) ) * (height - 2*pad);
+  const y = (v:number)=> height - pad - ( (v - scaledMinY) / (scaledMaxY - scaledMinY || 1) ) * (height - 2*pad);
   const path = ys.map((v,i)=> (i===0?`M ${x(xs[i])} ${y(v)}`:`L ${x(xs[i])} ${y(v)}`)).join(" ");
   return (
     <svg width={width} height={height} className="w-full h-[180px]">
