@@ -16,7 +16,7 @@ type Props = {
 
 // Layout-Feinjustage (global)
 const TRACK_Y_ADJUST_PX = -6; // + runter, - rauf
-const LABEL_GAP_PX = -4; // vertikal (Tip → Text)
+const LABEL_GAP_PX = -11; // vertikal (Tip → Text)
 const LABEL_SIDE_GAP_PX = 5; // seitlich (Text ↔ Strich)
 
 function labelLeft(xPct: number, align: "left" | "center" | "right") {
@@ -134,7 +134,7 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
               heightPx={H_SLTP}
               colorClass="bg-danger"
               barHeightPx={H_BAR}
-              labelGapPx={LABEL_GAP_PX}
+              labelGapPx={LABEL_GAP_PX}-5
               title={<span style={{ color: "#EA3A10" }}>SL</span>}
               value={<span className="text-foreground tabular-nums">{fmt(sl)}</span>}
             />
@@ -160,7 +160,7 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
               heightPx={H_SLTP}
               colorClass="bg-success"
               barHeightPx={H_BAR}
-              labelGapPx={LABEL_GAP_PX}
+              labelGapPx={LABEL_GAP_PX}-5
               title={<span style={{ color: "#2DFB68" }}>TP</span>}
               value={<span className="text-foreground tabular-nums">{fmt(tp)}</span>}
             />
