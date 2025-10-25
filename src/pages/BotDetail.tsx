@@ -74,6 +74,13 @@ export default function BotDetail() {
     queryFn: () => api.getAvailablePairs(),
   });
 
+  // Get max leverage for each pair (from backend)
+  const getMaxLeverage = (symbol: string): number => {
+    const pairInfo = availablePairs.find(p => p.symbol === symbol);
+    // TODO: Use actual max leverage from backend when available
+    return (pairInfo as any)?.maxLeverage || 100;
+  };
+
   // Initialize form when bot loads
   useMemo(() => {
     if (bot) {
@@ -120,11 +127,22 @@ export default function BotDetail() {
 
   const applyGlobal = () => {
     if (globalLeverage !== '' || globalMultiplier !== '') {
-      setPairs(prev => prev.map(p => ({
-        ...p,
-        leverage: globalLeverage !== '' ? globalLeverage : p.leverage,
-        tvMultiplier: globalMultiplier !== '' ? globalMultiplier : p.tvMultiplier,
-      })));
+      setPairs(prev => prev.map(p => {
+        let newLeverage = p.leverage;
+        if (globalLeverage !== '') {
+          const maxLev = getMaxLeverage(p.symbol);
+          if (globalLeverage === 'max') {
+            newLeverage = 'max';
+          } else {
+            newLeverage = Math.min(globalLeverage, maxLev);
+          }
+        }
+        return {
+          ...p,
+          leverage: newLeverage,
+          tvMultiplier: globalMultiplier !== '' ? globalMultiplier : p.tvMultiplier,
+        };
+      }));
     }
   };
 
@@ -274,7 +292,7 @@ export default function BotDetail() {
                 max="100"
                 placeholder="0-100"
                 value={globalLeverage === 'max' ? '' : globalLeverage}
-                className="w-24"
+                className="w-24 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 onChange={(e) => {
                   const val = e.target.value;
                   if (val === '') setGlobalLeverage('');
@@ -301,7 +319,7 @@ export default function BotDetail() {
               step="0.1"
               placeholder="z.B. 1.5"
               value={globalMultiplier}
-              className="w-24"
+              className="w-24 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               onChange={(e) => {
                 const val = e.target.value;
                 setGlobalMultiplier(val === '' ? '' : parseFloat(val));
@@ -340,10 +358,22 @@ export default function BotDetail() {
                 placeholder={marginUnit.startsWith('percent') ? '%' : 'USDT'}
                 value={marginValue}
                 disabled={marginType === 'auto'}
-                className="w-24"
+                className="w-24 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 onChange={(e) => {
                   const val = e.target.value;
-                  setMarginValue(val === '' ? '' : parseFloat(val));
+                  if (val === '') {
+                    setMarginValue('');
+                  } else {
+                    const num = parseFloat(val);
+                    if (!isNaN(num)) {
+                      // Limit to 100 if percentage
+                      if (marginUnit.startsWith('percent')) {
+                        setMarginValue(Math.min(num, 100));
+                      } else {
+                        setMarginValue(num);
+                      }
+                    }
+                  }
                 }}
               />
             </div>
@@ -429,21 +459,22 @@ export default function BotDetail() {
           <div className="divide-y divide-border">
             {filteredPairs.map(pair => {
               const pairInfo = availablePairs.find(p => p.symbol === pair.symbol);
+              const maxLev = getMaxLeverage(pair.symbol);
               return (
-                <div key={pair.symbol} className="py-1.5 flex items-start gap-2">
+                <div key={pair.symbol} className="py-1 flex items-start gap-1.5">
                   {/* Icon */}
-                  <div className="w-7 h-7 rounded-full bg-[#FF9500] flex items-center justify-center shrink-0">
-                    <span className="text-base">{pairInfo?.icon || '●'}</span>
+                  <div className="w-6 h-6 rounded-full bg-[#FF9500] flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="text-sm">{pairInfo?.icon || '●'}</span>
                   </div>
 
                   {/* Symbol + Long/Short Buttons */}
-                  <div className="flex flex-col gap-1 min-w-0">
-                    <span className="text-sm font-medium leading-none truncate">{pair.symbol}</span>
-                    <div className="flex gap-1">
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <span className="text-sm font-medium leading-tight truncate">{pair.symbol}</span>
+                    <div className="flex gap-0.5">
                       <Button
                         size="sm"
                         variant={pair.directions.long ? 'default' : 'outline'}
-                        className={`h-6 px-2 text-[11px] ${pair.directions.long ? 'bg-[#0D3512] hover:bg-[#0D3512]/90 text-[#2DFB68]' : ''}`}
+                        className={`h-5 px-1.5 text-[10px] leading-none ${pair.directions.long ? 'bg-[#0D3512] hover:bg-[#0D3512]/90 text-[#2DFB68]' : ''}`}
                         onClick={() => updatePair(pair.symbol, {
                           directions: { ...pair.directions, long: !pair.directions.long }
                         })}
@@ -453,7 +484,7 @@ export default function BotDetail() {
                       <Button
                         size="sm"
                         variant={pair.directions.short ? 'destructive' : 'outline'}
-                        className={`h-6 px-2 text-[11px] ${pair.directions.short ? 'bg-[#641812] hover:bg-[#641812]/90 text-[#EA3A10]' : ''}`}
+                        className={`h-5 px-1.5 text-[10px] leading-none ${pair.directions.short ? 'bg-[#641812] hover:bg-[#641812]/90 text-[#EA3A10]' : ''}`}
                         onClick={() => updatePair(pair.symbol, {
                           directions: { ...pair.directions, short: !pair.directions.short }
                         })}
@@ -464,22 +495,22 @@ export default function BotDetail() {
                   </div>
 
                   {/* Leverage */}
-                  <div className="flex flex-col gap-0.5 w-16 shrink-0 ml-auto">
-                    <span className="text-[10px] text-muted-foreground">Leverage</span>
+                  <div className="flex flex-col gap-0.5 w-14 shrink-0 ml-auto">
+                    <span className="text-[9px] text-muted-foreground leading-tight">Leverage</span>
                     <Input
                       type="number"
                       min="0"
-                      max="100"
+                      max={maxLev}
                       value={pair.leverage === 'max' ? '' : pair.leverage}
-                      className="h-7 text-xs px-2"
+                      className="h-6 text-xs px-1.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       onChange={(e) => {
                         const val = e.target.value;
                         if (val === '') {
                           updatePair(pair.symbol, { leverage: 10 });
                         } else {
                           const num = parseFloat(val);
-                          if (!isNaN(num) && num >= 0 && num <= 100) {
-                            updatePair(pair.symbol, { leverage: num });
+                          if (!isNaN(num) && num >= 0) {
+                            updatePair(pair.symbol, { leverage: Math.min(num, maxLev) });
                           }
                         }
                       }}
@@ -487,13 +518,13 @@ export default function BotDetail() {
                   </div>
 
                   {/* Einsatz */}
-                  <div className="flex flex-col gap-0.5 w-16 shrink-0">
-                    <span className="text-[10px] text-muted-foreground">Einsatz</span>
+                  <div className="flex flex-col gap-0.5 w-14 shrink-0">
+                    <span className="text-[9px] text-muted-foreground leading-tight">Einsatz</span>
                     <Input
                       type="number"
                       step="0.1"
                       value={pair.tvMultiplier}
-                      className="h-7 text-xs px-2"
+                      className="h-6 text-xs px-1.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       onChange={(e) => updatePair(pair.symbol, {
                         tvMultiplier: parseFloat(e.target.value) || 1.0
                       })}
@@ -504,11 +535,11 @@ export default function BotDetail() {
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="h-7 w-7 shrink-0"
+                    className="h-6 w-6 shrink-0"
                     onClick={() => removePair(pair.symbol)}
                     aria-label="Delete pair"
                   >
-                    <Trash2 className="h-4 w-4 text-destructive" />
+                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
                   </Button>
                 </div>
               );
