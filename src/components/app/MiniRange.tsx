@@ -99,7 +99,7 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
 
   // tick heights (relative to bar thickness)
   const H_BAR = BAR_THICK_PX;
-  const H_SLTP = Math.round(H_BAR * 4.5); // 2×
+  const H_SLTP = Math.round(H_BAR * 5); // 2×
   const H_ENTRY = Math.round(H_BAR * 3); // 1.5×
   const H_MARK = Math.round(H_BAR * 2.4); // 1.5×
 
