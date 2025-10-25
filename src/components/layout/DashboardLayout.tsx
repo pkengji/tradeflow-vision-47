@@ -1,15 +1,15 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { LayoutDashboard, TrendingUp, Activity, Bot, Settings, LogOut, Menu, ChevronLeft } from 'lucide-react';
+import { LayoutDashboard, CandlestickChart, Bell, Bot, Settings, LogOut, Menu, ChevronLeft } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useState, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { name: 'Trades', href: '/trades', icon: TrendingUp },
-  { name: 'Signals', href: '/signals', icon: Activity },
+  { name: 'Trades', href: '/trades', icon: CandlestickChart },
+  { name: 'Signale', href: '/signals', icon: Bell },
   { name: 'Bots', href: '/bots', icon: Bot },
   { name: 'Einstellungen', href: '/settings', icon: Settings },
 ];
@@ -43,7 +43,8 @@ export function DashboardLayout({
   const NavLinks = ({ onNavigate }: { onNavigate?: () => void }) => (
     <>
       {navigation.map((item) => {
-        const isActive = location.pathname === item.href;
+        const isActive = location.pathname === item.href || 
+          (item.href !== '/' && location.pathname.startsWith(item.href));
         const Icon = item.icon;
         return (
           <Link
@@ -117,7 +118,7 @@ export function DashboardLayout({
           </Sheet>
 
           <div className="flex items-center gap-2">
-            <TrendingUp className="h-6 w-6" />
+            <CandlestickChart className="h-6 w-6" />
             <h1 className="text-lg font-bold">TradingBot</h1>
           </div>
 
@@ -152,7 +153,8 @@ export function DashboardLayout({
         <div className="grid grid-cols-5 h-16">
           {navigation.map((item) => {
             const Icon = item.icon;
-            const isActive = location.pathname === item.href;
+            const isActive = location.pathname === item.href || 
+              (item.href !== '/' && location.pathname.startsWith(item.href));
             return (
               <Link
                 key={item.name}
