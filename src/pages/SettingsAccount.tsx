@@ -1,15 +1,20 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function SettingsAccount() {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const handleSave = () => {
+    // TODO: API call to save profile/password
     toast.success('Einstellungen gespeichert');
   };
 
@@ -29,20 +34,44 @@ export default function SettingsAccount() {
 
         <div className="flex-1 overflow-y-auto p-4 pb-24 space-y-4">
           <Card>
-            <CardHeader>
+            <CardHeader className="pb-3">
               <CardTitle className="text-sm">Profil</CardTitle>
+              <CardDescription className="text-xs">Ihre persönlichen Informationen</CardDescription>
             </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Profilinformationen bearbeiten (Wird später implementiert)
+            <CardContent className="space-y-3">
+              <div className="space-y-1">
+                <Label htmlFor="name" className="text-xs">Name</Label>
+                <Input id="name" defaultValue={user?.name ?? ''} className="text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="email" className="text-xs">E-Mail</Label>
+                <Input id="email" type="email" defaultValue={user?.email ?? ''} disabled className="text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="role" className="text-xs">Rolle</Label>
+                <Input id="role" defaultValue={user?.role ?? ''} disabled className="text-sm" />
+              </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="pb-3">
               <CardTitle className="text-sm">Passwort ändern</CardTitle>
+              <CardDescription className="text-xs">Aktualisieren Sie Ihr Passwort</CardDescription>
             </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Passwort ändern (Wird später implementiert)
+            <CardContent className="space-y-3">
+              <div className="space-y-1">
+                <Label htmlFor="current-password" className="text-xs">Aktuelles Passwort</Label>
+                <Input id="current-password" type="password" className="text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="new-password" className="text-xs">Neues Passwort</Label>
+                <Input id="new-password" type="password" className="text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="confirm-password" className="text-xs">Passwort bestätigen</Label>
+                <Input id="confirm-password" type="password" className="text-sm" />
+              </div>
             </CardContent>
           </Card>
         </div>

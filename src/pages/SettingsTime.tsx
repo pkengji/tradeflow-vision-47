@@ -15,22 +15,22 @@ import {
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
-// Liste der gängigen Zeitzonen
+// Liste der gängigen Zeitzonen mit UTC-Offset
 const TIMEZONES = [
-  'UTC',
-  'Europe/Berlin',
-  'Europe/Zurich',
-  'Europe/Vienna',
-  'Europe/London',
-  'Europe/Paris',
-  'America/New_York',
-  'America/Los_Angeles',
-  'America/Chicago',
-  'Asia/Tokyo',
-  'Asia/Shanghai',
-  'Asia/Hong_Kong',
-  'Asia/Singapore',
-  'Australia/Sydney',
+  { value: 'UTC', label: 'UTC +0:00' },
+  { value: 'Europe/Berlin', label: 'Europe/Berlin (UTC +1:00)' },
+  { value: 'Europe/Zurich', label: 'Europe/Zurich (UTC +1:00)' },
+  { value: 'Europe/Vienna', label: 'Europe/Vienna (UTC +1:00)' },
+  { value: 'Europe/London', label: 'Europe/London (UTC +0:00)' },
+  { value: 'Europe/Paris', label: 'Europe/Paris (UTC +1:00)' },
+  { value: 'America/New_York', label: 'America/New_York (UTC -5:00)' },
+  { value: 'America/Los_Angeles', label: 'America/Los_Angeles (UTC -8:00)' },
+  { value: 'America/Chicago', label: 'America/Chicago (UTC -6:00)' },
+  { value: 'Asia/Tokyo', label: 'Asia/Tokyo (UTC +9:00)' },
+  { value: 'Asia/Shanghai', label: 'Asia/Shanghai (UTC +8:00)' },
+  { value: 'Asia/Hong_Kong', label: 'Asia/Hong_Kong (UTC +8:00)' },
+  { value: 'Asia/Singapore', label: 'Asia/Singapore (UTC +8:00)' },
+  { value: 'Australia/Sydney', label: 'Australia/Sydney (UTC +10:00)' },
 ];
 
 export default function SettingsTime() {
@@ -88,8 +88,8 @@ export default function SettingsTime() {
                   </SelectTrigger>
                   <SelectContent className="bg-popover">
                     {TIMEZONES.map((tz) => (
-                      <SelectItem key={tz} value={tz}>
-                        {tz}
+                      <SelectItem key={tz.value} value={tz.value}>
+                        {tz.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
