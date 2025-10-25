@@ -134,7 +134,7 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
               heightPx={H_SLTP}
               colorClass="bg-danger"
               barHeightPx={H_BAR}
-              labelGapPx={LABEL_GAP_PX - 5}
+              labelGapPx={LABEL_GAP_PX - 8}
               title={<span style={{ color: "#EA3A10" }}>SL</span>}
               value={<span className="text-foreground tabular-nums">{fmt(sl)}</span>}
             />
@@ -160,7 +160,7 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
               heightPx={H_SLTP}
               colorClass="bg-success"
               barHeightPx={H_BAR}
-              labelGapPx={LABEL_GAP_PX - 5}
+              labelGapPx={LABEL_GAP_PX - 8}
               title={<span style={{ color: "#2DFB68" }}>TP</span>}
               value={<span className="text-foreground tabular-nums">{fmt(tp)}</span>}
             />
