@@ -430,20 +430,20 @@ export default function BotDetail() {
             {filteredPairs.map(pair => {
               const pairInfo = availablePairs.find(p => p.symbol === pair.symbol);
               return (
-                <div key={pair.symbol} className="py-2 flex items-center gap-2">
+                <div key={pair.symbol} className="py-1.5 flex items-start gap-2">
                   {/* Icon */}
-                  <div className="w-8 h-8 rounded-full bg-[#FF9500] flex items-center justify-center flex-shrink-0">
-                    <span className="text-lg">{pairInfo?.icon || '●'}</span>
+                  <div className="w-7 h-7 rounded-full bg-[#FF9500] flex items-center justify-center shrink-0">
+                    <span className="text-base">{pairInfo?.icon || '●'}</span>
                   </div>
 
                   {/* Symbol + Long/Short Buttons */}
                   <div className="flex flex-col gap-1 min-w-0">
-                    <span className="text-sm font-medium">{pair.symbol}</span>
+                    <span className="text-sm font-medium leading-none truncate">{pair.symbol}</span>
                     <div className="flex gap-1">
                       <Button
                         size="sm"
                         variant={pair.directions.long ? 'default' : 'outline'}
-                        className={`h-7 px-3 text-xs ${pair.directions.long ? 'bg-[#0D3512] hover:bg-[#0D3512]/90 text-[#2DFB68]' : ''}`}
+                        className={`h-6 px-2 text-[11px] ${pair.directions.long ? 'bg-[#0D3512] hover:bg-[#0D3512]/90 text-[#2DFB68]' : ''}`}
                         onClick={() => updatePair(pair.symbol, {
                           directions: { ...pair.directions, long: !pair.directions.long }
                         })}
@@ -453,7 +453,7 @@ export default function BotDetail() {
                       <Button
                         size="sm"
                         variant={pair.directions.short ? 'destructive' : 'outline'}
-                        className={`h-7 px-3 text-xs ${pair.directions.short ? 'bg-[#641812] hover:bg-[#641812]/90 text-[#EA3A10]' : ''}`}
+                        className={`h-6 px-2 text-[11px] ${pair.directions.short ? 'bg-[#641812] hover:bg-[#641812]/90 text-[#EA3A10]' : ''}`}
                         onClick={() => updatePair(pair.symbol, {
                           directions: { ...pair.directions, short: !pair.directions.short }
                         })}
@@ -464,14 +464,14 @@ export default function BotDetail() {
                   </div>
 
                   {/* Leverage */}
-                  <div className="flex flex-col gap-0.5 w-20 flex-shrink-0">
-                    <span className="text-xs text-muted-foreground">Leverage</span>
+                  <div className="flex flex-col gap-0.5 w-16 shrink-0 ml-auto">
+                    <span className="text-[10px] text-muted-foreground">Leverage</span>
                     <Input
                       type="number"
                       min="0"
                       max="100"
                       value={pair.leverage === 'max' ? '' : pair.leverage}
-                      className="h-8 text-sm"
+                      className="h-7 text-xs px-2"
                       onChange={(e) => {
                         const val = e.target.value;
                         if (val === '') {
@@ -487,13 +487,13 @@ export default function BotDetail() {
                   </div>
 
                   {/* Einsatz */}
-                  <div className="flex flex-col gap-0.5 w-20 flex-shrink-0">
-                    <span className="text-xs text-muted-foreground">Einsatz</span>
+                  <div className="flex flex-col gap-0.5 w-16 shrink-0">
+                    <span className="text-[10px] text-muted-foreground">Einsatz</span>
                     <Input
                       type="number"
                       step="0.1"
                       value={pair.tvMultiplier}
-                      className="h-8 text-sm"
+                      className="h-7 text-xs px-2"
                       onChange={(e) => updatePair(pair.symbol, {
                         tvMultiplier: parseFloat(e.target.value) || 1.0
                       })}
@@ -504,8 +504,9 @@ export default function BotDetail() {
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="h-8 w-8 flex-shrink-0"
+                    className="h-7 w-7 shrink-0"
                     onClick={() => removePair(pair.symbol)}
+                    aria-label="Delete pair"
                   >
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
