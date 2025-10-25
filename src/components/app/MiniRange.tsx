@@ -16,7 +16,7 @@ type Props = {
 
 // Layout-Feinjustage (global)
 const TRACK_Y_ADJUST_PX = -6;   // + runter, - rauf
-const LABEL_GAP_PX = -11;        // vertikal (Tip → Text)
+const LABEL_GAP_PX = -18;        // vertikal (Tip → Text)
 const LABEL_SIDE_GAP_PX = 5;   // seitlich (Text ↔ Strich)
 
 function labelLeft(xPct: number, align: 'left'|'center'|'right') {
