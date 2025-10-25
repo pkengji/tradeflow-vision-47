@@ -15,8 +15,15 @@ type Props = {
 };
 
 // Layout-Feinjustage (global)
-const TRACK_Y_ADJUST_PX = 0;   // tick exactly meets bar edge
-const LABEL_GAP_PX = 3;        // vertical (Tip → Text)
+const TRACK_Y_ADJUST_PX = -6;   // + runter, - rauf
+const LABEL_GAP_PX = -11;        // vertikal (Tip → Text)
+const LABEL_SIDE_GAP_PX = 5;   // seitlich (Text ↔ Strich)
+
+function labelLeft(xPct: number, align: 'left'|'center'|'right') {
+  if (align === 'left')  return `calc(${xPct}% + ${LABEL_SIDE_GAP_PX}px)`;
+  if (align === 'right') return `calc(${xPct}% - ${LABEL_SIDE_GAP_PX}px)`;
+  return `${xPct}%`;
+}
 
 export default function MiniRange({
   sl, entry, tp, mark, labelEntry = 'ENTRY', side = 'long',
@@ -220,11 +227,11 @@ function Tick({
   };
 
   // vertical anchor at bar edge
-  const baseTop = direction === 'down' ? barHeightPx : 0;
+  const baseTop = direction === 'down' ? barHeightPx : -8;
   const lineTop  = baseTop + TRACK_Y_ADJUST_PX;
   const labelTop = direction === 'down'
-    ? (barHeightPx + heightPx + labelGapPx + TRACK_Y_ADJUST_PX)
-    : (0 - heightPx - labelGapPx + TRACK_Y_ADJUST_PX);
+    ? (barHeightPx + heightPx + LABEL_GAP_PX + TRACK_Y_ADJUST_PX)   // unter der Spitze
+    : (0 - heightPx - LABEL_GAP_PX + TRACK_Y_ADJUST_PX);            // über der Spitze
   
   const transform = getTransform();
 
@@ -246,7 +253,7 @@ function Tick({
         <div
           className="absolute whitespace-nowrap text-[10px] leading-tight"
           style={{ 
-            left: `${xPct}%`, 
+            left: labelLeft(xPct, align), 
             top: labelTop, 
             transform,
           }}
@@ -292,7 +299,7 @@ function MarkLabel({
   return (
     <div
       className="absolute whitespace-nowrap text-[11px] font-medium"
-      style={{ left: `${xPct}%`, top, transform: getTransform() }}
+      style={{ left: labelLeft(xPct, align), top, transform: getTransform() }}
     >
       {percent != null && (
         <span style={{ color: percentColor }}>
