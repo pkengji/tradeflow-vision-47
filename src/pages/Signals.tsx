@@ -288,13 +288,14 @@ export default function Signals() {
         {selectedSignal && selectedSignal.status === 'waiting_for_approval' && (
           <div className="fixed inset-x-0 bottom-16 bg-card border-t p-3 flex gap-3 z-50">
             <Button 
-              className="flex-1 bg-white hover:bg-white/90 text-foreground" 
+              className="flex-1" 
               onClick={handleApprove}
             >
               Approve
             </Button>
             <Button 
-              className="flex-1 bg-[hsl(var(--background))] hover:bg-[hsl(var(--background))]/90 text-white border-0"
+              variant="outline"
+              className="flex-1"
               onClick={handleCancel}
             >
               Cancel
