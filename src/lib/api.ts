@@ -203,7 +203,7 @@ async function getBots(): Promise<Bot[]> {
       default_leverage: b.default_leverage ?? null,
       status: b.status,
       auto_approve: b.auto_approve,
-      uuid: null,
+      uuid: (b as any).uuid ?? null,
       secret: null,
       max_leverage: null,
       is_deleted: b.is_deleted ?? false,
@@ -382,7 +382,7 @@ async function updateNotificationSettings(settings: any): Promise<any> {
 
 // User management (admin)
 async function createUser(data: { username: string; email: string; password: string; role: string }): Promise<any> {
-  return http('/api/v1/admin/users', { method: 'POST', body: data });
+  return http('/api/v1/users', { method: 'POST', body: data });
 }
 
 // ---------- Export-Objekt ----------

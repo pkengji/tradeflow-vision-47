@@ -86,13 +86,7 @@ export default function BotDetail() {
     return result;
   };
 
-  // Initialize UUID for new bot
-  useMemo(() => {
-    if (isNew && !uuid) {
-      setUuid(generateSecureId(48)); // Longer, secure UUID
-    }
-  }, [isNew, uuid]);
-
+  
   const { data: availablePairs = [] } = useQuery({
     queryKey: ['availablePairs'],
     queryFn: () => api.getAvailablePairs(),
@@ -110,7 +104,7 @@ export default function BotDetail() {
     if (bot) {
       setName(bot.name || '');
       setUuid(bot.uuid || '');
-      setUserSecret((bot as any).user_secret || generateSecureId(64)); // Per-user secret
+      /* user secret is per-user: fetched separately */ // Per-user secret
       setApiKey((bot as any).api_key || '');
       setApiSecret((bot as any).api_secret || '');
       setAutoApprove(!!bot.auto_approve);
