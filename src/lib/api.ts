@@ -348,11 +348,50 @@ async function getAvailablePairs(): Promise<Array<{ symbol: string; name: string
   }
 }
 
+// Bot management
+async function createBot(data: Partial<Bot>): Promise<Bot> {
+  return http<Bot>('/api/v1/bots', { method: 'POST', body: data });
+}
+
+async function updateBot(id: number, data: Partial<Bot>): Promise<Bot> {
+  return http<Bot>(`/api/v1/bots/${id}`, { method: 'PATCH', body: data });
+}
+
+// User settings
+async function updateUserProfile(data: { name?: string; email?: string }): Promise<any> {
+  return http('/api/v1/user/profile', { method: 'PATCH', body: data });
+}
+
+async function updateUserPassword(data: { current_password: string; new_password: string }): Promise<any> {
+  return http('/api/v1/user/password', { method: 'PATCH', body: data });
+}
+
+// Timezone settings
+async function updateTimezone(data: { use_system: boolean; timezone?: string }): Promise<any> {
+  return http('/api/v1/user/timezone', { method: 'PATCH', body: data });
+}
+
+// Notification settings
+async function getNotificationSettings(): Promise<any> {
+  return http('/api/v1/user/notifications');
+}
+
+async function updateNotificationSettings(settings: any): Promise<any> {
+  return http('/api/v1/user/notifications', { method: 'PATCH', body: settings });
+}
+
+// User management (admin)
+async function createUser(data: { username: string; email: string; password: string; role: string }): Promise<any> {
+  return http('/api/v1/admin/users', { method: 'POST', body: data });
+}
+
 // ---------- Export-Objekt ----------
 
 export const api = {
   // Bots
   getBots,
+  createBot,
+  updateBot,
   pauseBot,
   resumeBot,
   deleteBot,
@@ -378,6 +417,16 @@ export const api = {
   approveOutbox,
   rejectOutbox,
   previewOutbox,
+
+  // User settings
+  updateUserProfile,
+  updateUserPassword,
+  updateTimezone,
+  getNotificationSettings,
+  updateNotificationSettings,
+
+  // Admin
+  createUser,
 
   // Misc
   logAction,

@@ -14,6 +14,8 @@ import {
 } from '@/components/ui/select';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
+import { useMutation } from '@tanstack/react-query';
+import api from '@/lib/api';
 
 export default function SettingsOwner() {
   const navigate = useNavigate();
@@ -22,17 +24,36 @@ export default function SettingsOwner() {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'admin' | 'trader' | 'viewer'>('viewer');
 
+  const addUserMutation = useMutation({
+    mutationFn: async () => {
+      return api.createUser({ username, email, password, role });
+    },
+    onSuccess: () => {
+      toast.success('Benutzer wurde hinzugefügt');
+      setUsername('');
+      setEmail('');
+      setPassword('');
+      setRole('viewer');
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Fehler beim Hinzufügen des Benutzers');
+    },
+  });
+
   const handleAddUser = () => {
     if (!username || !email || !password) {
       toast.error('Bitte alle Felder ausfüllen');
       return;
     }
-    // TODO: API Call zum Hinzufügen des Users
-    toast.success('Benutzer wurde hinzugefügt');
-    setUsername('');
-    setEmail('');
-    setPassword('');
-    setRole('viewer');
+    if (!email.includes('@')) {
+      toast.error('Bitte gültige E-Mail-Adresse eingeben');
+      return;
+    }
+    if (password.length < 8) {
+      toast.error('Passwort muss mindestens 8 Zeichen lang sein');
+      return;
+    }
+    addUserMutation.mutate();
   };
 
   return (
@@ -101,8 +122,8 @@ export default function SettingsOwner() {
       </div>
 
       <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 bg-card border-t p-4 z-50">
-        <Button onClick={handleAddUser} className="w-full">
-          User hinzufügen
+        <Button onClick={handleAddUser} disabled={addUserMutation.isPending} className="w-full">
+          {addUserMutation.isPending ? 'Füge hinzu...' : 'User hinzufügen'}
         </Button>
       </div>
     </DashboardLayout>

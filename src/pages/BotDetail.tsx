@@ -124,8 +124,20 @@ export default function BotDetail() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      // TODO: Implement save logic
-      await new Promise(resolve => setTimeout(resolve, 500));
+      const botData = {
+        name,
+        uuid,
+        api_key: apiKey,
+        api_secret: apiSecret,
+        auto_approve: autoApprove,
+        // TODO: Add more fields as needed
+      };
+      
+      if (isNew) {
+        return api.createBot(botData);
+      } else {
+        return api.updateBot(botId!, botData);
+      }
     },
     onSuccess: () => {
       toast.success('Bot gespeichert');
@@ -133,7 +145,9 @@ export default function BotDetail() {
       qc.invalidateQueries({ queryKey: ['bot', botId] });
       navigate('/bots');
     },
-    onError: () => toast.error('Fehler beim Speichern'),
+    onError: (error: any) => {
+      toast.error(error.message || 'Fehler beim Speichern');
+    },
   });
 
   const pauseMutation = useMutation({

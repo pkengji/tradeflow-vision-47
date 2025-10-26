@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
+import api from '@/lib/api';
 
 type NotificationEvent = 
   | 'trade_opened' 
@@ -59,13 +60,14 @@ export default function SettingsNotifications() {
 
   const saveMutation = useMutation({
     mutationFn: async (newSettings: NotificationSettings) => {
-      // TODO: Save to backend
-      await new Promise(resolve => setTimeout(resolve, 500));
-      return newSettings;
+      return api.updateNotificationSettings(newSettings);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notification-settings'] });
       toast.success('Benachrichtigungseinstellungen gespeichert');
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Fehler beim Speichern');
     },
   });
 

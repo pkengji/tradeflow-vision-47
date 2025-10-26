@@ -14,6 +14,8 @@ import {
 } from '@/components/ui/select';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
+import { useMutation } from '@tanstack/react-query';
+import api from '@/lib/api';
 
 // Liste der gängigen Zeitzonen mit UTC-Offset
 const TIMEZONES = [
@@ -38,9 +40,23 @@ export default function SettingsTime() {
   const [useSystemTime, setUseSystemTime] = useState(true);
   const [selectedTimezone, setSelectedTimezone] = useState('Europe/Zurich');
 
+  const timezoneMutation = useMutation({
+    mutationFn: async () => {
+      return api.updateTimezone({
+        use_system: useSystemTime,
+        timezone: useSystemTime ? undefined : selectedTimezone,
+      });
+    },
+    onSuccess: () => {
+      toast.success('Zeiteinstellungen gespeichert');
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Fehler beim Speichern');
+    },
+  });
+
   const handleSave = () => {
-    // TODO: Speichern via API
-    toast.success('Zeiteinstellungen gespeichert');
+    timezoneMutation.mutate();
   };
 
   return (
@@ -88,8 +104,8 @@ export default function SettingsTime() {
       </div>
 
       <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 bg-card border-t p-4 z-50">
-        <Button onClick={handleSave} className="w-full">
-          Speichern
+        <Button onClick={handleSave} disabled={timezoneMutation.isPending} className="w-full">
+          {timezoneMutation.isPending ? 'Speichern...' : 'Speichern'}
         </Button>
       </div>
     </DashboardLayout>

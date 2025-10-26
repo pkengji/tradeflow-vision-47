@@ -8,14 +8,42 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
+import { useMutation } from '@tanstack/react-query';
+import api from '@/lib/api';
 
 export default function SettingsAccount() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [name, setName] = useState(user?.name ?? '');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  const profileMutation = useMutation({
+    mutationFn: async () => {
+      if (name !== user?.name) {
+        await api.updateUserProfile({ name });
+      }
+      if (currentPassword && newPassword) {
+        if (newPassword !== confirmPassword) {
+          throw new Error('Passwörter stimmen nicht überein');
+        }
+        await api.updateUserPassword({ current_password: currentPassword, new_password: newPassword });
+      }
+    },
+    onSuccess: () => {
+      toast.success('Einstellungen gespeichert');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Fehler beim Speichern');
+    },
+  });
 
   const handleSave = () => {
-    // TODO: API call to save profile/password
-    toast.success('Einstellungen gespeichert');
+    profileMutation.mutate();
   };
 
   return (
@@ -29,7 +57,7 @@ export default function SettingsAccount() {
           <CardContent className="space-y-3">
             <div className="space-y-1">
               <Label htmlFor="name" className="text-xs">Name</Label>
-              <Input id="name" defaultValue={user?.name ?? ''} className="text-sm" />
+              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} className="text-sm" />
             </div>
             <div className="space-y-1">
               <Label htmlFor="email" className="text-xs">E-Mail</Label>
@@ -50,23 +78,41 @@ export default function SettingsAccount() {
           <CardContent className="space-y-3">
             <div className="space-y-1">
               <Label htmlFor="current-password" className="text-xs">Aktuelles Passwort</Label>
-              <Input id="current-password" type="password" className="text-sm" />
+              <Input 
+                id="current-password" 
+                type="password" 
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                className="text-sm" 
+              />
             </div>
             <div className="space-y-1">
               <Label htmlFor="new-password" className="text-xs">Neues Passwort</Label>
-              <Input id="new-password" type="password" className="text-sm" />
+              <Input 
+                id="new-password" 
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="text-sm" 
+              />
             </div>
             <div className="space-y-1">
               <Label htmlFor="confirm-password" className="text-xs">Passwort bestätigen</Label>
-              <Input id="confirm-password" type="password" className="text-sm" />
+              <Input 
+                id="confirm-password" 
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="text-sm" 
+              />
             </div>
           </CardContent>
         </Card>
       </div>
 
       <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 bg-card border-t p-4 z-50">
-        <Button onClick={handleSave} className="w-full">
-          Speichern
+        <Button onClick={handleSave} disabled={profileMutation.isPending} className="w-full">
+          {profileMutation.isPending ? 'Speichern...' : 'Speichern'}
         </Button>
       </div>
     </DashboardLayout>
