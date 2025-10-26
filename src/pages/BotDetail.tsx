@@ -159,6 +159,15 @@ export default function BotDetail() {
     },
   });
 
+  const resumeMutation = useMutation({
+    mutationFn: () => api.resumeBot(botId!),
+    onSuccess: () => {
+      toast.success('Bot gestartet');
+      qc.invalidateQueries({ queryKey: ['bot', botId] });
+      navigate('/bots');
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: () => api.deleteBot(botId!),
     onSuccess: () => {
@@ -667,9 +676,15 @@ export default function BotDetail() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="z-50">
-              <DropdownMenuItem onClick={() => pauseMutation.mutate()}>
-                Bot pausieren
-              </DropdownMenuItem>
+              {bot?.status === 'active' ? (
+                <DropdownMenuItem onClick={() => pauseMutation.mutate()}>
+                  Bot pausieren
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={() => resumeMutation.mutate()}>
+                  Bot erneut starten
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 onClick={() => {
                   if (confirm('Bot wirklich löschen?')) deleteMutation.mutate();
