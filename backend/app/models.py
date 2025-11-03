@@ -349,7 +349,7 @@ class Cashflow(Base):  # ADDED
     account_kind = Column(String, nullable=True)         # 'main' | 'sub'
     is_internal = Column(Boolean, default=True)             # sollte False sein (interne Transfers nicht speichern)
     status = Column(String, nullable=True)               # 'success', 'pending', etc.
-    external_add = Column(Text, nullable=True) 
+    external_addr = Column(Text, nullable=True) 
 
     ts = Column(DateTime(timezone=True), nullable=True)  # Zeitpunkt des Cashflows (UTC)
     raw_json = Column(Text, nullable=True)

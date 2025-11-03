@@ -4,7 +4,7 @@ from typing import Optional, Tuple, Dict, Any, List
 from datetime import datetime, timezone, timedelta
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, case
 
 from app import models
 from app.bybit_v5_data import BybitV5Data
@@ -187,7 +187,7 @@ def sync_cashflows(
                 account_kind="main",
                 external_addr=addr,
                 is_internal=False,
-                raw=it,
+                raw_json=it,
             )
             if ok:
                 inserted["deposit"] += 1
@@ -256,13 +256,19 @@ def compute_portfolio_value(
     # external only
     q_cf = q_cf.filter(models.Cashflow.is_internal == False)
 
-    deposits_sum = q_cf.with_entities(func.coalesce(func.sum(
-        func.case((models.Cashflow.direction == "deposit", models.Cashflow.amount_usdt), else_=0.0)
-    ), 0.0)).scalar() or 0.0
+    deposits_sum = q_cf.with_entities(
+        func.coalesce(
+            func.sum(case((models.Cashflow.direction == "deposit", models.Cashflow.amount_usdt), else_=0.0)),
+            0.0
+        )
+    ).scalar() or 0.0
 
-    withdrawals_sum = q_cf.with_entities(func.coalesce(func.sum(
-        func.case((models.Cashflow.direction == "withdraw", models.Cashflow.amount_usdt), else_=0.0)
-    ), 0.0)).scalar() or 0.0
+    withdrawals_sum = q_cf.with_entities(
+        func.coalesce(
+            func.sum(case((models.Cashflow.direction == "withdraw", models.Cashflow.amount_usdt), else_=0.0)),
+            0.0
+        )
+    ).scalar() or 0.0
 
     # Realized PnL across all bots of the user
     bot_ids = [b.id for b in db.query(models.Bot).filter(models.Bot.user_id == user_id, models.Bot.is_deleted == False).all()]

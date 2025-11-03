@@ -171,7 +171,7 @@ class CashflowOut(BaseModel):
     id: int
     user_id: int
     bot_id: Optional[int] = None
-    account_type: Optional[str] = None  # 'main' | 'sub' | None
+    account_kind: Optional[str] = None  # 'main' | 'sub' | None
     direction: str                      # 'deposit' | 'withdraw'
     amount_usdt: float
     currency: str
