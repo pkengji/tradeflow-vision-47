@@ -53,13 +53,10 @@ def get_db():
 def get_current_user_id(db: Session = Depends(get_db), request: Request = None) -> int:
     """
     Bestimmt den aktuellen User:
-    1) Wenn ein 'uid'-Cookie existiert und gültig ist -> diesen User verwenden.
-    2) Falls kein Cookie: Single-User-Fallback
-       - existiert genau 1 User -> diesen verwenden
-       - existiert noch kein User -> automatisch Default-User anlegen und verwenden
-    3) Gibt die User-ID zurück.
+    1) Cookie 'uid' → verwenden, wenn gültig
+    2) Single-User-Fallback (auto-create admin)
+    3) bei mehreren Usern ohne Cookie → 401
     """
-    # 1) Cookie versuchen
     try:
         uid_cookie = request.cookies.get("uid") if request else None
         if uid_cookie:
@@ -70,33 +67,26 @@ def get_current_user_id(db: Session = Depends(get_db), request: Request = None) 
     except Exception:
         pass
 
-
-    # 2) Single-User-Fallback
     existing = db.query(models.User).order_by(models.User.id.asc()).all()
     if len(existing) == 1:
         return existing[0].id
     if len(existing) == 0:
-        # auto-create default user
-        import secrets
         u = models.User(
             username="admin",
             email="admin@example.com",
-            password_hash="admin",   # TODO: später hashen!
+            password_hash="admin",
             role="admin",
             webhook_secret=secrets.token_hex(16),
         )
         db.add(u); db.commit(); db.refresh(u)
         return u.id
 
-    # 3) Mehrere User vorhanden, aber kein Cookie gesetzt -> sicherer Fehler
-    # (alternativ: nimm den ältesten, aber besser explizit einloggen)
     raise HTTPException(status_code=401, detail="No active session. Please login to set uid cookie.")
-    
-    
+
+
 # ---------- Users ----------
 @app.post("/api/v1/users", response_model=UserOut)
 def create_user(body: CreateUserBody, db: Session = Depends(get_db)):
-    # NOTE: password hashing omitted for brevity
     u = models.User(
         username=body.username,
         email=body.email,
@@ -126,7 +116,7 @@ def update_me(body: UpdateUserBody, db: Session = Depends(get_db), user_id: int 
 def set_password(body: UpdatePasswordBody, db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
     u = db.query(models.User).filter(models.User.id == user_id).first()
     if not u: raise HTTPException(404, "User not found")
-    u.password_hash = body.new_password  # TODO: hash with bcrypt/passlib in prod
+    u.password_hash = body.new_password
     db.commit()
     return {"ok": True}
 
@@ -146,23 +136,22 @@ def rotate_my_secret(db: Session = Depends(get_db), user_id: int = Depends(get_c
     u.webhook_secret = secrets.token_hex(16)
     db.commit(); db.refresh(u)
     return {"webhook_secret": u.webhook_secret}
-    
+
 @app.post("/api/v1/auth/login")
 def login(body: LoginBody, db: Session = Depends(get_db)):
     ident = (body.email or body.username or "").strip()
     if not ident:
         raise HTTPException(400, "email or username required")
-    
+
     u = db.query(models.User).filter(
         or_(models.User.email == ident, models.User.username == ident)
     ).first()
-    
+
     if not u or u.password_hash != body.password:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     payload = {"ok": True, "user": UserOut.model_validate(u, from_attributes=True).model_dump()}
     resp = JSONResponse(content=payload)
-    # Session-Cookie setzen (einfach & dev-freundlich)
     resp.set_cookie(key="uid", value=str(u.id), httponly=True, samesite="lax", secure=False, path="/")
     return resp
 
@@ -176,9 +165,8 @@ def logout():
 def whoami(user_id: int = Depends(get_current_user_id)):
     return {"user_id": user_id}
 
+
 # ---------- Bots ----------
-
-
 def _mask_key(k: str | None) -> str | None:
     if not k: return None
     if len(k) <= 5: return "•••"
@@ -186,7 +174,6 @@ def _mask_key(k: str | None) -> str | None:
 
 def _bot_out_from_model(bot: Bot) -> BotOut:
     out = BotOut.model_validate(bot, from_attributes=True)
-    # sichere Anzeige-Felder setzen
     out.has_exchange_keys = bool(bot.api_key) and bool(bot.api_secret)
     out.api_key_masked = _mask_key(bot.api_key)
     return out
@@ -242,7 +229,6 @@ def delete_bot(bot_id: int):
         bot = db.get(models.Bot, bot_id)
         if not bot or bot.is_deleted:
             raise HTTPException(404, "Bot not found")
-        # Soft delete (Frontend erwartet nur, dass der Bot verschwindet)
         bot.is_deleted = True
         if hasattr(models, "BotStatus"):
             bot.status = models.BotStatus.deleted
@@ -271,11 +257,10 @@ def put_bot_symbols(
         raise HTTPException(404, "Bot not found or not owned by current user")
     return [BotSymbolSettingOut.model_validate(r, from_attributes=True) for r in rows]
 
-# ---------- Bybit Verlinkung ----------------------
 
+# ---------- Trades / Symbols ----------
 @app.get("/api/v1/trades/symbols", response_model=List[str])
 def trades_symbols(db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
-    # identisch zu list_symbols – separater Alias für Frontend-Kompatibilität
     return list_symbols(db=db, user_id=user_id)
 
 @app.post("/api/v1/bots/{bot_id}/sync-bybit")
@@ -301,8 +286,6 @@ def sync_full(bot_id: int,
 @app.get("/api/v1/symbols", response_model=List[str])
 def list_symbols(db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
     syms: set[str] = set()
-
-    # Positions → über Bot joinen
     try:
         q_pos = (
             select(func.distinct(models.Position.symbol))
@@ -316,7 +299,6 @@ def list_symbols(db: Session = Depends(get_db), user_id: int = Depends(get_curre
     except Exception:
         pass
 
-    # Executions (falls Modell existiert) → über Bot joinen
     if hasattr(models, "Execution"):
         try:
             q_exe = (
@@ -331,8 +313,6 @@ def list_symbols(db: Session = Depends(get_db), user_id: int = Depends(get_curre
         except Exception:
             pass
 
-
-    # Orders (falls Modell existiert) → über Bot joinen
     if hasattr(models, "Order"):
         try:
             q_ord = (
@@ -349,13 +329,8 @@ def list_symbols(db: Session = Depends(get_db), user_id: int = Depends(get_curre
 
     return sorted(syms)
 
-# ---------- Signalempfanglogik ----------------------
-# NOCH EINZUTRAGEN
-
-
 
 # ---------- Positions ----------
-
 @app.get("/api/v1/positions")
 def list_positions(
     status: str | None = None,
@@ -388,19 +363,12 @@ def list_positions(
 
     items: list[dict] = []
     for r in rows:
-        # PnL-Logik: offene Trades -> unrealized, sonst final
         pnl_value = (
             r.unrealized_pnl_usdt
             if r.status == "open" and r.unrealized_pnl_usdt is not None
             else r.pnl_usdt
         )
-
-        # 1 einziges Entry-Feld fürs Frontend:
-        entry_price = (
-            r.entry_price_vwap
-            or r.entry_price_best
-            or r.entry_price_trigger
-        )
+        entry_price = (r.entry_price_vwap or r.entry_price_best or r.entry_price_trigger)
 
         item = {
             "id": r.id,
@@ -419,19 +387,19 @@ def list_positions(
             "pnl": pnl_value,
             "fee_open_usdt": r.fee_open_usdt,
             "fee_close_usdt": r.fee_close_usdt,
-            # falls du funding später als eigene Spalte speicherst:
             "funding_usdt": None,
             "opened_at": r.opened_at,
             "closed_at": r.closed_at,
+            # ADDED: Brücke (für TradeDetails)
+            "trade_uid": getattr(r, "trade_uid", None),
+            "tv_signal_id": getattr(r, "tv_signal_id", None),
+            "outbox_item_id": getattr(r, "outbox_item_id", None),
+            "first_exec_at": getattr(r, "first_exec_at", None),
+            "last_exec_at": getattr(r, "last_exec_at", None),
         }
         items.append(item)
 
-    return {
-        "items": items,
-        "total": total,
-        "page": 1,
-        "page_size": len(items),
-    }
+    return {"items": items, "total": total, "page": 1, "page_size": len(items)}
 
 
 @app.get("/api/v1/positions/{position_id}")
@@ -444,16 +412,8 @@ def get_position(
     if not r:
         raise HTTPException(status_code=404, detail="Position not found")
 
-    pnl_value = (
-        r.unrealized_pnl_usdt
-        if r.status == "open" and r.unrealized_pnl_usdt is not None
-        else r.pnl_usdt
-    )
-    entry_price = (
-        r.entry_price_vwap
-        or r.entry_price_best
-        or r.entry_price_trigger
-    )
+    pnl_value = (r.unrealized_pnl_usdt if r.status == "open" and r.unrealized_pnl_usdt is not None else r.pnl_usdt)
+    entry_price = (r.entry_price_vwap or r.entry_price_best or r.entry_price_trigger)
 
     return {
         "id": r.id,
@@ -475,7 +435,14 @@ def get_position(
         "funding_usdt": None,
         "opened_at": r.opened_at,
         "closed_at": r.closed_at,
+        # ADDED
+        "trade_uid": getattr(r, "trade_uid", None),
+        "tv_signal_id": getattr(r, "tv_signal_id", None),
+        "outbox_item_id": getattr(r, "outbox_item_id", None),
+        "first_exec_at": getattr(r, "first_exec_at", None),
+        "last_exec_at": getattr(r, "last_exec_at", None),
     }
+
 
 @app.get("/api/v1/funding")
 def list_funding(
@@ -503,7 +470,7 @@ def list_funding(
     return [
         {
             "id": r.id,
-            "position_id": r.position_id,
+            "position_id": getattr(r, "position_id", None),
             "bot_id": r.bot_id,
             "symbol": r.symbol,
             "amount_usdt": float(r.amount_usdt or 0),
@@ -524,7 +491,6 @@ def api_close_position(position_id: int, db: Session = Depends(get_db), user_id:
     if not pos:
         raise HTTPException(status_code=404, detail="Position not found")
 
-    # zentral closen
     pos = handle_position_close(db, position_id)
     return {"ok": True, "item": pos}
 
@@ -535,22 +501,17 @@ def list_outbox(status: Optional[str] = None, db: Session = Depends(get_db), use
     rows = crud.get_outbox(db, user_id=user_id, status=status)
     return [OutboxOut.model_validate(x, from_attributes=True) for x in rows]
 
+
 # ---------- Dashboard ----------
 @app.get("/api/v1/dashboard/daily-pnl", response_model=List[DailyPnlPoint])
 def get_daily_pnl(
-    bot_ids: Optional[str] = None,     # optional, analog summary: "1,2,3"
-    symbols: Optional[str] = None,     # optional: "BTCUSDT,ETHUSDT"
-    date_from: Optional[str] = None,   # "YYYY-MM-DD" UTC
-    date_to: Optional[str] = None,     # "YYYY-MM-DD" UTC (inklusive)
+    bot_ids: Optional[str] = None,
+    symbols: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
-    """
-    Liefert eine Liste von Tages-PnL-Punkten (nur REALIZED = nur geschlossene Positionen).
-    Alle Filter (Bots, Symbole, Datum) verhalten sich wie bei /dashboard/summary.
-    """
-
-    # --- Helper ---
     def parse_day(s: Optional[str]) -> Optional[date]:
         if not s:
             return None
@@ -560,23 +521,15 @@ def get_daily_pnl(
     dfrom = parse_day(date_from)
     dto = parse_day(date_to)
 
-    bot_id_list: List[int] = (
-        [int(x) for x in bot_ids.split(",") if x.strip().isdigit()]
-        if bot_ids else []
-    )
-    symbol_list: List[str] = (
-        [s.strip() for s in symbols.split(",") if s.strip()]
-        if symbols else []
-    )
+    bot_id_list: List[int] = ([int(x) for x in bot_ids.split(",") if x.strip().isdigit()] if bot_ids else [])
+    symbol_list: List[str] = ([s.strip() for s in symbols.split(",") if s.strip()] if symbols else [])
 
-    # --- geschlossene Positionen des Users holen ---
     q = (
         db.query(models.Position)
         .join(models.Bot, models.Position.bot_id == models.Bot.id)
         .filter(models.Bot.user_id == user_id)
         .filter(models.Position.closed_at.isnot(None))
     )
-
     if bot_id_list:
         q = q.filter(models.Position.bot_id.in_(bot_id_list))
     if symbol_list:
@@ -584,54 +537,33 @@ def get_daily_pnl(
 
     rows = q.all()
 
-    # --- pro Tag aufsummieren ---
     day_pnl = defaultdict(float)
     for p in rows:
         d = p.closed_at.date()
-
-        # Datumsfilter anwenden (UTC)
-        if dfrom and d < dfrom:
-            continue
-        if dto and d > dto:
-            continue
-
-        # WICHTIG: manche Positionen haben bei dir nur pnl_usdt
-        pnl = float(
-            getattr(p, "realized_pnl_net_usdt", None)
-            or getattr(p, "pnl_usdt", 0.0)
-            or 0.0
-        )
+        if dfrom and d < dfrom: continue
+        if dto and d > dto: continue
+        pnl = float(getattr(p, "realized_pnl_net_usdt", None) or getattr(p, "pnl_usdt", 0.0) or 0.0)
         day_pnl[d] += pnl
 
-    # --- sortieren + laufendes Equity berechnen ---
     points: List[DailyPnlPoint] = []
     running = 0.0
     for d in sorted(day_pnl.keys()):
         running += day_pnl[d]
-        points.append(
-            DailyPnlPoint(
-                date=d.isoformat(),
-                pnl=day_pnl[d],
-                equity=running,
-            )
-        )
-
+        points.append(DailyPnlPoint(date=d.isoformat(), pnl=day_pnl[d], equity=running))
     return points
-
 
 
 @app.get("/api/v1/dashboard/summary")
 def dashboard_summary(
-    bot_ids: Optional[str] = None,     # "1,2,3"
-    symbols: Optional[str] = None,     # "BTCUSDT,ETHUSDT"
-    date_from: Optional[str] = None,   # "YYYY-MM-DD" (UTC)
-    date_to: Optional[str] = None,     # "YYYY-MM-DD" (UTC, inclusive)
-    open_hour: Optional[str] = None,   # "HH:MM-HH:MM" (UTC)
-    close_hour: Optional[str] = None,  # "HH:MM-HH:MM" (UTC)
+    bot_ids: Optional[str] = None,
+    symbols: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    open_hour: Optional[str] = None,
+    close_hour: Optional[str] = None,
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
-    # --- Helper (UTC-basiert) ---
     def parse_day(s: Optional[str]) -> Optional[date]:
         if not s:
             return None
@@ -640,8 +572,8 @@ def dashboard_summary(
 
     def in_day_range(dt: Optional[datetime], dfrom: Optional[date], dto: Optional[date]) -> bool:
         if not dt:
-            return False  # ohne closed_at zählen wir nicht in Realized
-        d = dt.date()  # dt muss UTC sein
+            return False
+        d = dt.date()
         ok_from = (dfrom is None) or (d >= dfrom)
         ok_to = (dto is None) or (d <= dto)
         return ok_from and ok_to
@@ -658,15 +590,13 @@ def dashboard_summary(
         if not rng or not dt:
             return True
         (ah, am), (bh, bm) = rng
-        t = (dt.hour, dt.minute)  # UTC!
-        tmin = (ah, am)
-        tmax = (bh, bm)
-        if tmin <= tmax:  # normal
+        t = (dt.hour, dt.minute)
+        tmin = (ah, am); tmax = (bh, bm)
+        if tmin <= tmax:
             return (t >= tmin) and (t <= tmax)
-        else:  # wrap über Mitternacht
+        else:
             return (t >= tmin) or (t <= tmax)
 
-    # Filter vorbereiten
     bot_id_list: List[int] = []
     if bot_ids:
         bot_id_list = [int(x) for x in bot_ids.split(",") if x.strip().isdigit()]
@@ -679,7 +609,6 @@ def dashboard_summary(
     open_rng = parse_hour_range(open_hour)
     close_rng = parse_hour_range(close_hour)
 
-    # --- Positions (nur des Users) ---
     q = (
         db.query(models.Position)
         .join(models.Bot, models.Position.bot_id == models.Bot.id)
@@ -692,27 +621,14 @@ def dashboard_summary(
 
     positions = q.all()
 
-    # Heute in UTC:
     today_utc = datetime.now(timezone.utc).date()
 
-    # Aggregatoren
-    realized_today = 0.0
-    wins_today = 0
-    total_today = 0
-
-    month_realized = 0.0
-    month_wins = 0
-    month_total = 0
-
-    last30_realized = 0.0
-    last30_wins = 0
-    last30_total = 0
-
+    realized_today = 0.0; wins_today = 0; total_today = 0
+    month_realized = 0.0; month_wins = 0; month_total = 0
+    last30_realized = 0.0; last30_wins = 0; last30_total = 0
     open_count = 0
+    equity_series = defaultdict(float)
 
-    equity_series = defaultdict(float)  # day -> pnl sum
-
-    # Positions verarbeiten
     for p in positions:
         is_open = (p.closed_at is None)
         if is_open:
@@ -720,177 +636,57 @@ def dashboard_summary(
             continue
 
         closed_at = p.closed_at
+        pnl = float(getattr(p, "realized_pnl_net_usdt", None) or getattr(p, "pnl_usdt", 0.0) or 0.0)
 
-        # ✨ WICHTIG: hier war dein Fehler
-        pnl = float(
-            getattr(p, "realized_pnl_net_usdt", None)
-            or getattr(p, "pnl_usdt", 0.0)
-            or 0.0
-        )
-
-        # UTC-Filter anwenden
-        if not in_day_range(closed_at, dfrom, dto):
-            continue
-        if not in_hour_range(closed_at, open_rng):
-            continue
-        if not in_hour_range(closed_at, close_rng):
-            continue
+        if not in_day_range(closed_at, dfrom, dto):  continue
+        if not in_hour_range(closed_at, open_rng):   continue
+        if not in_hour_range(closed_at, close_rng):  continue
 
         d = closed_at.date()
         equity_series[d] += pnl
 
-        # Today
         if d == today_utc:
-            total_today += 1
-            realized_today += pnl
-            if pnl > 0:
-                wins_today += 1
-
-        # Monat (UTC)
+            total_today += 1; realized_today += pnl
+            if pnl > 0: wins_today += 1
         if d.year == today_utc.year and d.month == today_utc.month:
-            month_total += 1
-            month_realized += pnl
-            if pnl > 0:
-                month_wins += 1
-
-        # Last 30d (UTC)
+            month_total += 1; month_realized += pnl
+            if pnl > 0: month_wins += 1
         if (today_utc - d).days <= 30:
-            last30_total += 1
-            last30_realized += pnl
-            if pnl > 0:
-                last30_wins += 1
-
-    # --- Fees (Executions) & Funding getrennt, user-gefiltert & optional symbol/bot-gefiltert ---
-    fees_total = 0.0
-    funding_total = 0.0
-
-    # Execution-Fees
-    if hasattr(models, "Execution"):
-        qfees = (
-            db.query(models.Execution)
-            .join(models.Bot, models.Execution.bot_id == models.Bot.id)
-            .filter(models.Bot.user_id == user_id)
-        )
-        if bot_id_list:
-            qfees = qfees.filter(models.Execution.bot_id.in_(bot_id_list))
-        if symbol_list:
-            qfees = qfees.filter(models.Execution.symbol.in_(symbol_list))
-        execs = qfees.all()
-        for e in execs:
-            ts = getattr(e, "ts", None)
-            if ts:
-                if not in_day_range(ts, dfrom, dto):
-                    continue
-                if not in_hour_range(ts, open_rng):
-                    continue
-                if not in_hour_range(ts, close_rng):
-                    continue
-            fees_total += float(e.fee_usdt or 0.0)
-
-    # Funding-Fees
-    if hasattr(models, "FundingEvent"):
-        qfund = (
-            db.query(models.FundingEvent)
-            .join(models.Bot, models.FundingEvent.bot_id == models.Bot.id)
-            .filter(models.Bot.user_id == user_id)
-        )
-        if bot_id_list:
-            qfund = qfund.filter(models.FundingEvent.bot_id.in_(bot_id_list))
-        if symbol_list:
-            qfund = qfund.filter(models.FundingEvent.symbol.in_(symbol_list))
-        funds = qfund.all()
-        for f in funds:
-            ts = getattr(f, "ts", None)
-            if ts:
-                if not in_day_range(ts, dfrom, dto):
-                    continue
-                if not in_hour_range(ts, open_rng):
-                    continue
-                if not in_hour_range(ts, close_rng):
-                    continue
-            funding_total += float(f.amount_usdt or 0.0)
+            last30_total += 1; last30_realized += pnl
+            if pnl > 0: last30_wins += 1
 
     def safe_rate(wins: int, total: int) -> float:
         return (wins / total) if total > 0 else 0.0
 
-    tx_breakdown = {
-        "fees": fees_total,
-        "funding": funding_total,
-        "slip_liq": 0.0,
-        "slip_time": 0.0,
-    }
+    tx_breakdown = {"fees": 0.0, "funding": 0.0, "slip_liq": 0.0, "slip_time": 0.0}
 
     summary = {
         "portfolio_total_equity": sum(equity_series.values()),
         "kpis": {
-            "today": {
-                "realized_pnl": realized_today,
-                "win_rate": safe_rate(wins_today, total_today),
-                "tx_costs_pct": 0.0,
-                "tx_breakdown": tx_breakdown,
-                "timelag_ms": {"tv_bot_avg": 0, "bot_ex_avg": 0},
-            },
-            "month": {
-                "realized_pnl": month_realized,
-                "win_rate": safe_rate(month_wins, month_total),
-                "tx_costs_pct": 0.0,
-                "tx_breakdown": tx_breakdown,
-                "timelag_ms": {"tv_bot_avg": 0, "bot_ex_avg": 0},
-            },
-            "last_30d": {
-                "realized_pnl": last30_realized,
-                "win_rate": safe_rate(last30_wins, last30_total),
-                "tx_costs_pct": 0.0,
-                "tx_breakdown": tx_breakdown,
-                "timelag_ms": {"tv_bot_avg": 0, "bot_ex_avg": 0},
-            },
-            "current": {
-                "open_trades": open_count,
-                "filtered_portfolio_equity": sum(equity_series.values()),
-                "win_rate": safe_rate(wins_today, total_today),
-            },
+            "today": {"realized_pnl": realized_today, "win_rate": safe_rate(wins_today, total_today), "tx_costs_pct": 0.0, "tx_breakdown": tx_breakdown, "timelag_ms": {"tv_bot_avg": 0, "bot_ex_avg": 0}},
+            "month": {"realized_pnl": month_realized, "win_rate": safe_rate(month_wins, month_total), "tx_costs_pct": 0.0, "tx_breakdown": tx_breakdown, "timelag_ms": {"tv_bot_avg": 0, "bot_ex_avg": 0}},
+            "last_30d": {"realized_pnl": last30_realized, "win_rate": safe_rate(last30_wins, last30_total), "tx_costs_pct": 0.0, "tx_breakdown": tx_breakdown, "timelag_ms": {"tv_bot_avg": 0, "bot_ex_avg": 0}},
+            "current": {"open_trades": open_count, "filtered_portfolio_equity": sum(equity_series.values()), "win_rate": safe_rate(wins_today, total_today)},
         },
-        "equity_timeseries": [
-            {"ts": d.isoformat(), "day_pnl": equity_series[d]}
-            for d in sorted(equity_series.keys())
-        ],
+        "equity_timeseries": [{"ts": d.isoformat(), "day_pnl": equity_series[d]} for d in sorted(equity_series.keys())],
     }
     return summary
 
 
-
 # -------------- Symbols / Pairs -----------------------
-
 @app.post("/api/v1/symbols/sync")
 def symbols_sync(db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
-    """
-    Synchronisiert alle USDT-Perp-Symbole von Bybit in die DB.
-    Auth ist hier nur dafür, dass der Aufruf vom eingeloggten User kommt;
-    Market-Endpunkt ist public und benötigt keine API-Keys.
-    """
-    # Falls du zwingend über deinen v5-Client gehen willst:
     bybit_client = None
-    # Beispiel: nimm (optional) Keys vom ersten Bot des Users, wenn dein Client zwingend signiert:
-    # bot = db.execute(select(models.Bot).where(models.Bot.user_id == user_id, models.Bot.is_deleted == False)).scalar_one_or_none()
-    # if bot and bot.api_key and bot.api_secret:
-    #     from .bybit_v5 import BybitV5Client
-    #     bybit_client = BybitV5Client(bot.api_key, bot.api_secret)
     count = sync_symbols_linear_usdt(db, bybit_client)
     return {"ok": True, "updated": count}
 
-
 def icon_candidates_for(base: str) -> list[str]:
     b = (base or "").lower()
-    if not b:
-        return []
+    if not b: return []
     return [
-        # 1) CoinCap (PNG, häufig vorhanden)
         f"https://assets.coincap.io/assets/icons/{b}@2x.png",
-        # 2) Cryptoicons (SVG/PNG API)
         f"https://cryptoicons.org/api/icon/{b}/64",
-        # 3) GitHub Repo (SVG Farbig)
         f"https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/svg/color/{b}.svg",
-        # 4) GitHub Repo (SVG Monochrom)
         f"https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/svg/black/{b}.svg",
     ]
 
@@ -917,10 +713,7 @@ def list_all_symbols(db: Session = Depends(get_db), user_id: int = Depends(get_c
     return [s for (s,) in rows]
 
 
-
 # ----------- debug -------------------------
-
-
 @app.post("/api/v1/bots/{bot_id}/sync-bybit-quick")
 def sync_bybit_quick(bot_id: int,
                      symbol: str = Query("ETHUSDT"),
@@ -928,7 +721,6 @@ def sync_bybit_quick(bot_id: int,
                      db: Session = Depends(get_db)):
     stats = quick_sync_symbol(db, bot_id=bot_id, symbol=symbol, days=days)
     return {"ok": True, "stats": stats}
-
 
 from datetime import timedelta
 
@@ -940,7 +732,6 @@ def debug_bybit(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
-    # Bot + Keys
     bot = (
         db.query(models.Bot)
         .filter(models.Bot.id == bot_id, models.Bot.user_id == user_id, models.Bot.is_deleted == False)
@@ -953,59 +744,40 @@ def debug_bybit(
     if not api_key or not api_secret:
         raise HTTPException(400, "Bot has no API key/secret stored")
 
-    # Zeitfenster
     end_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
     start_ms = int((datetime.now(timezone.utc) - timedelta(days=max(1, days))).timestamp() * 1000)
 
-    # Symbol normalisieren (linear braucht volle Paare)
     symbol = (symbol or "").upper().strip()
     if symbol and not symbol.endswith(("USDT", "USDC")):
         if symbol in ("BTC","ETH","XRP","SOL","BNB","DOGE","ADA","LTC","XLM","LINK","AVAX","TRX"):
             symbol = symbol + "USDT"
 
-    # Bybit Client (Data-Wrap)
     from .bybit_v5_data import BybitV5Data
     data = BybitV5Data(api_key, api_secret)
 
-    # 1) instruments-info (linear)
     try:
         instr_raw = data.instruments_info(category="linear", symbol=symbol)
     except Exception as e:
         instr_raw = {"_error": str(e)}
 
-    # 2) executions (linear) – korrekte Param-Namen startTime/endTime
     try:
-        exec_raw = data.executions(
-            category="linear",
-            symbol=symbol,
-            startTime=start_ms,
-            endTime=end_ms,
-            limit=200,      # Bybit erlaubt hier 200
-        )
+        exec_raw = data.executions(category="linear", symbol=symbol, startTime=start_ms, endTime=end_ms, limit=200)
     except Exception as e:
         exec_raw = {"_error": str(e)}
 
-    # 3) closed-pnl (linear)
     try:
-        closed_raw = data.closed_pnl(
-            category="linear",
-            symbol=symbol,
-            startTime=start_ms,
-            endTime=end_ms,
-            limit=200,
-        )
+        closed_raw = data.closed_pnl(category="linear", symbol=symbol, startTime=start_ms, endTime=end_ms, limit=200)
     except Exception as e:
         closed_raw = {"_error": str(e)}
 
-    # 4) funding (transaction-log; Account/Category filtern; limit 50 + Pagination)
     try:
         funding_pages = []
         cursor = None
-        for _ in range(5):  # bis 5 Seiten à 50 = 250 Items
+        for _ in range(5):
             fund_page = data.transaction_log(
                 accountType="UNIFIED",
-                category="linear",   # auf Derivate eingrenzen
-                currency="USDT",     # nur USDT-Änderungen (optional)
+                category="linear",
+                currency="USDT",
                 startTime=start_ms,
                 endTime=end_ms,
                 limit=50,
@@ -1015,7 +787,6 @@ def debug_bybit(
             cursor = (fund_page.get("result") or {}).get("nextPageCursor")
             if not cursor:
                 break
-        # Für die Ausgabe eine "synthetische" Seite mit zusammengefasster Liste bauen
         combined_list = []
         last_cursor = None
         for p in funding_pages:
@@ -1023,15 +794,10 @@ def debug_bybit(
             lst = res.get("list") or []
             combined_list.extend(lst)
             last_cursor = res.get("nextPageCursor") or last_cursor
-        funding_raw = {
-            "retCode": 0,
-            "retMsg": "OK",
-            "result": {"list": combined_list, "nextPageCursor": last_cursor or ""},
-        }
+        funding_raw = {"retCode": 0, "retMsg": "OK", "result": {"list": combined_list, "nextPageCursor": last_cursor or ""}}
     except Exception as e:
         funding_raw = {"_error": str(e)}
 
-    # Helper – kompakte Zusammenfassung
     def summarize(name: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(payload, dict):
             return {"name": name, "note": "not a dict"}
@@ -1054,20 +820,16 @@ def debug_bybit(
         "executions": summarize("executions", exec_raw),
         "closed_pnl": summarize("closed_pnl", closed_raw),
         "funding": summarize("funding", funding_raw),
-        "raw": {
-            "executions": exec_raw,
-            "closed_pnl": closed_raw,
-            "funding": funding_raw,
-        },
+        "raw": {"executions": exec_raw, "closed_pnl": closed_raw, "funding": funding_raw},
     }
 
 
 # ------------------ Bybit - TV Signal Intake -------------------------
 from pydantic import BaseModel
 import time, json
-from .models import User, Bot, BotSymbolSetting, Symbol, OutboxItem
+from .models import User, Bot, BotSymbolSetting, Symbol, OutboxItem, TvSignal  # ADDED
 
-class TvSignal(BaseModel):
+class TvSignalIn(BaseModel):  # ADDED: um Namen nicht mit Model zu kollidieren
     bot_uuid: str
     user_secret: str
     symbol: str
@@ -1089,7 +851,7 @@ def _round_to_tick(x: float, tick: float) -> float:
     return round(x / tick) * tick
 
 @app.post("/api/v1/tv/signal")
-def ingest_tv_signal(sig: TvSignal, user_id: int = Depends(get_current_user_id), db: Session = Depends(get_db)):
+def ingest_tv_signal(sig: TvSignalIn, user_id: int = Depends(get_current_user_id), db: Session = Depends(get_db)):
     u = db.get(User, user_id)
     if not u or not u.webhook_secret or sig.user_secret != u.webhook_secret:
         raise HTTPException(403, "invalid user_secret")
@@ -1108,7 +870,7 @@ def ingest_tv_signal(sig: TvSignal, user_id: int = Depends(get_current_user_id),
     if sig.tv_risk_amount <= 0 or sig.tv_qty <= 0:
         raise HTTPException(400, "tv_risk_amount and tv_qty must be > 0")
 
-    risk_amount = float(bss.risk_amount_usdt)
+    risk_amount = float(bss.target_risk_amount if hasattr(bss, "target_risk_amount") else bss.risk_amount_usdt)
     qty = risk_amount / float(sig.tv_risk_amount) * float(sig.tv_qty)
     qty = max(_round_to_step(qty, sym.step_size), sym.step_size)
 
@@ -1127,6 +889,7 @@ def ingest_tv_signal(sig: TvSignal, user_id: int = Depends(get_current_user_id),
         sl_limit  = _round_to_tick(sl_trigger * (1 + off_lim), sym.tick_size)
 
     nowms = int(time.time()*1000)
+    trade_uid = f"{sig.symbol}-{nowms}"  # ADDED: einheitlicher Schlüssel
 
     entry_payload = {
         "category": "linear",
@@ -1135,7 +898,7 @@ def ingest_tv_signal(sig: TvSignal, user_id: int = Depends(get_current_user_id),
         "orderType": "Market",
         "qty": f"{qty}",
         "positionIdx": 0,
-        "orderLinkId": f"entry-{sig.symbol}-{nowms}",
+        "orderLinkId": f"entry-{trade_uid}",
         "tpslMode": "Full",
         "takeProfit": f"{tp_trigger}",
         "tpOrderType": "Market",
@@ -1158,24 +921,55 @@ def ingest_tv_signal(sig: TvSignal, user_id: int = Depends(get_current_user_id),
         "triggerPrice": f"{sl_trigger}",
         "triggerBy": "LastPrice",
         "triggerDirection": trig_dir,
-        "orderLinkId": f"slsl-{sig.symbol}-{nowms}",
+        "orderLinkId": f"slsl-{trade_uid}",
         "positionIdx": 0
     }
+
+    # ADDED: TV-Signal persistieren
+    tv_dt = None
+    if sig.tv_ts:
+        try:
+            tv_dt = datetime.fromtimestamp(sig.tv_ts / 1000.0, tz=timezone.utc)
+        except Exception:
+            tv_dt = None
+
+    tv_row = TvSignal(
+        user_id=user_id,
+        bot_id=bot.id,
+        symbol=sig.symbol,
+        trade_uid=trade_uid,
+        side=sig.direction,
+        entry_price_trigger=sig.entry_price,
+        stop_loss_tv=sl_trigger,
+        take_profit_tv=tp_trigger,
+        tv_risk_amount=sig.tv_risk_amount,
+        rrr=sig.rrr,
+        tv_ts=tv_dt,
+        bot_received_at=datetime.now(timezone.utc),
+        raw_json=sig.model_dump_json(),
+    )
+    db.add(tv_row)
+    db.flush()  # id verfügbar
 
     ob = OutboxItem(
         user_id=user_id,
         bot_id=bot.id,
         symbol=sig.symbol,
+        trade_uid=trade_uid,                                 # ADDED
         payload_entry=json.dumps(entry_payload),
         payload_sl_limit=json.dumps(sl_limit_payload),
         status=("sent" if bot.auto_approve else "pending_approval")
     )
     db.add(ob); db.commit(); db.refresh(ob)
 
+    # bei auto_approve sofort senden
     if bot.auto_approve:
         _send_outbox(ob, bot, user_id, db)
+        tv_row.bot_sent_at = datetime.now(timezone.utc)  # ADDED
+        db.commit()
 
-    return {"ok": True, "outbox_id": ob.id, "status": ob.status, "entry": entry_payload, "sl_limit": sl_limit_payload}
+    return {"ok": True, "trade_uid": trade_uid, "tv_signal_id": tv_row.id, "outbox_id": ob.id, "status": ob.status}
+
 
 @app.post("/api/v1/outbox/{outbox_id}/approve")
 def approve_outbox(outbox_id: int, user: User = Depends(get_current_user_id), db: Session = Depends(get_db)):
@@ -1192,8 +986,10 @@ def approve_outbox(outbox_id: int, user: User = Depends(get_current_user_id), db
     _send_outbox(ob, bot, user, db)
     return {"ok": True, "status": ob.status}
 
+
 def _decrypt_secret(enc: str) -> str:
     return enc or ""
+
 
 def _send_outbox(ob, bot, user, db: Session):
     from .bybit_v5 import BybitRest
@@ -1207,6 +1003,11 @@ def _send_outbox(ob, bot, user, db: Session):
         ob.status = "sent"; ob.sent_at = _dt.utcnow(); db.commit()
     except Exception as ex:
         ob.status = "error"; ob.error = str(ex); db.commit()
+
+
+# ============================================================
+# WS / Tasks (unverändert) ...
+# ============================================================
 
 ws_threads = {}
 
@@ -1239,28 +1040,16 @@ def _on_exec(row, ctx):
         db.close()
 
 def _on_position(row: dict, ctx: dict):
-    """
-    Wird von BybitWS aufgerufen, wenn sich eine Position ändert.
-    Wir cachen nur das, was wir für offene Trades im Frontend brauchen.
-    """
     bot_id = ctx.get("bot_id")
     symbol = row.get("symbol") or row.get("s")
     if not bot_id or not symbol:
         return
-
-    # Bybit WS liefert Strings
     size = float(row.get("size") or 0.0)
     avg_price = float(row.get("avgPrice") or 0.0)
     mark_price = float(row.get("markPrice") or 0.0)
     unreal = float(row.get("unrealisedPnl") or 0.0)
 
-    position_cache[(bot_id, symbol)] = {
-        "size": size,
-        "avg_price": avg_price,
-        "mark_price": mark_price,
-        "unrealised_pnl": unreal,
-        "ts": time.time(),
-    }
+    position_cache[(bot_id, symbol)] = {"size": size, "avg_price": avg_price, "mark_price": mark_price, "unrealised_pnl": unreal, "ts": time.time()}
 
 def _start_ws_for_bot(bot):
     if not bot.is_active: return
@@ -1291,7 +1080,6 @@ def task_rebuild_all_bots():
         for b in bots:
             rebuild_positions(db, bot_id=b.id)
 
-
 @app.on_event("startup")
 def _on_startup():
     import threading
@@ -1300,8 +1088,8 @@ def _on_startup():
 
 
 # ============================================================
-# Funktion um alle Bots über 13h automatisch zu syncen und sonst eigener Router
-# ============================================================   
+# Sync-Helper
+# ============================================================
 @app.post("/api/v1/bots/{bot_id}/sync-symbol")
 def sync_symbol_for_bot(
     bot_id: int,
@@ -1312,7 +1100,6 @@ def sync_symbol_for_bot(
     stats = sync_symbol_recent(db, bot_id=bot_id, symbol=symbol, hours=hours)
     return {"ok": True, "stats": stats}
 
-
 @app.post("/api/v1/sync/bybit/recent-all")
 def sync_all_bots_recent(
     hours: int = 13,
@@ -1320,3 +1107,162 @@ def sync_all_bots_recent(
 ):
     stats = sync_recent_all_bots(db, lookback_hours=hours)
     return {"ok": True, "stats": stats}
+
+
+# =========================
+# Portfolio (Cashflows)  # ADDED
+# =========================
+@app.get("/api/v1/portfolio/value")
+def get_portfolio_value(
+    date_from: Optional[str] = Query(None, description="YYYY-MM-DD UTC"),
+    date_to: Optional[str] = Query(None, description="YYYY-MM-DD UTC"),
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    def parse_day(s: Optional[str]) -> Optional[date]:
+        if not s: return None
+        y, m, d = [int(x) for x in s.split("-")]
+        return date(y, m, d)
+
+    dfrom = parse_day(date_from)
+    dto = parse_day(date_to)
+
+    # 1) Cashflows (nur externe Ein-/Auszahlungen)
+    qcf = db.query(models.Cashflow).filter(models.Cashflow.user_id == user_id)
+    if dfrom:
+        qcf = qcf.filter(models.Cashflow.ts >= datetime(dfrom.year, dfrom.month, dfrom.day, tzinfo=timezone.utc))
+    if dto:
+        qcf = qcf.filter(models.Cashflow.ts < datetime(dto.year, dto.month, dto.day, tzinfo=timezone.utc) + timedelta(days=1))
+    cfs = qcf.all()
+
+    deposits = sum(cf.amount for cf in cfs if cf.direction == models.CashDirection.deposit)
+    withdrawals = sum(cf.amount for cf in cfs if cf.direction == models.CashDirection.withdraw)
+
+    # 2) Realized PnL (alle Bots)
+    qp = db.query(models.Position).join(models.Bot, models.Position.bot_id == models.Bot.id).filter(models.Bot.user_id == user_id).filter(models.Position.closed_at.isnot(None))
+    if dfrom:
+        qp = qp.filter(models.Position.closed_at >= datetime(dfrom.year, dfrom.month, dfrom.day, tzinfo=timezone.utc))
+    if dto:
+        qp = qp.filter(models.Position.closed_at < datetime(dto.year, dto.month, dto.day, tzinfo=timezone.utc) + timedelta(days=1))
+    positions = qp.all()
+    realized = sum(float(getattr(p, "realized_pnl_net_usdt", None) or getattr(p, "pnl_usdt", 0.0) or 0.0) for p in positions)
+
+    portfolio_value = deposits - withdrawals + realized
+    return {"deposits": deposits, "withdrawals": withdrawals, "realized_pnl": realized, "portfolio_value": portfolio_value}
+
+
+from datetime import timedelta
+
+@app.post("/api/v1/cashflows/sync/deposits")
+def sync_deposits(
+    bot_id: int,
+    days: int = Query(90, ge=1, le=365),
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """
+    Pullt On-chain Deposits (extern) für den Bot (Keys) und speichert als Cashflow(direction=deposit).
+    Hinweis: falls BybitV5Data andere Methodennamen nutzt, gibt's eine klare Fehlermeldung.
+    """
+    bot = db.query(models.Bot).filter(models.Bot.id == bot_id, models.Bot.user_id == user_id, models.Bot.is_deleted == False).first()
+    if not bot or not bot.api_key or not bot.api_secret:
+        raise HTTPException(400, "Bot not found or API keys missing")
+
+    from .bybit_v5_data import BybitV5Data
+    data = BybitV5Data(bot.api_key, bot.api_secret)
+
+    end_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    start_ms = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp() * 1000)
+
+    try:
+        # Erwartet: data.deposit_records(...) → Bybit v5 /asset/deposit/query-record
+        res = data.deposit_records(startTime=start_ms, endTime=end_ms)  # ADDED: ggf. Methodennamen anpassen
+    except Exception as e:
+        raise HTTPException(500, f"deposit sync failed: {e}")
+
+    lst = ((res or {}).get("result") or {}).get("rows") or ((res or {}).get("result") or {}).get("list") or []
+    imported = 0
+    for row in lst:
+        amt = float(row.get("amount") or row.get("quantity") or 0)
+        cur = (row.get("coin") or row.get("currency") or "USDT").upper()
+        status = str(row.get("status") or row.get("state") or "")
+        txid = row.get("txID") or row.get("txId") or row.get("hash") or None
+        ts_ms = int(row.get("blockTime") or row.get("successAt") or row.get("timestamp") or 0)
+        if ts_ms <= 0: continue
+        ts = datetime.fromtimestamp(ts_ms/1000.0, tz=timezone.utc)
+
+        cf = models.Cashflow(
+            user_id=user_id,
+            bot_id=bot.id,
+            direction=models.CashDirection.deposit,
+            account_kind=models.AccountKind.main,  # extern
+            amount=amt,
+            currency=cur,
+            fee=0.0,
+            status=status,
+            tx_type="onchain",
+            txid=str(txid) if txid else None,
+            ts=ts,
+            raw_json=str(row),
+        )
+        db.add(cf); imported += 1
+    db.commit()
+    return {"ok": True, "imported": imported}
+
+
+@app.post("/api/v1/cashflows/sync/withdrawals")
+def sync_withdrawals(
+    bot_id: int,
+    days: int = Query(90, ge=1, le=365),
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """
+    Pullt Withdrawals (extern; on-chain & off-chain) und speichert direction=withdraw.
+    """
+    bot = db.query(models.Bot).filter(models.Bot.id == bot_id, models.Bot.user_id == user_id, models.Bot.is_deleted == False).first()
+    if not bot or not bot.api_key or not bot.api_secret:
+        raise HTTPException(400, "Bot not found or API keys missing")
+
+    from .bybit_v5_data import BybitV5Data
+    data = BybitV5Data(bot.api_key, bot.api_secret)
+
+    end_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    start_ms = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp() * 1000)
+
+    try:
+        # Erwartet: data.withdraw_records(...) → Bybit v5 /asset/withdraw/query-record
+        res = data.withdraw_records(startTime=start_ms, endTime=end_ms)  # ADDED: ggf. Methodennamen anpassen
+    except Exception as e:
+        raise HTTPException(500, f"withdraw sync failed: {e}")
+
+    lst = ((res or {}).get("result") or {}).get("rows") or ((res or {}).get("result") or {}).get("list") or []
+    imported = 0
+    for row in lst:
+        amt = float(row.get("amount") or row.get("quantity") or 0)
+        cur = (row.get("coin") or row.get("currency") or "USDT").upper()
+        fee = float(row.get("fee") or row.get("withdrawFee") or 0)
+        status = str(row.get("status") or row.get("withdrawStatus") or "")
+        tx_type = str(row.get("withdrawType") or row.get("type") or "")
+        txid = row.get("txID") or row.get("txId") or row.get("hash") or None
+        ts_ms = int(row.get("successAt") or row.get("timestamp") or 0)
+        if ts_ms <= 0: continue
+        ts = datetime.fromtimestamp(ts_ms/1000.0, tz=timezone.utc)
+
+        cf = models.Cashflow(
+            user_id=user_id,
+            bot_id=bot.id,
+            direction=models.CashDirection.withdraw,
+            account_kind=models.AccountKind.main,  # extern
+            amount=amt,
+            currency=cur,
+            fee=fee,
+            status=status,
+            tx_type=("onchain" if tx_type in ("0", "onchain") else "offchain" if tx_type in ("1", "offchain") else "other"),
+            txid=str(txid) if txid else None,
+            ts=ts,
+            raw_json=str(row),
+        )
+        db.add(cf); imported += 1
+    db.commit()
+    return {"ok": True, "imported": imported}

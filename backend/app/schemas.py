@@ -1,4 +1,3 @@
-
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
 from datetime import datetime
@@ -164,3 +163,32 @@ class DailyPnlPoint(BaseModel):
     date: str
     pnl: float
     equity: float
+
+
+# ---------- Cashflows / Portfolio (ADDED) ----------
+
+class CashflowOut(BaseModel):
+    id: int
+    user_id: int
+    bot_id: Optional[int] = None
+    account_type: Optional[str] = None  # 'main' | 'sub' | None
+    direction: str                      # 'deposit' | 'withdraw'
+    amount_usdt: float
+    currency: str
+    tx_id: Optional[str] = None
+    external_addr: Optional[str] = None
+    is_internal: bool
+    ts: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PortfolioValueOut(BaseModel):
+    ok: bool
+    from_: Optional[str] = Field(default=None, alias="from")
+    to: Optional[str] = None
+    deposits: float
+    withdrawals: float
+    realized_pnl: float
+    portfolio_value: float

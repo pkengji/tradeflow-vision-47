@@ -70,3 +70,34 @@ class BybitV5Data:
         if limit:     q["limit"]     = str(limit)  # Bybit default 20, max 50
         if cursor:    q["cursor"]    = cursor
         return self.client._request("GET", "/v5/account/transaction-log", query=q)
+    
+        # --- Deposits ---
+    # Docs: /v5/asset/deposit/query-record
+    # Filters you can pass: coin, startTime, endTime, cursor, limit
+    def deposits(self, *, coin: str = "USDT",
+                 startTime: int | None = None, endTime: int | None = None,
+                 limit: int = 50, cursor: str | None = None) -> dict:
+        q: dict[str, str] = {}
+        if coin:      q["coin"]      = coin
+        if startTime is not None: q["startTime"] = str(startTime)
+        if endTime   is not None: q["endTime"]   = str(endTime)
+        if limit:     q["limit"]     = str(limit)
+        if cursor:    q["cursor"]    = cursor
+        return self.client._request("GET", "/v5/asset/deposit/query-record", query=q)
+
+    # --- Withdrawals ---
+    # Docs: /v5/asset/withdraw/query-record
+    # Filters: coin, startTime, endTime, cursor, limit, withdrawType
+    def withdrawals(self, *, coin: str = "USDT",
+                    startTime: int | None = None, endTime: int | None = None,
+                    limit: int = 50, cursor: str | None = None,
+                    withdrawType: str | None = None) -> dict:
+        q: dict[str, str] = {}
+        if coin:      q["coin"]      = coin
+        if startTime is not None: q["startTime"] = str(startTime)
+        if endTime   is not None: q["endTime"]   = str(endTime)
+        if limit:     q["limit"]     = str(limit)
+        if cursor:    q["cursor"]    = cursor
+        if withdrawType: q["withdrawType"] = withdrawType  # on-chain/internal; wir filtern später extern
+        return self.client._request("GET", "/v5/asset/withdraw/query-record", query=q)
+

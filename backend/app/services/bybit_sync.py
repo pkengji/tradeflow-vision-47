@@ -1,4 +1,3 @@
-# app/services/bybit_sync.py
 from __future__ import annotations
 
 from typing import Optional, List, Dict, Any
@@ -46,6 +45,18 @@ def _deep_unquote(s: Optional[str]) -> Optional[str]:
             break
         prev = cur
     return prev
+
+
+def _uid_from_link(order_link_id: Optional[str]) -> Optional[str]:
+    """# ADDED: extrahiert trade_uid aus orderLinkId 'entry-<uid>' oder 'slsl-<uid>'"""
+    if not order_link_id or not isinstance(order_link_id, str):
+        return None
+    if order_link_id.startswith("entry-") or order_link_id.startswith("slsl-"):
+        try:
+            return order_link_id.split("-", 1)[1]
+        except Exception:
+            return None
+    return None
 
 
 # ============================================================
@@ -244,6 +255,7 @@ def rebuild_positions(
     """
     Nimmt ALLE Executions aus der DB (scope: bot oder user) und baut daraus saubere Positionen.
     Funding wird aus der DB dazugerechnet.
+    **NEU:** trade_uid / tv_signal / outbox_item / exec-times werden gesetzt.
     """
     # Scope bestimmen
     q = db.query(models.Execution)
@@ -262,6 +274,8 @@ def rebuild_positions(
     else:
         # wir rebuilden nie "alles von allen", ohne scope
         return 0
+    
+    q = q.filter(models.Execution.is_consumed == False)  # ADDED: nur un-verbrauchte Executions
 
     execs: List[models.Execution] = (
         q.order_by(
@@ -278,18 +292,27 @@ def rebuild_positions(
     for e in execs:
         by_symbol.setdefault(e.symbol, []).append(e)
 
+    # Cache Bot→User
+    bot_user_cache: dict[int, int] = {}
+
     created = 0
 
     for symbol, rows in by_symbol.items():
         net = 0.0
-        entry_fills: List[Dict[str, float]] = []
-        exit_fills: List[Dict[str, float]] = []
+        entry_fills: List[Dict[str, Any]] = []
+        exit_fills: List[Dict[str, Any]] = []
         fee_open = 0.0
         fee_close = 0.0
         opened_at: Optional[datetime] = None
         closed_at: Optional[datetime] = None
         first_side: Optional[str] = None
         bot_id_for_pos = rows[0].bot_id  # alle rows dieses Symbols haben denselben Bot
+
+        # ADDED: userid per bot cachen
+        if bot_id_for_pos not in bot_user_cache:
+            bobj = db.query(models.Bot).filter(models.Bot.id == bot_id_for_pos).first()
+            bot_user_cache[bot_id_for_pos] = bobj.user_id if bobj else None
+        user_id_for_pos = bot_user_cache.get(bot_id_for_pos)
 
         for r in rows:
             qty = float(r.qty or 0.0)
@@ -305,20 +328,28 @@ def rebuild_positions(
             # Positionsnetto hoch/runterzählen
             net += qty if side == "buy" else -qty
 
-            # Fees nach Entry/Exit aufsummieren
+            # Fees & Fills
+            fill_rec = {
+                "price": float(r.price or 0.0), 
+                "qty": qty,
+                "ts": r.ts,
+                "order_link_id": r.order_link_id,
+                "_row_id": r.id,                               # ADDED
+                "exchange_exec_id": r.exchange_exec_id,        # ADDED (optional für spätere Hashes)
+            }
             if first_side == "buy":
                 if side == "buy":
-                    entry_fills.append({"price": float(r.price or 0.0), "qty": qty})
+                    entry_fills.append(fill_rec)
                     fee_open += float(r.fee_usdt or 0.0)
                 else:
-                    exit_fills.append({"price": float(r.price or 0.0), "qty": qty})
+                    exit_fills.append(fill_rec)
                     fee_close += float(r.fee_usdt or 0.0)
             else:
                 if side == "sell":
-                    entry_fills.append({"price": float(r.price or 0.0), "qty": qty})
+                    entry_fills.append(fill_rec)
                     fee_open += float(r.fee_usdt or 0.0)
                 else:
-                    exit_fills.append({"price": float(r.price or 0.0), "qty": qty})
+                    exit_fills.append(fill_rec)
                     fee_close += float(r.fee_usdt or 0.0)
 
             # Position geschlossen?
@@ -326,7 +357,7 @@ def rebuild_positions(
                 closed_at = r.ts
 
                 # VWAP helper
-                def _vwap(fills: List[Dict[str, float]]) -> tuple[Optional[float], float]:
+                def _vwap(fills: List[Dict[str, Any]]) -> tuple[Optional[float], float]:
                     q = sum(f["qty"] for f in fills)
                     if q <= 0:
                         return None, 0.0
@@ -347,7 +378,6 @@ def rebuild_positions(
                     )
                     .all()
                 )
-                # Bybit schickt +/- → wir übernehmen es so
                 funding_total = sum((fr.amount_usdt or 0.0) for fr in funding_rows)
 
                 # PnL
@@ -360,9 +390,35 @@ def rebuild_positions(
 
                 net_pnl = gross - abs(fee_open) - abs(fee_close) + funding_total
 
+                # ADDED: trade_uid aus order_link_id der Entry-Fills
+                trade_uid: Optional[str] = None
+                for f in entry_fills:
+                    trade_uid = _uid_from_link(f.get("order_link_id"))
+                    if trade_uid:
+                        break
+
+                # ADDED: referenzieren
+                tv_signal_id = None
+                outbox_item_id = None
+                if trade_uid:
+                    tv = (
+                        db.query(models.TvSignal)
+                        .filter(models.TvSignal.trade_uid == trade_uid)
+                        .first()
+                    )
+                    if tv:
+                        tv_signal_id = tv.id
+                    ob = (
+                        db.query(models.OutboxItem)
+                        .filter(models.OutboxItem.trade_uid == trade_uid)
+                        .first()
+                    )
+                    if ob:
+                        outbox_item_id = ob.id
+
                 pos = models.Position(
                     bot_id=bot_id_for_pos,
-                    user_id=None,   # kannst du setzen, wenn Position das Feld hat
+                    user_id=user_id_for_pos,                                  # ADDED
                     symbol=symbol,
                     side=("long" if first_side == "buy" else "short"),
                     status="closed",
@@ -376,9 +432,23 @@ def rebuild_positions(
                     funding_usdt=funding_total,
                     pnl_usdt=net_pnl,
                     unrealized_pnl_usdt=None,
+                    # ADDED below:
+                    trade_uid=trade_uid,
+                    tv_signal_id=tv_signal_id,
+                    outbox_item_id=outbox_item_id,
+                    first_exec_at=opened_at,
+                    last_exec_at=closed_at,
                 )
                 db.add(pos)
                 created += 1
+
+                # ADDED: verwendete Executions als konsumiert markieren
+                used_ids = [f["_row_id"] for f in (entry_fills + exit_fills) if f.get("_row_id")]
+                if used_ids:
+                    (db.query(models.Execution)
+                    .filter(models.Execution.id.in_(used_ids))
+                    .update({"is_consumed": True}, synchronize_session=False))
+                    db.flush()
 
                 # reset für nächste Position in diesem Symbol
                 net = 0.0
