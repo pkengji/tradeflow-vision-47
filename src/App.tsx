@@ -21,6 +21,7 @@ import SettingsTime from './pages/SettingsTime';
 import SettingsOwner from './pages/SettingsOwner';
 import NotFound from "@/pages/NotFound";
 import OutboxPage from "./pages/Outbox";
+import TradeDetailPage from "./pages/Index";
 
 const queryClient = new QueryClient();
 

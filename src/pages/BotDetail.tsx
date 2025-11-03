@@ -7,7 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Plus, Search, Trash2, Save, Copy, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -45,16 +45,19 @@ export default function BotDetail() {
   const botId = isNew ? null : Number(id);
   const qc = useQueryClient();
 
+  // --- Bot laden: bevorzugt api.getBot, Fallback auf getBots().find(...)
   const { data: bot, isLoading } = useQuery({
     queryKey: ['bot', botId],
     queryFn: async () => {
       if (isNew) return null;
-      const all = await api.getBots();
-      return all.find((b: Bot) => b.id === botId);
+      const anyApi = api as any;{
+        return anyApi.getBot(botId!);
+      };
     },
-    enabled: !isNaN(botId!) || isNew,
+    enabled: (!isNew && !isNaN(botId!)) || isNew,
   });
 
+  // --- State
   const [name, setName] = useState('');
   const [uuid, setUuid] = useState('');
   const [userSecret, setUserSecret] = useState('');
@@ -74,69 +77,102 @@ export default function BotDetail() {
   const [showUserSecret, setShowUserSecret] = useState(false);
   const [showApiSecret, setShowApiSecret] = useState(false);
 
-  // Generate secure UUID and Secret for new bot
-  const generateSecureId = (length: number = 32): string => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let result = '';
-    const randomValues = new Uint8Array(length);
-    crypto.getRandomValues(randomValues);
-    for (let i = 0; i < length; i++) {
-      result += chars[randomValues[i] % chars.length];
-    }
-    return result;
-  };
+  // --- User-Webhook-Secret laden
+  useEffect(() => {
+    api.getMyWebhookSecret()
+      .then(setUserSecret)
+      .catch(() => setUserSecret(''));
+  }, []);
 
-  
+  // --- verfügbare Pairs (Mock / Backend, je nach Implementierung)
   const { data: availablePairs = [] } = useQuery({
     queryKey: ['availablePairs'],
     queryFn: () => api.getAvailablePairs(),
   });
 
-  // Get max leverage for each pair (from backend)
   const getMaxLeverage = (symbol: string): number => {
-    const pairInfo = availablePairs.find(p => p.symbol === symbol);
-    // TODO: Use actual max leverage from backend when available
+    const pairInfo = availablePairs.find((p: any) => p.symbol === symbol);
     return (pairInfo as any)?.maxLeverage || 100;
   };
 
-  // Initialize form when bot loads
+  // --- Bot-Felder in den State mappen (kein Hardcode der Pairs mehr!)
   useMemo(() => {
     if (bot) {
       setName(bot.name || '');
       setUuid(bot.uuid || '');
-      /* user secret is per-user: fetched separately */ // Per-user secret
       setApiKey((bot as any).api_key || '');
       setApiSecret((bot as any).api_secret || '');
       setAutoApprove(!!bot.auto_approve);
-      // TODO: Load pairs from bot data when available
-      setPairs([
-        { symbol: 'BTCUSDT', leverage: 10, tvMultiplier: 1.5, directions: { long: true, short: true } },
-        { symbol: 'ETHUSDT', leverage: 'max', tvMultiplier: 2.0, directions: { long: true, short: false } },
-      ]);
     }
   }, [bot]);
 
+  // --- Pairs vom Backend laden (nur bestehender Bot)
+  useEffect(() => {
+    if (!isNew && botId) {
+      const anyApi = api as any;
+      if (anyApi.getBotSymbols) {
+        anyApi.getBotSymbols(botId)
+          .then((rows: any[]) => {
+            const mapped: BotPair[] = rows.map((r) => ({
+              symbol: r.symbol,
+              leverage: r.leverage_override ?? 10,
+              tvMultiplier: r.target_risk_amount ?? 1.0,
+              // Backend hat nur "enabled" – wir mappen beides auf denselben Schalter
+              directions: { long: r.enabled, short: r.enabled },
+            }));
+            setPairs(mapped);
+          })
+          .catch(() => setPairs([]));
+      } else {
+        setPairs([]);
+      }
+    } else {
+      setPairs([]);
+    }
+  }, [isNew, botId]);
+
+  // --- Speichern: Bot upserten, danach Pairs upserten
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const botData = {
+      const botData: Partial<Bot> & {
+        api_key?: string;
+        api_secret?: string;
+        auto_approve?: boolean;
+        uuid?: string;
+        name?: string;
+      } = {
         name,
         uuid,
-        api_key: apiKey,
-        api_secret: apiSecret,
+        api_key: apiKey || undefined,
+        api_secret: apiSecret || undefined,
         auto_approve: autoApprove,
-        // TODO: Add more fields as needed
       };
-      
-      if (isNew) {
-        return api.createBot(botData);
-      } else {
-        return api.updateBot(botId!, botData);
+
+      // 1) Bot speichern (create/patch)
+      const saved = isNew ? await api.createBot(botData) : await api.updateBot(botId!, botData);
+      const id = (saved as any).id;
+
+      // 2) Pairs upserten, falls API existiert
+      const anyApi = api as any;
+      if (anyApi.upsertBotSymbols) {
+        const items = pairs.map((p) => ({
+          symbol: p.symbol,
+          enabled: p.directions.long || p.directions.short,
+          target_risk_amount: Number(p.tvMultiplier) || 0,
+          leverage_override: p.leverage === 'max' ? null : Number(p.leverage),
+        }));
+        await anyApi.upsertBotSymbols(id, items);
       }
+
+      return saved;
     },
     onSuccess: () => {
       toast.success('Bot gespeichert');
       qc.invalidateQueries({ queryKey: ['bots'] });
-      qc.invalidateQueries({ queryKey: ['bot', botId] });
+      if (!isNew && botId) {
+        qc.invalidateQueries({ queryKey: ['bot', botId] });
+        qc.invalidateQueries({ queryKey: ['botSymbols', botId] });
+      }
       navigate('/bots');
     },
     onError: (error: any) => {
@@ -170,66 +206,63 @@ export default function BotDetail() {
     },
   });
 
+  // --- Globale Einstellungen anwenden
   const applyGlobal = () => {
     if (globalLeverage !== '' || globalMultiplier !== '') {
-      setPairs(prev => prev.map(p => {
-        let newLeverage = p.leverage;
-        if (globalLeverage !== '') {
-          const maxLev = getMaxLeverage(p.symbol);
-          if (globalLeverage === 'max') {
-            newLeverage = 'max';
-          } else {
-            newLeverage = Math.min(globalLeverage, maxLev);
+      setPairs((prev) =>
+        prev.map((p) => {
+          let newLeverage = p.leverage;
+          if (globalLeverage !== '') {
+            const maxLev = getMaxLeverage(p.symbol);
+            newLeverage = globalLeverage === 'max' ? 'max' : Math.min(globalLeverage, maxLev);
           }
-        }
-        return {
-          ...p,
-          leverage: newLeverage,
-          tvMultiplier: globalMultiplier !== '' ? globalMultiplier : p.tvMultiplier,
-        };
-      }));
+          return {
+            ...p,
+            leverage: newLeverage,
+            tvMultiplier: globalMultiplier !== '' ? globalMultiplier : p.tvMultiplier,
+          };
+        })
+      );
     }
   };
 
+  // --- Pair-Helpers
   const togglePairSelection = (symbol: string) => {
-    setSelectedNewPairs(prev =>
-      prev.includes(symbol)
-        ? prev.filter(s => s !== symbol)
-        : [...prev, symbol]
+    setSelectedNewPairs((prev) =>
+      prev.includes(symbol) ? prev.filter((s) => s !== symbol) : [...prev, symbol]
     );
   };
 
   const addPairs = () => {
     if (selectedNewPairs.length === 0) return;
-    
     const newPairs = selectedNewPairs
-      .filter(symbol => !pairs.find(p => p.symbol === symbol))
-      .map(symbol => ({
+      .filter((symbol) => !pairs.find((p) => p.symbol === symbol))
+      .map((symbol) => ({
         symbol,
         leverage: 10,
         tvMultiplier: 1.0,
-        directions: { long: true, short: true }
+        directions: { long: true, short: true },
       }));
-    
     if (newPairs.length > 0) {
-      setPairs([...pairs, ...newPairs]);
+      setPairs((prev) => [...prev, ...newPairs]);
       toast.success(`${newPairs.length} Pair(s) hinzugefügt`);
     }
-    
     setSelectedNewPairs([]);
     setAddPairDialogOpen(false);
   };
 
   const removePair = (symbol: string) => {
-    setPairs(prev => prev.filter(p => p.symbol !== symbol));
+    setPairs((prev) => prev.filter((p) => p.symbol !== symbol));
   };
 
   const updatePair = (symbol: string, updates: Partial<BotPair>) => {
-    setPairs(prev => prev.map(p => p.symbol === symbol ? { ...p, ...updates } : p));
+    setPairs((prev) => prev.map((p) => (p.symbol === symbol ? { ...p, ...updates } : p)));
   };
 
   const filteredPairs = useMemo(() => {
-    let result = pairs.filter(p => p.symbol.toLowerCase().includes(searchPair.toLowerCase()));
+    let result = pairs.filter((p) =>
+      p.symbol.toLowerCase().includes(searchPair.toLowerCase())
+    );
     result.sort((a, b) => {
       if (sortBy === 'symbol') return a.symbol.localeCompare(b.symbol);
       if (sortBy === 'leverage') {
@@ -245,6 +278,7 @@ export default function BotDetail() {
   if (isLoading && !isNew) return <div>Lade Bot-Details…</div>;
 
   const copyToClipboard = (text: string, label: string) => {
+    if (!text) return;
     navigator.clipboard.writeText(text);
     toast.success(`${label} kopiert`);
   };
@@ -267,9 +301,9 @@ export default function BotDetail() {
         <CardContent className="pt-4 space-y-4">
           <div>
             <Label>Bot Name</Label>
-            <Input 
-              value={name} 
-              onChange={(e) => setName(e.target.value)} 
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
               placeholder="Bot Name"
               className="mt-1"
             />
@@ -278,13 +312,9 @@ export default function BotDetail() {
           <div>
             <Label>UUID</Label>
             <div className="relative mt-1">
-              <Input 
-                value={uuid} 
-                readOnly
-                className="pr-10 bg-muted"
-              />
-              <Button 
-                size="icon" 
+              <Input value={uuid} readOnly className="pr-10 bg-muted" />
+              <Button
+                size="icon"
                 variant="ghost"
                 onClick={() => copyToClipboard(uuid, 'UUID')}
                 className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
@@ -297,23 +327,23 @@ export default function BotDetail() {
           <div>
             <Label>User Secret (einmalig pro User)</Label>
             <div className="relative mt-1">
-              <Input 
-                value={userSecret} 
+              <Input
+                value={userSecret}
                 type={showUserSecret ? 'text' : 'password'}
                 readOnly
                 className="pr-20 bg-muted"
               />
               <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-1">
-                <Button 
-                  size="icon" 
+                <Button
+                  size="icon"
                   variant="ghost"
                   onClick={() => setShowUserSecret(!showUserSecret)}
                   className="h-8 w-8"
                 >
                   {showUserSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
-                <Button 
-                  size="icon" 
+                <Button
+                  size="icon"
                   variant="ghost"
                   onClick={() => copyToClipboard(userSecret, 'User Secret')}
                   className="h-8 w-8"
@@ -326,9 +356,9 @@ export default function BotDetail() {
 
           <div>
             <Label>Exchange API Key</Label>
-            <Input 
-              value={apiKey} 
-              onChange={(e) => setApiKey(e.target.value)} 
+            <Input
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
               placeholder="API Key von Exchange eingeben"
               className="mt-1"
             />
@@ -337,15 +367,15 @@ export default function BotDetail() {
           <div>
             <Label>Exchange API Secret</Label>
             <div className="relative mt-1">
-              <Input 
-                value={apiSecret} 
+              <Input
+                value={apiSecret}
                 onChange={(e) => setApiSecret(e.target.value)}
                 type={showApiSecret ? 'text' : 'password'}
                 placeholder="API Secret von Exchange eingeben"
                 className="pr-10"
               />
-              <Button 
-                size="icon" 
+              <Button
+                size="icon"
                 variant="ghost"
                 onClick={() => setShowApiSecret(!showApiSecret)}
                 className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
@@ -393,7 +423,7 @@ export default function BotDetail() {
               />
             </div>
             <Slider
-              value={[globalLeverage === 'max' || globalLeverage === '' ? 0 : globalLeverage]}
+              value={[globalLeverage === 'max' || globalLeverage === '' ? 0 : (globalLeverage as number)]}
               onValueChange={([val]) => setGlobalLeverage(val)}
               min={0}
               max={100}
@@ -455,7 +485,6 @@ export default function BotDetail() {
                   } else {
                     const num = parseFloat(val);
                     if (!isNaN(num)) {
-                      // Limit to 100 if percentage
                       if (marginUnit.startsWith('percent')) {
                         setMarginValue(Math.min(num, 100));
                       } else {
@@ -494,15 +523,15 @@ export default function BotDetail() {
                 <CommandEmpty>Kein Pair gefunden.</CommandEmpty>
                 <CommandGroup className="max-h-64 overflow-auto">
                   {availablePairs
-                    .filter(p => !pairs.find(pair => pair.symbol === p.symbol))
-                    .map((pair) => (
+                    .filter((p: any) => !pairs.find((pair) => pair.symbol === p.symbol))
+                    .map((pair: any) => (
                       <CommandItem
                         key={pair.symbol}
                         value={pair.symbol}
                         onSelect={() => togglePairSelection(pair.symbol)}
                         className={`cursor-pointer ${
-                          selectedNewPairs.includes(pair.symbol) 
-                            ? 'bg-primary/20 border border-primary' 
+                          selectedNewPairs.includes(pair.symbol)
+                            ? 'bg-primary/20 border border-primary'
                             : ''
                         }`}
                       >
@@ -514,15 +543,18 @@ export default function BotDetail() {
                 </CommandGroup>
               </Command>
               <div className="flex justify-end gap-2 mt-4">
-                <Button variant="outline" onClick={() => {
-                  setAddPairDialogOpen(false);
-                  setSelectedNewPairs([]);
-                }}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setAddPairDialogOpen(false);
+                    setSelectedNewPairs([]);
+                  }}
+                >
                   Abbrechen
                 </Button>
                 <Button onClick={addPairs} disabled={selectedNewPairs.length === 0}>
-                  {selectedNewPairs.length > 0 
-                    ? `${selectedNewPairs.length} Pair(s) hinzufügen` 
+                  {selectedNewPairs.length > 0
+                    ? `${selectedNewPairs.length} Pair(s) hinzufügen`
                     : 'Hinzufügen'}
                 </Button>
               </div>
@@ -555,8 +587,8 @@ export default function BotDetail() {
           </div>
 
           <div className="divide-y divide-border">
-            {filteredPairs.map(pair => {
-              const pairInfo = availablePairs.find(p => p.symbol === pair.symbol);
+            {filteredPairs.map((pair) => {
+              const pairInfo: any = availablePairs.find((p: any) => p.symbol === pair.symbol);
               const maxLev = getMaxLeverage(pair.symbol);
               return (
                 <div key={pair.symbol} className="py-1 flex items-start gap-1.5">
@@ -572,20 +604,28 @@ export default function BotDetail() {
                       <Button
                         size="sm"
                         variant={pair.directions.long ? 'default' : 'outline'}
-                        className={`h-5 px-1.5 text-[10px] leading-none ${pair.directions.long ? 'bg-[#0D3512] hover:bg-[#0D3512]/90 text-[#2DFB68]' : ''}`}
-                        onClick={() => updatePair(pair.symbol, {
-                          directions: { ...pair.directions, long: !pair.directions.long }
-                        })}
+                        className={`h-5 px-1.5 text-[10px] leading-none ${
+                          pair.directions.long ? 'bg-[#0D3512] hover:bg-[#0D3512]/90 text-[#2DFB68]' : ''
+                        }`}
+                        onClick={() =>
+                          updatePair(pair.symbol, {
+                            directions: { ...pair.directions, long: !pair.directions.long },
+                          })
+                        }
                       >
                         Long
                       </Button>
                       <Button
                         size="sm"
                         variant={pair.directions.short ? 'destructive' : 'outline'}
-                        className={`h-5 px-1.5 text-[10px] leading-none ${pair.directions.short ? 'bg-[#641812] hover:bg-[#641812]/90 text-[#EA3A10]' : ''}`}
-                        onClick={() => updatePair(pair.symbol, {
-                          directions: { ...pair.directions, short: !pair.directions.short }
-                        })}
+                        className={`h-5 px-1.5 text-[10px] leading-none ${
+                          pair.directions.short ? 'bg-[#641812] hover:bg-[#641812]/90 text-[#EA3A10]' : ''
+                        }`}
+                        onClick={() =>
+                          updatePair(pair.symbol, {
+                            directions: { ...pair.directions, short: !pair.directions.short },
+                          })
+                        }
                       >
                         Short
                       </Button>
@@ -623,9 +663,11 @@ export default function BotDetail() {
                       step="0.1"
                       value={pair.tvMultiplier}
                       className="h-6 text-xs px-1.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                      onChange={(e) => updatePair(pair.symbol, {
-                        tvMultiplier: parseFloat(e.target.value) || 1.0
-                      })}
+                      onChange={(e) =>
+                        updatePair(pair.symbol, {
+                          tvMultiplier: parseFloat(e.target.value) || 1.0,
+                        })
+                      }
                     />
                   </div>
 

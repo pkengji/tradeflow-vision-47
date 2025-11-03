@@ -1,423 +1,182 @@
 // src/pages/TradeDetail.tsx
-import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronRight, ArrowLeft } from 'lucide-react';
-import MiniRange from '@/components/app/MiniRange';
-import { formatPrice, formatCurrency, formatMs } from '@/lib/formatters';
-import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import React from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { api } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+type PositionDetail = {
+  id: number;
+  status: "open" | "closed";
+  symbol: string;
+  side?: "long" | "short" | null;
+  bot_id?: number | null;
+  bot_name?: string | null;
+  opened_at?: string | null;
+  closed_at?: string | null;
+  qty?: number | null;
+  entry_price_vwap?: number | null;
+  entry_price_best?: number | null;
+  entry_price_trigger?: number | null;
+  exit_price_vwap?: number | null;
+  mark_price?: number | null;
+  pnl_usdt?: number | null;
+  unrealized_pnl_usdt?: number | null;
+  fee_open_usdt?: number | null;
+  fee_close_usdt?: number | null;
+};
+
+type FundingRow = {
+  id: number;
+  amount_usdt: number;
+  ts: string;
+};
+
+function formatDateTime(s?: string | null) {
+  if (!s) return "-";
+  return new Date(s).toLocaleString();
+}
 
 export default function TradeDetail() {
   const { id } = useParams();
-  const navigate = useNavigate();
+  const nav = useNavigate();
   const pid = Number(id);
-  const qc = useQueryClient();
 
-  const { data: position, isLoading: posLoading } = useQuery({
-    queryKey: ['position', pid],
-    queryFn: () => api.getPosition(pid),
-    enabled: Number.isFinite(pid),
-  });
+  const [pos, setPos] = React.useState<PositionDetail | null>(null);
+  const [funding, setFunding] = React.useState<FundingRow[]>([]);
 
-  const { data: orders } = useQuery({
-    queryKey: ['orders', pid],
-    queryFn: () => api.getOrders(pid),
-    enabled: Number.isFinite(pid),
-  });
-
-  const { data: funding } = useQuery({
-    queryKey: ['funding', pid],
-    queryFn: () => api.getFunding(pid),
-    enabled: Number.isFinite(pid),
-  });
-
-  const isOpen = position?.status === 'open';
-
-  // --- Modal state
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [action, setAction] = useState<'close' | 'sltp'>('sltp');
-  const [sl, setSl] = useState<string>('');
-  const [tp, setTp] = useState<string>('');
-
-  // Collapsible states
-  const [positionOpen, setPositionOpen] = useState(false);
-  const [ordersOpen, setOrdersOpen] = useState(false);
-  const [fundingOpen, setFundingOpen] = useState(false);
-
-  // --- Mutations
-  const closeMutation = useMutation({
-    mutationFn: async () => {
-      await api.logAction('UI_CLICK_CLOSE', { position_id: pid });
-      return api.closePosition(pid);
-    },
-    onSuccess: async (res) => {
-      await api.logAction('API_SENT_CLOSE', { position_id: pid, response: res });
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: ['position', pid] }),
-        qc.invalidateQueries({ queryKey: ['positions'] }),
-        qc.invalidateQueries({ queryKey: ['orders', pid] }),
-      ]);
-      setDialogOpen(false);
-    },
-    onError: async (err: any) => {
-      await api.logAction('API_ERROR_CLOSE', { position_id: pid, error: String(err?.message ?? err) });
-      alert(err?.message ?? 'Close fehlgeschlagen');
-    },
-  });
-
-  const sltpMutation = useMutation({
-    mutationFn: async () => {
-      const payload: { sl?: number; tp?: number } = {};
-      if (sl.trim() !== '') payload.sl = Number(sl);
-      if (tp.trim() !== '') payload.tp = Number(tp);
-      await api.logAction('UI_CLICK_SLTP', { position_id: pid, payload });
-      return api.setPositionSlTp(pid, payload);
-    },
-    onSuccess: async (res) => {
-      await api.logAction('API_SENT_SLTP', { position_id: pid, response: res });
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: ['position', pid] }),
-        qc.invalidateQueries({ queryKey: ['orders', pid] }),
-        qc.invalidateQueries({ queryKey: ['positions'] }),
-      ]);
-      setDialogOpen(false);
-    },
-    onError: async (err: any) => {
-      await api.logAction('API_ERROR_SLTP', { position_id: pid, error: String(err?.message ?? err) });
-      alert(err?.message ?? 'SL/TP Update fehlgeschlagen');
-    },
-  });
-
-  const submit = () => {
-    if (action === 'close') {
-      closeMutation.mutate();
-    } else {
-      if (sl.trim() !== '' && Number.isNaN(Number(sl))) return alert('SL ist keine Zahl');
-      if (tp.trim() !== '' && Number.isNaN(Number(tp))) return alert('TP ist keine Zahl');
-      sltpMutation.mutate();
+  React.useEffect(() => {
+    let alive = true;
+    async function load() {
+      const p = await api.getPosition(pid);
+      if (alive) setPos(p);
+      try {
+        const f = await api.getFunding(pid);
+        if (alive) setFunding(f);
+      } catch {
+        // optional
+      }
     }
-  };
+    if (pid) load();
+    return () => {
+      alive = false;
+    };
+  }, [pid]);
 
-  const isLong = position?.side === 'long';
+  if (!pos) {
+    return <div className="p-6">Lade Trade...</div>;
+  }
 
-  const BackButton = (
-    <Button 
-      variant="ghost" 
-      size="icon"
-      onClick={() => navigate('/trades')}
-    >
-      <ArrowLeft className="h-5 w-5" />
-    </Button>
-  );
+  const entry =
+    pos.entry_price_vwap ??
+    pos.entry_price_best ??
+    pos.entry_price_trigger ??
+    null;
+
+  const isClosed = pos.status === "closed";
+  const priceNow = isClosed ? pos.exit_price_vwap ?? null : pos.mark_price ?? null;
+  const pnl = isClosed ? pos.pnl_usdt ?? 0 : pos.unrealized_pnl_usdt ?? 0;
+
+  const fundingTotal = funding.reduce((acc, f) => acc + (f.amount_usdt ?? 0), 0);
+  const feeOpen = pos.fee_open_usdt ?? 0;
+  const feeClose = pos.fee_close_usdt ?? 0;
+  const totalCosts = feeOpen + feeClose + fundingTotal;
 
   return (
-    <DashboardLayout pageTitle={`Position #${pid}`} mobileHeaderLeft={BackButton}>
-      <div className="space-y-3 p-4 pb-24">
-        {/* Header Card */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <CardTitle className="text-base">Position #{pid}</CardTitle>
-            {position?.status && (
-              <Badge variant={isOpen ? 'default' : 'secondary'} className="uppercase text-xs">
-                {position.status}
-              </Badge>
-            )}
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {!posLoading && position && (
-              <>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <div className="text-muted-foreground mb-0.5">Symbol</div>
-                    <div className="font-semibold flex items-center gap-1.5">
-                      {position.symbol}
-                      <Badge 
-                        variant={isLong ? "default" : "destructive"}
-                        className={`${isLong ? 'bg-[#0D3512] hover:bg-[#0D3512]/80 text-[#2DFB68]' : 'bg-[#641812] hover:bg-[#641812]/80 text-[#EA3A10]'} text-[10px] px-1.5 py-0 h-4`}
-                      >
-                        {position.side === 'long' ? 'Long' : 'Short'}
-                      </Badge>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground mb-0.5">Leverage</div>
-                    <div className="font-semibold">{position.leverage_size || '—'}x</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground mb-0.5">Entry Preis</div>
-                    <div className="font-semibold">{formatPrice(position.entry_price)}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground mb-0.5">Trigger Preis</div>
-                    <div className="font-semibold">{formatPrice(position.trigger_price)}</div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <div className="text-muted-foreground mb-0.5">QTY (Base)</div>
-                    <div className="font-semibold">{formatPrice(position.qty ?? position.tv_qty)}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground mb-0.5">Positionsgröße</div>
-                    <div className="font-semibold">{formatPrice(position.position_size_usdt)} USDT</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground mb-0.5">Trade ID</div>
-                    <div className="font-mono text-[10px]">{position.trade_id || '—'}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground mb-0.5">Leverage Type</div>
-                    <div className="font-semibold">{position.leverage_type || '—'}</div>
-                  </div>
-                </div>
-
-                <div className="pt-1">
-                  <MiniRange
-                    labelEntry={position.side === 'short' ? 'Sell' : 'Buy'}
-                    entry={position.entry_price ?? null}
-                    sl={position.sl ?? null}
-                    tp={position.tp ?? null}
-                    mark={position.mark_price ?? position.exit_price ?? null}
-                    side={position.side as 'long' | 'short'}
-                  />
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Transaktionskosten */}
-        {position && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Transaktionskosten</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
-                <div>
-                  <div className="text-muted-foreground mb-0.5">Fees Total</div>
-                  <div className="font-semibold">
-                    {formatCurrency((position.fee_open_usdt || 0) + (position.fee_close_usdt || 0))}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5">
-                    Open: {formatCurrency(position.fee_open_usdt)} / Close: {formatCurrency(position.fee_close_usdt)}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground mb-0.5">Slippage Liquidität</div>
-                  <div className="font-semibold">
-                    {formatCurrency((position.slippage_liquidity_open || 0) + (position.slippage_liquidity_close || 0))}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5">
-                    Open: {formatCurrency(position.slippage_liquidity_open)} / Close: {formatCurrency(position.slippage_liquidity_close)}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground mb-0.5">Slippage Timelag</div>
-                  <div className="font-semibold">{formatCurrency(position.slippage_timelag)}</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Timelag Open */}
-        {position && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Timelag Open</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                <div>
-                  <div className="text-muted-foreground mb-0.5">Entry</div>
-                  <div className="font-semibold font-mono">{formatMs(position.timelag_tv_to_bot)}</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground mb-0.5">Processing time</div>
-                  <div className="font-semibold font-mono">{formatMs(position.timelag_bot_processing)}</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground mb-0.5">Exit</div>
-                  <div className="font-semibold font-mono">{formatMs(position.timelag_bot_to_exchange)}</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Timelag Close */}
-        {position && position.status === 'closed' && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Timelag Close</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                <div>
-                  <div className="text-muted-foreground mb-0.5">Entry</div>
-                  <div className="font-semibold font-mono">{formatMs(position.timelag_close_tv_to_bot)}</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground mb-0.5">Processing time</div>
-                  <div className="font-semibold font-mono">{formatMs(position.timelag_close_bot_processing)}</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground mb-0.5">Exit</div>
-                  <div className="font-semibold font-mono">{formatMs(position.timelag_close_bot_to_exchange)}</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Collapsible JSON Sections */}
-        <Card>
-          <Collapsible open={positionOpen} onOpenChange={setPositionOpen}>
-            <CardHeader className="cursor-pointer pb-2" onClick={() => setPositionOpen(!positionOpen)}>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm">Position (Raw JSON)</CardTitle>
-                {positionOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-              </div>
-            </CardHeader>
-            <CollapsibleContent>
-              <CardContent className="pt-0">
-                <pre className="text-[10px] overflow-auto bg-muted/40 rounded p-2 max-h-48">
-                  {JSON.stringify(position, null, 2)}
-                </pre>
-              </CardContent>
-            </CollapsibleContent>
-          </Collapsible>
-        </Card>
-
-        <Card>
-          <Collapsible open={ordersOpen} onOpenChange={setOrdersOpen}>
-            <CardHeader className="cursor-pointer pb-2" onClick={() => setOrdersOpen(!ordersOpen)}>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm">Orders (Raw JSON)</CardTitle>
-                {ordersOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-              </div>
-            </CardHeader>
-            <CollapsibleContent>
-              <CardContent className="pt-0">
-                <pre className="text-[10px] overflow-auto bg-muted/40 rounded p-2 max-h-48">
-                  {JSON.stringify(orders, null, 2)}
-                </pre>
-              </CardContent>
-            </CollapsibleContent>
-          </Collapsible>
-        </Card>
-
-        <Card>
-          <Collapsible open={fundingOpen} onOpenChange={setFundingOpen}>
-            <CardHeader className="cursor-pointer pb-2" onClick={() => setFundingOpen(!fundingOpen)}>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm">Funding (Raw JSON)</CardTitle>
-                {fundingOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-              </div>
-            </CardHeader>
-            <CollapsibleContent>
-              <CardContent className="pt-0">
-                <pre className="text-[10px] overflow-auto bg-muted/40 rounded p-2 max-h-48">
-                  {JSON.stringify(funding, null, 2)}
-                </pre>
-              </CardContent>
-            </CollapsibleContent>
-          </Collapsible>
-        </Card>
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold">{pos.symbol}</h1>
+            {pos.side ? (
+              <span
+                className={cn(
+                  "text-xs px-1.5 py-0.5 rounded-full",
+                  pos.side === "long" ? "bg-emerald-500/10 text-emerald-500" : "bg-rose-500/10 text-rose-500"
+                )}
+              >
+                {pos.side.toUpperCase()}
+              </span>
+            ) : null}
+            <span
+              className={cn(
+                "text-xs px-1.5 py-0.5 rounded-full",
+                isClosed ? "bg-muted text-muted-foreground" : "bg-amber-500/10 text-amber-500"
+              )}
+            >
+              {isClosed ? "Geschlossen" : "Offen"}
+            </span>
+          </div>
+          {pos.bot_name ? <p className="text-sm text-muted-foreground mt-1">Bot: {pos.bot_name}</p> : null}
+        </div>
+        <Button variant="outline" onClick={() => nav(-1)}>
+          Zurück
+        </Button>
       </div>
 
-      {/* Fixed Action Bar */}
-      {isOpen && (
-        <div className="fixed bottom-16 left-0 right-0 bg-card border-t p-3 z-50">
-          <div className="max-w-lg mx-auto">
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="w-full" size="default">
-                  Aktion (Close / SL / TP)
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Aktion ausführen</DialogTitle>
-                </DialogHeader>
+      {/* Preise */}
+      <div className="grid md:grid-cols-3 gap-4">
+        <div className="border rounded-lg p-4">
+          <p className="text-xs text-muted-foreground mb-1">Entry (effektiv)</p>
+          <p className="text-xl font-mono">{entry != null ? entry.toFixed(6) : "-"}</p>
+          <p className="text-xs text-muted-foreground mt-1">(vwap → best → trigger)</p>
+        </div>
+        <div className="border rounded-lg p-4">
+          <p className="text-xs text-muted-foreground mb-1">{isClosed ? "Exit-Preis (VWAP)" : "Aktueller Preis"}</p>
+          <p className="text-xl font-mono">{priceNow != null ? priceNow.toFixed(6) : "-"}</p>
+        </div>
+        <div className="border rounded-lg p-4">
+          <p className="text-xs text-muted-foreground mb-1">{isClosed ? "Realized PnL" : "Unrealized PnL"}</p>
+          <p
+            className={cn(
+              "text-xl font-semibold",
+              pnl >= 0 ? "text-emerald-500" : "text-rose-500"
+            )}
+          >
+            {pnl >= 0 ? "+" : ""}
+            {pnl.toFixed(2)} USDT
+          </p>
+        </div>
+      </div>
 
-                <div className="flex gap-2">
-                  <Button
-                    variant={action === 'sltp' ? 'default' : 'outline'}
-                    onClick={() => setAction('sltp')}
-                    className="flex-1"
-                  >
-                    SL / TP setzen
-                  </Button>
-                  <Button
-                    variant={action === 'close' ? 'default' : 'outline'}
-                    onClick={() => setAction('close')}
-                    className="flex-1"
-                  >
-                    Position schließen
-                  </Button>
-                </div>
-
-                {action === 'sltp' && (
-                  <div className="grid gap-3">
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="sl" className="text-sm">SL-Trigger-Preis (optional)</Label>
-                      <Input
-                        id="sl"
-                        placeholder="z.B. 2.45"
-                        inputMode="decimal"
-                        value={sl}
-                        onChange={(e) => setSl(e.target.value)}
-                      />
-                    </div>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="tp" className="text-sm">TP-Preis (optional)</Label>
-                      <Input
-                        id="tp"
-                        placeholder="z.B. 2.48"
-                        inputMode="decimal"
-                        value={tp}
-                        onChange={(e) => setTp(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <DialogFooter className="gap-2">
-                  <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                    Abbrechen
-                  </Button>
-                  <Button
-                    onClick={submit}
-                    disabled={
-                      (action === 'close' && closeMutation.isPending) ||
-                      (action === 'sltp' && sltpMutation.isPending)
-                    }
-                  >
-                    {action === 'close'
-                      ? closeMutation.isPending
-                        ? 'Schließe…'
-                        : 'Schließen'
-                      : sltpMutation.isPending
-                      ? 'Speichere…'
-                      : 'Speichern'}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+      {/* Zeiten */}
+      <div className="border rounded-lg p-4">
+        <p className="text-xs text-muted-foreground mb-2">Zeiten</p>
+        <div className="space-y-1 text-sm">
+          <div>
+            <span className="text-muted-foreground">Geöffnet: </span>
+            {formatDateTime(pos.opened_at)}
+          </div>
+          <div>
+            <span className="text-muted-foreground">Geschlossen: </span>
+            {isClosed ? formatDateTime(pos.closed_at) : "—"}
           </div>
         </div>
-      )}
-    </DashboardLayout>
+      </div>
+
+      {/* Kosten */}
+      <div className="border rounded-lg p-4">
+        <p className="text-xs text-muted-foreground mb-2">Transaktionskosten</p>
+        <p className="text-lg font-mono mb-1">{totalCosts.toFixed(4)} USDT</p>
+        <p className="text-sm text-muted-foreground">
+          Open: {feeOpen.toFixed(4)} · Close: {feeClose.toFixed(4)} · Funding: {fundingTotal.toFixed(4)}
+        </p>
+      </div>
+
+      {/* Funding Liste */}
+      {funding.length > 0 ? (
+        <div className="border rounded-lg p-4">
+          <p className="text-xs text-muted-foreground mb-2">Funding</p>
+          <div className="space-y-1">
+            {funding.map((f) => (
+              <div key={f.id} className="flex justify-between text-sm">
+                <span>{formatDateTime(f.ts)}</span>
+                <span>{f.amount_usdt.toFixed(6)} USDT</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }

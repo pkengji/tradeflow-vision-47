@@ -1,44 +1,116 @@
+// src/components/app/TradeCardCompact.tsx
 import React from "react";
-import { Badge } from "@/components/ui/badge";
-import { formatCurrency } from "@/lib/formatters";
+import { cn } from "@/lib/utils";
+import MiniRange from "@/components/app/MiniRange";
 
-type Props = {
+export type CompactTrade = {
+  id: number;
+  status: "open" | "closed";
   symbol: string;
-  baseIconUrl?: string;
-  botName?: string;
-  side: "long" | "short";
-  pnl: number;
-  deltaPct?: number;
-  onClick?: () => void;
-  variant?: "card" | "plain";
+  side?: "long" | "short" | null;
+  bot_id?: number | null;
+  bot_name?: string | null;
+  opened_at?: string | null;
+  closed_at?: string | null;
+  qty?: number | null;
+  // neue Felder:
+  entry_price_vwap?: number | null;
+  entry_price_best?: number | null;
+  entry_price_trigger?: number | null;
+  exit_price_vwap?: number | null;
+  mark_price?: number | null;
+  pnl_usdt?: number | null;
+  unrealized_pnl_usdt?: number | null;
+  fee_open_usdt?: number | null;
+  fee_close_usdt?: number | null;
 };
 
-export default function TradeCardCompact({ symbol, baseIconUrl, botName, side, pnl, deltaPct, onClick, variant = "card" }: Props){
-  const isLong = side === "long";
-  const color = pnl >= 0 ? "text-[#2DFB68]" : "text-[#EA3A10]";
-  const rootClass = variant === "plain"
-    ? "flex items-center gap-2 py-2 cursor-pointer"
-    : "flex items-center gap-2 p-2.5 border rounded hover:bg-muted cursor-pointer shadow-sm";
+type Props = {
+  trade: CompactTrade;
+  onSelect?: (id: number) => void;
+  isSelected?: boolean;
+};
+
+function formatPnL(v?: number | null): string {
+  if (v == null) return "-";
+  return (v >= 0 ? "+" : "") + v.toFixed(2) + " USDT";
+}
+
+function formatDate(s?: string | null): string {
+  if (!s) return "";
+  const d = new Date(s);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+export default function TradeCardCompact({ trade, onSelect, isSelected }: Props) {
+  const entry =
+    trade.entry_price_vwap ??
+    trade.entry_price_best ??
+    trade.entry_price_trigger ??
+    null;
+
+  const exitOrMark =
+    trade.status === "closed"
+      ? trade.exit_price_vwap ?? null
+      : trade.mark_price ?? null;
+
+  const pnl =
+    trade.status === "closed"
+      ? trade.pnl_usdt ?? 0
+      : trade.unrealized_pnl_usdt ?? 0;
+
+  const pnlPositive = pnl >= 0;
+
   return (
-    <div className={rootClass} onClick={onClick}>
-      <div className="w-7 h-7 rounded-full bg-muted overflow-hidden flex items-center justify-center shrink-0">
-        {baseIconUrl ? <img src={baseIconUrl} alt="" className="w-full h-full object-cover" /> : <span className="text-xs font-medium">{symbol.slice(0,3)}</span>}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <div className="font-medium truncate text-sm">{symbol}</div>
-          <Badge 
-            variant={isLong ? "default" : "destructive"}
-            className={`${isLong ? 'bg-[#0D3512] hover:bg-[#0D3512]/80 text-[#2DFB68]' : 'bg-[#641812] hover:bg-[#641812]/80 text-[#EA3A10]'} text-[10px] px-1.5 py-0 h-4`}
-          >
-            {side === "long" ? "Long" : "Short"}
-          </Badge>
+    <div
+      onClick={() => onSelect?.(trade.id)}
+      className={cn(
+        "flex flex-col gap-1 px-3 py-2 rounded-md border cursor-pointer bg-background/30",
+        isSelected ? "border-primary/80 bg-primary/5" : "border-border/50 hover:border-primary/40"
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1">
+          <span className="font-mono text-sm">{trade.symbol}</span>
+          {trade.side ? (
+            <span
+              className={cn(
+                "text-xs px-1.5 py-0.5 rounded-full",
+                trade.side === "long" ? "bg-emerald-500/10 text-emerald-500" : "bg-rose-500/10 text-rose-500"
+              )}
+            >
+              {trade.side.toUpperCase()}
+            </span>
+          ) : null}
+          {trade.bot_name ? (
+            <span className="text-xs text-muted-foreground">· {trade.bot_name}</span>
+          ) : null}
         </div>
-        <div className="text-xs text-muted-foreground truncate">{botName ?? "—"}</div>
+        <div
+          className={cn(
+            "text-sm font-medium",
+            pnlPositive ? "text-emerald-500" : "text-rose-500"
+          )}
+        >
+          {formatPnL(pnl)}
+        </div>
       </div>
-      <div className="text-right">
-        <div className={`font-semibold text-sm ${color}`}>{formatCurrency(pnl, true)}</div>
-        {typeof deltaPct === "number" && <div className={`text-xs ${color}`}>({(deltaPct*100).toFixed(2)}%)</div>}
+
+      <div className="flex items-center gap-2">
+        <MiniRange
+          entry={entry ?? undefined}
+          mark={trade.status === "open" ? trade.mark_price ?? undefined : undefined}
+          tp={trade.status === "closed" ? exitOrMark ?? undefined : undefined}
+          labelEntry="ENTRY"
+        />
+      </div>
+
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>
+          {trade.status === "open" ? "Geöffnet" : "Geschlossen"}{" "}
+          {formatDate(trade.status === "open" ? trade.opened_at : trade.closed_at)}
+        </span>
+        {trade.qty ? <span>{trade.qty} •</span> : <span />}
       </div>
     </div>
   );

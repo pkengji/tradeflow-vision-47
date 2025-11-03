@@ -1,22 +1,36 @@
+// src/pages/Bots.tsx
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, type Bot } from '@/lib/api';
+import { api, apiRequest, type Bot } from '@/lib/api';
 import { Switch } from '@/components/ui/switch';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 
+type BotWithPairsCount = Bot & { pairs_count?: number };
+
 export default function Bots() {
   const qc = useQueryClient();
+
+  // Bots laden + enabled-Pairs zählen
   const { data: bots, isLoading } = useQuery({
     queryKey: ['bots'],
-    queryFn: api.getBots,
+    queryFn: async (): Promise<BotWithPairsCount[]> => {
+      const list = await apiRequest<Bot[]>('/api/v1/bots');
+      const counts = await Promise.all(
+        list.map(b =>
+          api.getBotSymbols(b.id)
+            .then(rows => rows.filter(r => r.enabled).length)
+            .catch(() => 0)
+        )
+      );
+      return list.map((b, i) => ({ ...b, pairs_count: counts[i] }));
+    },
   });
 
   const toggleAutoApproveMutation = useMutation({
-    mutationFn: async ({ botId, newValue }: { botId: number; newValue: boolean }) => {
-      return api.setBotAutoApprove(botId, newValue);
-    },
+    mutationFn: ({ botId, newValue }: { botId: number; newValue: boolean }) =>
+      api.setBotAutoApprove(botId, newValue),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['bots'] });
     },
@@ -32,12 +46,6 @@ export default function Bots() {
   };
 
   const visibleBots = (bots ?? []).filter(b => b.status !== 'deleted');
-
-  const handleAutoApproveToggle = (e: React.MouseEvent, bot: Bot) => {
-    e.preventDefault();
-    e.stopPropagation();
-    toggleAutoApproveMutation.mutate({ botId: bot.id, newValue: !bot.auto_approve });
-  };
 
   return (
     <DashboardLayout pageTitle="Bots">
@@ -60,20 +68,27 @@ export default function Bots() {
                       Am Laufen seit: {bot.created_at ? new Date(bot.created_at).toLocaleDateString('de-CH') : '—'}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      Anzahl Pairs: {(bot as any).pairs_count || 0}
+                      Anzahl Pairs: {(bot as any).pairs_count ?? 0}
                     </div>
                   </div>
-                  <div className="flex-shrink-0 flex flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
+
+                  {/* Stoppt Link-Navigation beim Klick auf den Switch */}
+                  <div
+                    className="flex-shrink-0 flex flex-col items-end gap-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <div className="text-xs text-muted-foreground">Auto-Approve</div>
                     <Switch
                       checked={!!bot.auto_approve}
-                      onCheckedChange={(checked) => toggleAutoApproveMutation.mutate({ botId: bot.id, newValue: checked })}
-                      onClick={(e) => e.stopPropagation()}
+                      onCheckedChange={(checked) =>
+                        toggleAutoApproveMutation.mutate({ botId: bot.id, newValue: checked })
+                      }
                     />
                   </div>
                 </div>
               </Link>
             ))}
+
             {visibleBots.length === 0 && (
               <div className="text-sm text-muted-foreground">Keine Bots gefunden.</div>
             )}

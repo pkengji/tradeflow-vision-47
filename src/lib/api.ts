@@ -46,6 +46,7 @@ async function http<T = any>(path: string, opts: FetchOpts = {}): Promise<T> {
         : JSON.stringify(opts.body),
     signal: controller.signal,
     mode: 'cors',
+    credentials: 'include', // <<< WICHTIG: Cookie (uid) mitsenden
   }).catch((e) => {
     clearTimeout(timeout);
     throw new Error(`Network error: ${e}`);
@@ -118,6 +119,8 @@ export type Bot = {
   status: 'active' | 'paused' | 'deleted';
   auto_approve: boolean;
   uuid: string | null;
+  api_key?: string | null;
+  api_secret?: string | null;
   secret: string | null;
   max_leverage: number | null;
   is_deleted?: boolean;
@@ -125,21 +128,100 @@ export type Bot = {
   updated_at?: string | null;
 };
 
+export type BotSymbolSettingIn = {
+  symbol: string;
+  enabled: boolean;
+  target_risk_amount: number;
+  leverage_override?: number | null;
+};
+
+
 export type PositionListItem = {
   id: number;
   symbol: string;
   side: 'long' | 'short';
-  status: string;
-  entry_price: number | null;
+  status: 'open' | 'closed';
+
+  // Preise
+  entry_price_trigger: number | null;
+  entry_price_best: number | null;
+  entry_price_vwap: number | null;
+  exit_price_vwap: number | null;
+  mark_price: number | null;
+
+  // Menge
   qty: number | null;
-  bot_name: string | null;
+
+  // Fees
+  fee_open_usdt: number | null;
+  fee_close_usdt: number | null;
+  funding_usdt?: number | null; // kommt evtl. später vom Backend, deshalb optional
+
+  // PnL
+  pnl_usdt: number | null;
+  unrealized_pnl_usdt: number | null;
+
+  // Zeiten
   opened_at: string | null;
   closed_at: string | null;
-  pnl: number | null;
-  sl?: number | null;          // aus sl_trigger (oder sl_limit)
-  tp?: number | null;          // aus tp_trigger
-  exit_price?: number | null;  // bei closed: als "mark"-Ersatz
+
+  // Meta
+  bot_id?: number | null;
+  bot_name: string | null;
+
+  // Für MiniRange
+  sl?: number | null;
+  tp?: number | null;
 };
+
+export type PositionsResponse = {
+  items: PositionListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+function mapPositionRow(row: any): PositionListItem {
+  // Fallback-Logik für Entry: wir nehmen zuerst VWAP, dann Best, dann Trigger
+  const entry =
+    row.entry_price_vwap ??
+    row.entry_price_best ??
+    row.entry_price_trigger ??
+    row.entry_price ??
+    null;
+
+  return {
+    id: row.id,
+    symbol: row.symbol,
+    side: (row.side ?? 'long') as 'long' | 'short',
+    status: (row.status ?? 'open') as 'open' | 'closed',
+
+    entry_price_trigger: row.entry_price_trigger ?? null,
+    entry_price_best: row.entry_price_best ?? null,
+    entry_price_vwap: row.entry_price_vwap ?? entry,
+    exit_price_vwap: row.exit_price_vwap ?? row.exit_price ?? null,
+    mark_price: row.mark_price ?? null,
+
+    qty: row.qty ?? null,
+
+    fee_open_usdt: row.fee_open_usdt ?? row.fee_opening_usdt ?? null,
+    fee_close_usdt: row.fee_close_usdt ?? row.fee_closing_usdt ?? null,
+    funding_usdt: row.funding_usdt ?? null,
+
+    pnl_usdt: row.pnl_usdt ?? row.realized_pnl_net_usdt ?? null,
+    unrealized_pnl_usdt: row.unrealized_pnl_usdt ?? null,
+
+    opened_at: row.opened_at ?? null,
+    closed_at: row.closed_at ?? null,
+
+    bot_id: row.bot_id ?? null,
+    bot_name: row.bot_name ?? row.bot?.name ?? null,
+
+    sl: row.sl ?? null,
+    tp: row.tp ?? null,
+  };
+}
+
 
 export type PnlDailyPoint = { date: string; pnl: number };
 
@@ -189,34 +271,78 @@ export type TradesResponse = {
 
 // ---------- API-Funktionen ----------
 
-async function getBots(): Promise<Bot[]> {
-  try {
-    const rows = await http<BotRow[]>('/api/v1/bots');
-    return rows.map((b) => ({
-      id: b.id,
-      name: b.name,
-      strategy: b.strategy ?? null,
-      timeframe: b.timeframe ?? null,
-      tv_risk_multiplier_default: b.tv_risk_multiplier_default ?? null,
-      position_mode: b.position_mode ?? null,
-      margin_mode: b.margin_mode ?? null,
-      default_leverage: b.default_leverage ?? null,
-      status: b.status,
-      auto_approve: b.auto_approve,
-      uuid: (b as any).uuid ?? null,
-      secret: null,
-      max_leverage: null,
-      is_deleted: b.is_deleted ?? false,
-      created_at: b.created_at,
-      updated_at: b.updated_at ?? null,
-    }));
-  } catch (error) {
-    console.warn('API Error, using mock data:', error);
-    const { MOCK_BOTS } = await import('./mockData');
-    return MOCK_BOTS;
-  }
+// Bots (Details & Pairs)
+async function getBot(id: number): Promise<Bot> {
+  const b = await http<any>(`/api/v1/bots/${id}`);
+  return {
+    id: b.id,
+    name: b.name,
+    strategy: b.strategy ?? null,
+    timeframe: b.timeframe ?? null,
+    tv_risk_multiplier_default: b.tv_risk_multiplier_default ?? null,
+    position_mode: b.position_mode ?? null,
+    margin_mode: b.margin_mode ?? null,
+    default_leverage: b.default_leverage ?? null,
+    status: b.status,
+    auto_approve: b.auto_approve,
+    uuid: b.uuid ?? null,
+    secret: null,
+    max_leverage: null,
+    api_key: b.api_key ?? null,       // wichtig: zur Bybit-Verbindung
+    api_secret: b.api_secret ?? null, // wichtig: zur Bybit-Verbindung
+    is_deleted: b.is_deleted ?? false,
+    created_at: b.created_at,
+    updated_at: b.updated_at ?? null,
+  };
 }
 
+// alle Bots des eingeloggten Users holen
+async function getBots(): Promise<Bot[]> {
+  const rows = await http<any[]>('/api/v1/bots');
+  return rows.map((b) => ({
+    id: b.id,
+    name: b.name,
+    strategy: b.strategy ?? null,
+    timeframe: b.timeframe ?? null,
+    tv_risk_multiplier_default: b.tv_risk_multiplier_default ?? null,
+    position_mode: b.position_mode ?? null,
+    margin_mode: b.margin_mode ?? null,
+    default_leverage: b.default_leverage ?? null,
+    status: b.status,
+    auto_approve: b.auto_approve,
+    uuid: b.uuid ?? null,
+    api_key: b.api_key ?? null,
+    api_secret: b.api_secret ?? null,
+    secret: null,
+    max_leverage: null,
+    is_deleted: b.is_deleted ?? false,
+    created_at: b.created_at,
+    updated_at: b.updated_at ?? null,
+  }));
+}
+
+async function getBotSymbols(botId: number) {
+  return http<Array<{
+    id: number;
+    bot_id: number;
+    symbol: string;
+    enabled: boolean;
+    target_risk_amount: number;
+    leverage_override?: number | null;
+  }>>(`/api/v1/bots/${botId}/symbols`);
+}
+
+async function upsertBotSymbols(botId: number, items: BotSymbolSettingIn[]) {
+  return http(`/api/v1/bots/${botId}/symbols`, { method: 'PUT', body: items });
+}
+
+// Bot CRUD & Status
+async function createBot(data: Partial<Bot>): Promise<Bot> {
+  return http<Bot>('/api/v1/bots', { method: 'POST', body: data });
+}
+async function updateBot(id: number, data: Partial<Bot>): Promise<Bot> {
+  return http<Bot>(`/api/v1/bots/${id}`, { method: 'PATCH', body: data });
+}
 async function pauseBot(id: number) {
   return http(`/api/v1/bots/${id}/pause`, { method: 'POST' });
 }
@@ -226,7 +352,6 @@ async function resumeBot(id: number) {
 async function deleteBot(id: number) {
   return http(`/api/v1/bots/${id}`, { method: 'DELETE' });
 }
-
 async function setBotAutoApprove(bot_id: number, auto_approve: boolean) {
   return http(`/api/v1/bots/${bot_id}/auto-approve`, {
     method: 'PATCH',
@@ -234,52 +359,48 @@ async function setBotAutoApprove(bot_id: number, auto_approve: boolean) {
   });
 }
 
+// Positions / Trades
 type PositionsParams = { status?: string; bot_id?: number; symbol?: string; side?: string };
 
-async function getPositions(params?: PositionsParams): Promise<{ items: PositionListItem[] }> {
-  try {
-    const res = await http<PositionsResponseRaw>('/api/v1/positions', { query: params });
-    const items = (res.items ?? []).map((p: any): PositionListItem => ({
-      id: p.id,
-      symbol: p.symbol,
-      side: p.side,
-      status: p.status,
-      entry_price: p.entry_price ?? null,
-      qty: p.qty ?? p.tv_qty ?? null,
-      bot_name: p.bot_name ?? null,
-      opened_at: p.opened_at ?? null,
-      closed_at: p.closed_at ?? null,
-      pnl: p.realized_pnl_net_usdt ?? null,
-      sl: p.sl_trigger ?? null,
-      tp: p.tp_trigger ?? null,
-      exit_price: p.exit_price ?? null,
-    }));
-    return { items };
-  } catch (error) {
-    console.warn('API Error, using mock data:', error);
-    const { generateAllMockTrades } = await import('./mockData');
-    return { items: generateAllMockTrades() };
-  }
+async function getPositions(params?: {
+  status?: 'open' | 'closed';
+  bot_id?: number;
+  symbol?: string;
+  side?: 'long' | 'short';
+}): Promise<{ items: PositionListItem[] }> {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set('status', params.status);
+  if (params?.bot_id) qs.set('bot_id', String(params.bot_id));
+  if (params?.symbol) qs.set('symbol', params.symbol);
+  if (params?.side) qs.set('side', params.side);
+
+  const url =
+    qs.toString().length > 0
+      ? `/api/v1/positions?${qs.toString()}`
+      : `/api/v1/positions`;
+
+  const res = await http<PositionsResponseRaw>(url);
+  const rawItems = Array.isArray(res.items) ? res.items : [];
+  return {
+    items: rawItems.map(mapPositionRow),
+  };
 }
 
-async function getPosition(id: number): Promise<any> {
-  try {
-    return await http<any>(`/api/v1/positions/${id}`);
-  } catch (error) {
-    console.warn('API Error, using mock data:', error);
-    const { generateMockPositionDetail } = await import('./mockData');
-    return generateMockPositionDetail(id);
-  }
+
+async function getPosition(id: number): Promise<PositionListItem> {
+  // genau wie die anderen Endpoints
+  return await http<PositionListItem>(`/api/v1/positions/${id}`);
 }
+
 
 async function setPositionSlTp(position_id: number, params: { sl?: number; tp?: number }) {
   return http(`/api/v1/positions/${position_id}/set-sl-tp`, { method: 'POST', body: params });
 }
-
 async function closePosition(position_id: number) {
   return http(`/api/v1/positions/${position_id}/close`, { method: 'POST' });
 }
 
+// Orders / Funding
 async function getOrders(position_id: number): Promise<any[]> {
   try {
     return await http<any[]>('/api/v1/orders', { query: { position_id } });
@@ -289,7 +410,6 @@ async function getOrders(position_id: number): Promise<any[]> {
     return generateMockOrders(position_id);
   }
 }
-
 async function getFunding(position_id: number): Promise<any[]> {
   try {
     return await http<any[]>('/api/v1/funding', { query: { position_id } });
@@ -300,6 +420,7 @@ async function getFunding(position_id: number): Promise<any[]> {
   }
 }
 
+// Symbols / PnL
 async function getSymbols(): Promise<string[]> {
   try {
     const rows = await http<SymbolRow[]>('/api/v1/symbols');
@@ -316,6 +437,7 @@ async function getDailyPnl(params?: { days?: number; bot_id?: number }): Promise
   return rows.map((r) => ({ date: r.day, pnl: r.pnl_net_usdt ?? 0 }));
 }
 
+// Outbox
 async function getOutbox(params?: { status?: string; limit?: number }): Promise<OutboxItem[]> {
   return http<OutboxItem[]>('/api/v1/outbox', { query: params });
 }
@@ -336,32 +458,21 @@ async function logAction(event: string, payload?: any): Promise<null | any> {
   });
 }
 
-async function getAvailablePairs(): Promise<Array<{ symbol: string; name: string; icon: string }>> {
-  try {
-    // TODO: Replace with actual API call when available
-    // return http<Array<{ symbol: string; name: string; icon: string }>>('/api/v1/pairs');
-    throw new Error('Not implemented');
-  } catch (error) {
-    console.warn('API Error, using mock data:', error);
-    const { MOCK_AVAILABLE_PAIRS } = await import('./mockData');
-    return MOCK_AVAILABLE_PAIRS;
-  }
+// Verfügbare Pairs (aktuell Mock, bis echter Endpoint existiert)
+async function getAvailablePairs(): Promise<Array<{ symbol: string; name: string; icon: string; base: string; quote: string; price_decimals: number; qty_decimals: number; max_leverage: number }>> {
+  return http('/api/v1/pairs');
 }
 
-// Bot management
-async function createBot(data: Partial<Bot>): Promise<Bot> {
-  return http<Bot>('/api/v1/bots', { method: 'POST', body: data });
-}
-
-async function updateBot(id: number, data: Partial<Bot>): Promise<Bot> {
-  return http<Bot>(`/api/v1/bots/${id}`, { method: 'PATCH', body: data });
+// --- NEU: User Webhook-Secret laden ---
+async function getMyWebhookSecret(): Promise<string> {
+  const r = await http<{ webhook_secret: string }>('/api/v1/me/webhook-secret');
+  return r.webhook_secret;
 }
 
 // User settings
 async function updateUserProfile(data: { name?: string; email?: string }): Promise<any> {
   return http('/api/v1/user/profile', { method: 'PATCH', body: data });
 }
-
 async function updateUserPassword(data: { current_password: string; new_password: string }): Promise<any> {
   return http('/api/v1/user/password', { method: 'PATCH', body: data });
 }
@@ -375,7 +486,6 @@ async function updateTimezone(data: { use_system: boolean; timezone?: string }):
 async function getNotificationSettings(): Promise<any> {
   return http('/api/v1/user/notifications');
 }
-
 async function updateNotificationSettings(settings: any): Promise<any> {
   return http('/api/v1/user/notifications', { method: 'PATCH', body: settings });
 }
@@ -389,7 +499,10 @@ async function createUser(data: { username: string; email: string; password: str
 
 export const api = {
   // Bots
+  getBot,
   getBots,
+  getBotSymbols,
+  upsertBotSymbols,
   createBot,
   updateBot,
   pauseBot,
@@ -427,6 +540,9 @@ export const api = {
 
   // Admin
   createUser,
+
+  // User secret (NEU)
+  getMyWebhookSecret,
 
   // Misc
   logAction,
