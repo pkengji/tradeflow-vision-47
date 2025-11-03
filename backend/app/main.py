@@ -13,8 +13,9 @@ from sqlalchemy import or_, select, func
 from .services.bybit_sync import sync_backfill_since, sync_recent_closures, quick_sync_symbol, sync_full_history, rebuild_positions,sync_symbol_recent, sync_recent_all_bots
 from .services.symbols import sync_symbols_linear_usdt, list_pairs_payload
 from collections import defaultdict
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 from app.services.positions import handle_position_close
+from app.services.portfolio_sync import sync_cashflows as pf_sync_cashflows, compute_portfolio_value as pf_compute_portfolio_value
 
 from .database import Base, engine, SessionLocal
 from . import models, schemas
@@ -722,8 +723,6 @@ def sync_bybit_quick(bot_id: int,
     stats = quick_sync_symbol(db, bot_id=bot_id, symbol=symbol, days=days)
     return {"ok": True, "stats": stats}
 
-from datetime import timedelta
-
 @app.get("/api/v1/debug/bybit")
 def debug_bybit(
     bot_id: int,
@@ -1110,159 +1109,58 @@ def sync_all_bots_recent(
 
 
 # =========================
-# Portfolio (Cashflows)  # ADDED
+# Portfolio (Cashflows) – FINAL
 # =========================
+
+@app.post("/api/v1/cashflows/sync")
+def api_sync_cashflows(
+    bot_id: int,
+    date_from: Optional[str] = Query(None, description="ISO date or datetime, UTC, inclusive"),
+    date_to: Optional[str]   = Query(None, description="ISO date or datetime, UTC, exclusive if full date"),
+    coin: str = Query("USDT"),
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """
+    Holt EXTERNE Ein-/Auszahlungen (Bybit v5) und persistiert sie in Cashflow.
+    Für die API-Keys nutzen wir einen Bot des Users (bot_id).
+    """
+    bot = (
+        db.query(models.Bot)
+          .filter(models.Bot.id == bot_id,
+                  models.Bot.user_id == user_id,
+                  models.Bot.is_deleted == False)
+          .first()
+    )
+    if not bot or not bot.api_key or not bot.api_secret:
+        raise HTTPException(400, "Bot not found or API keys missing")
+
+    res = pf_sync_cashflows(
+        db,
+        user_id=user_id,
+        api_key=bot.api_key,
+        api_secret=bot.api_secret,
+        date_from=date_from,
+        date_to=date_to,
+        coin=coin,
+    )
+    return res
+
+
 @app.get("/api/v1/portfolio/value")
-def get_portfolio_value(
-    date_from: Optional[str] = Query(None, description="YYYY-MM-DD UTC"),
-    date_to: Optional[str] = Query(None, description="YYYY-MM-DD UTC"),
-    db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
-):
-    def parse_day(s: Optional[str]) -> Optional[date]:
-        if not s: return None
-        y, m, d = [int(x) for x in s.split("-")]
-        return date(y, m, d)
-
-    dfrom = parse_day(date_from)
-    dto = parse_day(date_to)
-
-    # 1) Cashflows (nur externe Ein-/Auszahlungen)
-    qcf = db.query(models.Cashflow).filter(models.Cashflow.user_id == user_id)
-    if dfrom:
-        qcf = qcf.filter(models.Cashflow.ts >= datetime(dfrom.year, dfrom.month, dfrom.day, tzinfo=timezone.utc))
-    if dto:
-        qcf = qcf.filter(models.Cashflow.ts < datetime(dto.year, dto.month, dto.day, tzinfo=timezone.utc) + timedelta(days=1))
-    cfs = qcf.all()
-
-    deposits = sum(cf.amount for cf in cfs if cf.direction == models.CashDirection.deposit)
-    withdrawals = sum(cf.amount for cf in cfs if cf.direction == models.CashDirection.withdraw)
-
-    # 2) Realized PnL (alle Bots)
-    qp = db.query(models.Position).join(models.Bot, models.Position.bot_id == models.Bot.id).filter(models.Bot.user_id == user_id).filter(models.Position.closed_at.isnot(None))
-    if dfrom:
-        qp = qp.filter(models.Position.closed_at >= datetime(dfrom.year, dfrom.month, dfrom.day, tzinfo=timezone.utc))
-    if dto:
-        qp = qp.filter(models.Position.closed_at < datetime(dto.year, dto.month, dto.day, tzinfo=timezone.utc) + timedelta(days=1))
-    positions = qp.all()
-    realized = sum(float(getattr(p, "realized_pnl_net_usdt", None) or getattr(p, "pnl_usdt", 0.0) or 0.0) for p in positions)
-
-    portfolio_value = deposits - withdrawals + realized
-    return {"deposits": deposits, "withdrawals": withdrawals, "realized_pnl": realized, "portfolio_value": portfolio_value}
-
-
-from datetime import timedelta
-
-@app.post("/api/v1/cashflows/sync/deposits")
-def sync_deposits(
-    bot_id: int,
-    days: int = Query(90, ge=1, le=365),
+def api_portfolio_value(
+    date_from: Optional[str] = Query(None, description="ISO date or datetime, UTC, inclusive"),
+    date_to: Optional[str]   = Query(None, description="ISO date or datetime, UTC, exclusive if full date"),
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
     """
-    Pullt On-chain Deposits (extern) für den Bot (Keys) und speichert als Cashflow(direction=deposit).
-    Hinweis: falls BybitV5Data andere Methodennamen nutzt, gibt's eine klare Fehlermeldung.
+    Portfolio Value = Σ(Deposits) − Σ(Withdrawals) + Σ(Realized PnL)
+    Über alle Bots des Users; Datum optional filterbar.
     """
-    bot = db.query(models.Bot).filter(models.Bot.id == bot_id, models.Bot.user_id == user_id, models.Bot.is_deleted == False).first()
-    if not bot or not bot.api_key or not bot.api_secret:
-        raise HTTPException(400, "Bot not found or API keys missing")
-
-    from .bybit_v5_data import BybitV5Data
-    data = BybitV5Data(bot.api_key, bot.api_secret)
-
-    end_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
-    start_ms = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp() * 1000)
-
-    try:
-        # Erwartet: data.deposit_records(...) → Bybit v5 /asset/deposit/query-record
-        res = data.deposit_records(startTime=start_ms, endTime=end_ms)  # ADDED: ggf. Methodennamen anpassen
-    except Exception as e:
-        raise HTTPException(500, f"deposit sync failed: {e}")
-
-    lst = ((res or {}).get("result") or {}).get("rows") or ((res or {}).get("result") or {}).get("list") or []
-    imported = 0
-    for row in lst:
-        amt = float(row.get("amount") or row.get("quantity") or 0)
-        cur = (row.get("coin") or row.get("currency") or "USDT").upper()
-        status = str(row.get("status") or row.get("state") or "")
-        txid = row.get("txID") or row.get("txId") or row.get("hash") or None
-        ts_ms = int(row.get("blockTime") or row.get("successAt") or row.get("timestamp") or 0)
-        if ts_ms <= 0: continue
-        ts = datetime.fromtimestamp(ts_ms/1000.0, tz=timezone.utc)
-
-        cf = models.Cashflow(
-            user_id=user_id,
-            bot_id=bot.id,
-            direction=models.CashDirection.deposit,
-            account_kind=models.AccountKind.main,  # extern
-            amount=amt,
-            currency=cur,
-            fee=0.0,
-            status=status,
-            tx_type="onchain",
-            txid=str(txid) if txid else None,
-            ts=ts,
-            raw_json=str(row),
-        )
-        db.add(cf); imported += 1
-    db.commit()
-    return {"ok": True, "imported": imported}
-
-
-@app.post("/api/v1/cashflows/sync/withdrawals")
-def sync_withdrawals(
-    bot_id: int,
-    days: int = Query(90, ge=1, le=365),
-    db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
-):
-    """
-    Pullt Withdrawals (extern; on-chain & off-chain) und speichert direction=withdraw.
-    """
-    bot = db.query(models.Bot).filter(models.Bot.id == bot_id, models.Bot.user_id == user_id, models.Bot.is_deleted == False).first()
-    if not bot or not bot.api_key or not bot.api_secret:
-        raise HTTPException(400, "Bot not found or API keys missing")
-
-    from .bybit_v5_data import BybitV5Data
-    data = BybitV5Data(bot.api_key, bot.api_secret)
-
-    end_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
-    start_ms = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp() * 1000)
-
-    try:
-        # Erwartet: data.withdraw_records(...) → Bybit v5 /asset/withdraw/query-record
-        res = data.withdraw_records(startTime=start_ms, endTime=end_ms)  # ADDED: ggf. Methodennamen anpassen
-    except Exception as e:
-        raise HTTPException(500, f"withdraw sync failed: {e}")
-
-    lst = ((res or {}).get("result") or {}).get("rows") or ((res or {}).get("result") or {}).get("list") or []
-    imported = 0
-    for row in lst:
-        amt = float(row.get("amount") or row.get("quantity") or 0)
-        cur = (row.get("coin") or row.get("currency") or "USDT").upper()
-        fee = float(row.get("fee") or row.get("withdrawFee") or 0)
-        status = str(row.get("status") or row.get("withdrawStatus") or "")
-        tx_type = str(row.get("withdrawType") or row.get("type") or "")
-        txid = row.get("txID") or row.get("txId") or row.get("hash") or None
-        ts_ms = int(row.get("successAt") or row.get("timestamp") or 0)
-        if ts_ms <= 0: continue
-        ts = datetime.fromtimestamp(ts_ms/1000.0, tz=timezone.utc)
-
-        cf = models.Cashflow(
-            user_id=user_id,
-            bot_id=bot.id,
-            direction=models.CashDirection.withdraw,
-            account_kind=models.AccountKind.main,  # extern
-            amount=amt,
-            currency=cur,
-            fee=fee,
-            status=status,
-            tx_type=("onchain" if tx_type in ("0", "onchain") else "offchain" if tx_type in ("1", "offchain") else "other"),
-            txid=str(txid) if txid else None,
-            ts=ts,
-            raw_json=str(row),
-        )
-        db.add(cf); imported += 1
-    db.commit()
-    return {"ok": True, "imported": imported}
+    return pf_compute_portfolio_value(
+        db,
+        user_id=user_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
