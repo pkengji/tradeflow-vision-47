@@ -91,10 +91,10 @@ def _persist_cashflow(
     currency: str,
     ts: Optional[datetime],
     tx_id: Optional[str],
-    account_type: Optional[str] = None,  # 'main' | 'sub' | None
+    account_kind: Optional[str] = None,  # 'main' | 'sub' | None
     external_addr: Optional[str] = None,
     is_internal: bool = False,
-    raw: Optional[Dict[str, Any]] = None,
+    raw_json: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """
     Insert if not exists (by unique tx_id+direction+user) or if tx_id is missing,
@@ -129,7 +129,7 @@ def _persist_cashflow(
     cf = models.Cashflow(
         user_id=user_id,
         bot_id=None,
-        account_type=account_type,
+        account_kind=account_kind,
         direction=direction,
         amount_usdt=float(amount_usdt or 0.0),
         currency=currency or "USDT",
@@ -137,7 +137,7 @@ def _persist_cashflow(
         external_addr=external_addr,
         is_internal=bool(is_internal),
         ts=ts,
-        raw=raw or {},
+        raw_json=raw_json or {},
     )
     db.add(cf)
     return True
@@ -184,7 +184,7 @@ def sync_cashflows(
                 currency=coin,
                 ts=ts,
                 tx_id=txid,
-                account_type="main",
+                account_kind="main",
                 external_addr=addr,
                 is_internal=False,
                 raw=it,
@@ -216,10 +216,10 @@ def sync_cashflows(
                 currency=coin,
                 ts=ts,
                 tx_id=txid,
-                account_type="main",
+                account_kind="main",
                 external_addr=addr,
                 is_internal=False,
-                raw=it,
+                raw_json=it,
             )
             if ok:
                 inserted["withdraw"] += 1

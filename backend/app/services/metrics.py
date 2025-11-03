@@ -1,12 +1,13 @@
 # app/services/metrics.py
 from __future__ import annotations
-from typing import Dict, Any, Optional, Iterable, Tuple, List
-from datetime import datetime, date
+from typing import Dict, Any, Optional, List
+from datetime import datetime, timedelta, date
 from sqlalchemy.orm import Session
 from zoneinfo import ZoneInfo
 
 
 from ..models import Position, Execution, FundingEvent
+from app.services.portfolio_sync import compute_portfolio_value  # Portfoliowert je Zeitraum
 
 def _safe_float(x) -> float:
     try:
@@ -45,191 +46,133 @@ def _risk_effective(p: Position) -> Optional[float]:
                 pass
     return None
 
-def compute_summary(db: Session, tz: str = "Europe/Zurich") -> Dict[str, Any]:
+def compute_summary(
+    db: Session,
+    *,
+    tz: str = "Europe/Zurich",
+    user_id: Optional[int] = None,  # notwendig für Portfolio je Zeitraum
+) -> Dict[str, Any]:
     tzinfo = ZoneInfo(tz)
-    today = datetime.now(tzinfo).date()
+    now = datetime.now(tzinfo)
+    today = now.date()
+    start_today = datetime(today.year, today.month, today.day, tzinfo=tzinfo)
+    start_next_day = start_today + timedelta(days=1)
 
-    positions: list[Position] = db.query(Position).all()
-
-    # --- Aggregationen Basis ---
-    open_count = 0
-    equity_by_day: Dict[date, float] = {}
-    realized_today = 0.0
-    realized_mtd   = 0.0
-    realized_30d   = 0.0
-    wins_today=0; tot_today=0
-    wins_mtd=0;   tot_mtd=0
-    wins_30d=0;   tot_30d=0
-
-    # --- Slippage & Timelag Aggregation (in USDT, später in %) ---
-    # Wir rechnen Slippage stets als Summe von "Liquidität" + "Timelag".
-    # "Timelag" fließt NUR ein, wenn _has_full_timelag(p) == True.
-    slippage_liq_usdt_total_filtered = 0.0
-    slippage_time_usdt_total_filtered = 0.0
-    denom_risk_total_filtered = 0.0  # Summe Risikobeträge der berücksichtigten Trades
-
-    # Heute/MTD/30d für Fees-Split/Funding (optional kannst du es später je Periode differenzieren)
-    opening_fees_usdt_total = 0.0
-    closing_fees_usdt_total = 0.0
-    funding_usdt_total      = 0.0
-
-    # Iteriere über Positionen (geschlossene tragen zu realized bei)
-    for p in positions:
-        if p.status == "open":
-            open_count += 1
-
-        # Realized PnL / Winrate / Equity-by-day
-        closed_at: Optional[datetime] = getattr(p, "closed_at", None)
-        pnl_net: Optional[float] = getattr(p, "realized_pnl_net_usdt", None)
-        if closed_at and pnl_net is not None:
-            d = closed_at.astimezone(tzinfo).date()
-            pnl = _safe_float(pnl_net)
-            equity_by_day[d] = equity_by_day.get(d, 0.0) + pnl
-
-            # buckets
-            if d == today:
-                tot_today += 1; realized_today += pnl
-                if pnl > 0: wins_today += 1
-            if d.year == today.year and d.month == today.month:
-                tot_mtd += 1; realized_mtd += pnl
-                if pnl > 0: wins_mtd += 1
-            if (today - d).days <= 30:
-                tot_30d += 1; realized_30d += pnl
-                if pnl > 0: wins_30d += 1
-
-        # --- Slippage- & Timelag-Einbindung ---
-        # Effektiver Risikobetrag dieses Trades:
-        risk_eff = _risk_effective(p)
-
-        # Liquiditäts-Slippage (immer numerisch; wenn nicht vorhanden -> 0)
-        slip_liq = _safe_float(getattr(p, "slippage_liquidity_usdt", None))
-
-        # Timelag-Slippage NUR bei vollständigen Timestamps; sonst = 0 und NICHT in Durchschnitt einbeziehen
-        if _has_full_timelag(p):
-            slip_time = _safe_float(getattr(p, "slippage_timelag_usdt", None))
-            # Denominator nur erhöhen, wenn wir *irgendeine* Slippage in % berechnen können
-            if risk_eff is not None and (slip_liq or slip_time):
-                denom_risk_total_filtered += risk_eff
-            slippage_liq_usdt_total_filtered += slip_liq
-            slippage_time_usdt_total_filtered += slip_time
-        else:
-            # Historische/Bybit-only: beides auf 0 halten, NICHT in denom aufnehmen
-            # (genullt und aus der prozentualen Betrachtung ausgeschlossen)
-            pass
-
-    # --- Executions & Funding summieren (total) ---
-    # Aufteilung Opening/Closing (falls reduce_only am Execution gesetzt; sonst heuristisch 50/50)
-    execs: list[Execution] = db.query(Execution).all()
-    has_reduce_flags = any(hasattr(e, "reduce_only") for e in execs)
-    if has_reduce_flags:
-        for e in execs:
-            fee = _safe_float(e.fee_usdt)
-            if getattr(e, "reduce_only", False):
-                closing_fees_usdt_total += fee
-            else:
-                opening_fees_usdt_total += fee
+    start_mtd = datetime(today.year, today.month, 1, tzinfo=tzinfo)
+    # nächster Monat (exklusiv)
+    if today.month == 12:
+        start_next_month = datetime(today.year + 1, 1, 1, tzinfo=tzinfo)
     else:
-        total_fee = sum(_safe_float(e.fee_usdt) for e in execs)
-        opening_fees_usdt_total = total_fee * 0.5
-        closing_fees_usdt_total = total_fee * 0.5
+        start_next_month = datetime(today.year, today.month + 1, 1, tzinfo=tzinfo)
 
-    fundings: list[FundingEvent] = db.query(FundingEvent).all()
-    funding_usdt_total = sum(_safe_float(f.amount_usdt) for f in fundings)
+    start_d30 = now - timedelta(days=30)
 
-    # --- prozentuale Slippage (gefiltert) ---
-    # Wenn keine Trades mit vollständigen Timestamps vorliegen, bleiben die Prozentwerte = 0 (oder setze None, falls du im UI '—' willst).
-    slippage_liq_pct_filtered  = _pct(slippage_liq_usdt_total_filtered, denom_risk_total_filtered)
-    slippage_time_pct_filtered = _pct(slippage_time_usdt_total_filtered, denom_risk_total_filtered)
+    # ---- Equity by day (nur geschlossene Positionen) + Open Count ----
+    positions: List[Position] = db.query(Position).all()
+    equity_by_day: Dict[date, float] = {}
+    open_count = 0
+    for p in positions:
+        if (p.status or "") == "open":
+            open_count += 1
+        if (p.status or "") == "closed" and p.closed_at and p.pnl_usdt is not None:
+            d = p.closed_at.astimezone(tzinfo).date()
+            equity_by_day[d] = equity_by_day.get(d, 0.0) + float(p.pnl_usdt or 0.0)
 
-    # Gesamt-Slippage % = Summe der beiden Komponenten
-    slippage_total_pct_filtered = slippage_liq_pct_filtered + slippage_time_pct_filtered
+    def _aggregate_period(start: Optional[datetime], end: Optional[datetime]) -> Dict[str, Any]:
+        # Geschlossene Positionen im Zeitraum
+        qpos = db.query(Position).filter(Position.status == "closed")
+        if start: qpos = qpos.filter(Position.closed_at >= start)
+        if end:   qpos = qpos.filter(Position.closed_at < end)
+        plist = qpos.all()
 
-    # --- Fees % (gefiltert) ---
-    # Für Prozentwerte der Fees brauchst du denselben Risikodenominator.
-    fee_total_usdt_filtered = opening_fees_usdt_total + closing_fees_usdt_total
-    fees_opening_pct_filtered = _pct(opening_fees_usdt_total, denom_risk_total_filtered)
-    fees_closing_pct_filtered = _pct(closing_fees_usdt_total, denom_risk_total_filtered)
-    funding_fee_pct_filtered  = _pct(funding_usdt_total,     denom_risk_total_filtered)
-    fees_pct_filtered         = _pct(fee_total_usdt_filtered, denom_risk_total_filtered)
-    fees_pct_filtered_total   = fees_pct_filtered + funding_fee_pct_filtered  # Fees + Funding
+        realized = 0.0
+        wins = 0
+        total = 0
+        for p in plist:
+            pnl = float(p.pnl_usdt or 0.0)
+            realized += pnl
+            total += 1
+            if pnl > 0:
+                wins += 1
+        winrate = (wins / total) if total else 0.0
 
-    # --- Heute/MTD/30d Prozentwerte: analog (vereinfachtes Placeholder – bei Bedarf pro Tag filtern) ---
-    # Bis wir Tages-/MTD-weise risk_denominator bilden, setzen wir 0 – UI zeigt 0 % sauber an.
-    fees_opening_pct_today = 0.0
-    fees_closing_pct_today = 0.0
-    funding_fee_pct_today  = 0.0
-    fees_pct_today         = 0.0
-    fees_pct_today_total   = 0.0
-    slippage_liq_pct_today = 0.0
-    slippage_time_pct_today= 0.0
+        # Fees aus Executions
+        qexec = db.query(Execution)
+        if start: qexec = qexec.filter(Execution.ts >= start)
+        if end:   qexec = qexec.filter(Execution.ts < end)
+        execs = qexec.all()
 
-    # MTD
-    mtd = {
-        "pnl": realized_mtd,
-        "winrate": (wins_mtd / tot_mtd) if tot_mtd else 0.0,
-        "fees_pct": 0.0,
-        "fees_opening_pct": 0.0,
-        "fees_closing_pct": 0.0,
-        "funding_fee_pct": 0.0,
-        "slippage_liq_pct": 0.0,
-        "slippage_time_pct": 0.0,
-        "fees_pct_total": 0.0,
-        "timelag_tv_to_bot_ms": 0.0,
-        "timelag_bot_to_ex_ms": 0.0,
-    }
+        opening_fees = 0.0
+        closing_fees = 0.0
+        if execs:
+            has_reduce = any(bool(getattr(e, "reduce_only", False)) for e in execs)
+            if has_reduce:
+                for e in execs:
+                    fee = float(e.fee_usdt or 0.0)
+                    if bool(getattr(e, "reduce_only", False)):
+                        closing_fees += fee
+                    else:
+                        opening_fees += fee
+            else:
+                total_fee = sum(float(e.fee_usdt or 0.0) for e in execs)
+                opening_fees = total_fee * 0.5
+                closing_fees = total_fee * 0.5
 
-    # Last 30d
-    last30d = {
-        "pnl": realized_30d,
-        "winrate": (wins_30d / tot_30d) if tot_30d else 0.0,
-        "fees_pct": 0.0,
-        "fees_opening_pct": 0.0,
-        "fees_closing_pct": 0.0,
-        "funding_fee_pct": 0.0,
-        "slippage_liq_pct": 0.0,
-        "slippage_time_pct": 0.0,
-        "fees_pct_total": 0.0,
-        "timelag_tv_to_bot_ms": 0.0,
-        "timelag_bot_to_ex_ms": 0.0,
-    }
+        # Funding
+        qfund = db.query(FundingEvent)
+        if start: qfund = qfund.filter(FundingEvent.ts >= start)
+        if end:   qfund = qfund.filter(FundingEvent.ts < end)
+        funding = sum(float(f.amount_usdt or 0.0) for f in qfund.all())
+
+        # Platzhalter bis Schritt 5
+        slippage_liq_pct   = 0.0
+        slippage_time_pct  = 0.0
+        timelag_entry_ms   = 0
+        timelag_proc_ms    = 0
+        timelag_exit_ms    = 0
+
+        # Portfolio Value (nur wenn user_id vorhanden)
+        portfolio_value = None
+        if user_id is not None:
+            res = compute_portfolio_value(
+                db,
+                user_id=user_id,
+                date_from=start.isoformat() if start else None,
+                date_to=end.isoformat() if end else None,
+            )
+            portfolio_value = float(res.get("portfolio_value", 0.0)) if isinstance(res, dict) else None
+
+        return {
+            "realized_pnl": realized,
+            "winrate": winrate,
+            "signals": total,
+            "fees_opening_closing_pct": 0.0,  # Prozent kann dein Frontend berechnen, hier Summe liefern:
+            "fees_opening_total_usdt": opening_fees,
+            "fees_closing_total_usdt": closing_fees,
+            "funding_total_usdt": funding,
+            "slippage_liq_pct": slippage_liq_pct,
+            "slippage_time_pct": slippage_time_pct,
+            "timelag_entry_ms": timelag_entry_ms,
+            "timelag_processing_ms": timelag_proc_ms,
+            "timelag_exit_ms": timelag_exit_ms,
+            "portfolio_value": portfolio_value,
+        }
+
+    # Zeiträume aggregieren
+    overall = _aggregate_period(None, None)
+    today_d = _aggregate_period(start_today, start_next_day)
+    mtd_d   = _aggregate_period(start_mtd, start_next_month)
+    d30_d   = _aggregate_period(start_d30, None)
 
     return {
-        "portfolio_total": sum(equity_by_day.values()),
-        "pnl_today": realized_today,
-        "winrate_today": (wins_today / tot_today) if tot_today else 0.0,
-        "open_trades_count": open_count,
-
-        "pnl_filtered": realized_30d,  # Beispiel ‘filtered’ = 30 Tage
-        "portfolio_filtered": sum(v for d, v in equity_by_day.items() if (today - d).days <= 30),
-        "winrate_filtered": (wins_30d / tot_30d) if tot_30d else 0.0,
-
-        # Transaktionskosten (% vom Risiko), gefiltert (über Trades mit vorhandenem Risiko & ggf. Timelag)
-        "fees_pct_filtered": fees_pct_filtered,
-        "fees_opening_pct_filtered": fees_opening_pct_filtered,
-        "fees_closing_pct_filtered": fees_closing_pct_filtered,
-        "funding_fee_pct_filtered": funding_fee_pct_filtered,
-        "slippage_liq_pct_filtered": slippage_liq_pct_filtered,
-        "slippage_time_pct_filtered": slippage_time_pct_filtered,
-        "fees_pct_filtered_total": fees_pct_filtered_total,
-
-        # Timelag (ms) – solange keine Kette vorhanden ist → 0
-        "timelag_tv_to_bot_ms_filtered": 0.0,
-        "timelag_bot_to_ex_ms_filtered": 0.0,
-
-        # Heute (0 bis wir die Tages-Denominator ergänzen)
-        "fees_pct_today": fees_pct_today,
-        "fees_opening_pct_today": fees_opening_pct_today,
-        "fees_closing_pct_today": fees_closing_pct_today,
-        "funding_fee_pct_today": funding_fee_pct_today,
-        "slippage_liq_pct_today": slippage_liq_pct_today,
-        "slippage_time_pct_today": slippage_time_pct_today,
-        "fees_pct_today_total": fees_pct_today_total,
-        "timelag_tv_to_bot_ms_today": 0.0,
-        "timelag_bot_to_ex_ms_today": 0.0,
-
-        "mtd": mtd,
-        "last30d": last30d,
+        "open_count": open_count,
+        "equity_by_day": {k.isoformat(): v for k, v in sorted(equity_by_day.items())},
+        "overall": overall,
+        "today": today_d,
+        "mtd": mtd_d,
+        "d30": d30_d,
     }
+
 
 
 

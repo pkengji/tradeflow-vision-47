@@ -34,13 +34,15 @@ def compute_pnl(
 
 
 def compute_slippage(side: str, trigger: float | None, best: float | None, vwap: float | None):
-    """Berechnet Signal-, Book- und Gesamt-Slippage in Prozent."""
-    if trigger is None or vwap is None:
+    if trigger is None or vwap is None or trigger == 0:
         return None
-
-    sign = 1 if side == "long" else -1
+    sign = 1 if (side or "long").lower() == "long" else -1
+    signal_pct = sign * (((best - trigger) / trigger * 100) if (best not in (None, 0)) else None)
+    book_pct   = sign * (((vwap - best) / best * 100) if (best not in (None, 0)) else None)
+    total_pct  = sign * ((vwap - trigger) / trigger * 100)
     return {
-        "signal_slippage_pct": sign * ((best - trigger) / trigger * 100) if best else None,
-        "book_slippage_pct": sign * ((vwap - best) / best * 100) if best else None,
-        "total_slippage_pct": sign * ((vwap - trigger) / trigger * 100),
+        "signal_slippage_pct": signal_pct,
+        "book_slippage_pct": book_pct,
+        "total_slippage_pct": total_pct,
     }
+

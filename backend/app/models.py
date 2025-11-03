@@ -339,7 +339,7 @@ class Cashflow(Base):  # ADDED
     bot_id = Column(Integer, ForeignKey("bots.id"), nullable=True, index=True)
 
     direction = Column(String, nullable=False)  # 'deposit' | 'withdraw'
-    amount = Column(Float, nullable=False, default=0.0)  # Betrag in Quote (z. B. USDT)
+    amount_usdt = Column(Float, nullable=False, default=0.0)  # Betrag in Quote (z. B. USDT)
     currency = Column(String, nullable=False, default="USDT")
     fee = Column(Float, nullable=True)
 
@@ -347,8 +347,9 @@ class Cashflow(Base):  # ADDED
     tx_type = Column(String, nullable=True)     # z. B. 'on-chain', 'off-chain'
     tx_id = Column(String, nullable=True, index=True)    # externe TX-ID (unique-ish)
     account_kind = Column(String, nullable=True)         # 'main' | 'sub'
-    external = Column(Boolean, default=True)             # sollte True sein (interne Transfers nicht speichern)
+    is_internal = Column(Boolean, default=True)             # sollte False sein (interne Transfers nicht speichern)
     status = Column(String, nullable=True)               # 'success', 'pending', etc.
+    external_add = Column(Text, nullable=True) 
 
     ts = Column(DateTime(timezone=True), nullable=True)  # Zeitpunkt des Cashflows (UTC)
     raw_json = Column(Text, nullable=True)

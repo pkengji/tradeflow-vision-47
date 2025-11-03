@@ -199,7 +199,11 @@ def get_outbox(db: Session, user_id: int, status=None):
 # -------- Daily PnL --------
 def get_daily_pnl(db: Session, user_id: int, bot_id=None, days=30):
     since = (datetime.utcnow() - timedelta(days=days-1)).strftime("%Y-%m-%d")
-    q = db.query(DailyPnl).join(Bot, DailyPnl.bot_id == Bot.id)              .filter(Bot.user_id == user_id, DailyPnl.date >= since)
+    q = (
+        db.query(DailyPnl)
+        .join(Bot, DailyPnl.bot_id == Bot.id)
+        .filter(Bot.user_id == user_id, DailyPnl.date >= since)
+    )
     if bot_id:
         q = q.filter(DailyPnl.bot_id == bot_id)
     return q.order_by(DailyPnl.date.asc()).all()
