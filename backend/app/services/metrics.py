@@ -1,13 +1,16 @@
+
 # app/services/metrics.py
 from __future__ import annotations
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime, timedelta, date
 from sqlalchemy.orm import Session
 from zoneinfo import ZoneInfo
 
-
 from ..models import Position, Execution, FundingEvent
 from app.services.portfolio_sync import compute_portfolio_value  # Portfoliowert je Zeitraum
+
+
+# -------------------- kleine Helfer --------------------
 
 def _safe_float(x) -> float:
     try:
@@ -18,24 +21,53 @@ def _safe_float(x) -> float:
 def _pct(numer: float, denom: float) -> float:
     return (numer / denom) if denom else 0.0
 
+def _safe(x) -> float:
+    try:
+        return float(x or 0.0)
+    except Exception:
+        return 0.0
+
+def _ratio(n: float, d: float) -> Optional[float]:
+    return (n / d * 100.0) if d else None
+
+
 def _has_full_timelag(p: Position) -> bool:
     """
-    Ein Trade zählt NUR als timelag-fähig, wenn für Entry/Exit die Zeitkette vollständig ist.
-    Passe die Feldnamen an deine Models an (Beispiele unten).
+    Nur Trades mit kompletter Zeitkette (TV→Bot, Bot→Sent, Sent→Exchange) in Timelag-Analysen aufnehmen.
     """
-    # Beispiele für Felder – bitte ggf. mapen:
-    # p.tv_received_at, p.bot_sent_at, p.exchange_received_at, p.exchange_filled_at
-    has_entry_chain = bool(getattr(p, "tv_received_at", None) and getattr(p, "bot_sent_at", None))
-    has_exit_chain  = bool(getattr(p, "exchange_received_at", None) or getattr(p, "closed_at", None))
-    # Du kannst die Logik feiner machen; wichtig ist: nur vollständige Trades fließen in Timelag ein
-    return has_entry_chain and has_exit_chain
+    s = p.tv_signal  # Relationship -> TvSignal
+    if not s:
+        return False
+    tv_ts = getattr(s, "tv_ts", None)
+    bot_rcv = getattr(s, "bot_received_at", None)
+    bot_sent = getattr(s, "bot_sent_at", None)
+    exch_ts = getattr(p, "first_exec_at", None) or getattr(p, "opened_at", None)
+
+    has_tv_bot   = bool(tv_ts and bot_rcv)
+    has_proc     = bool(bot_rcv and bot_sent)
+    has_bot_exch = bool(bot_sent and exch_ts)
+    return has_tv_bot and has_proc and has_bot_exch
+
+
+def get_timelags_ms(p: Position):
+    s = p.tv_signal
+    if not s:
+        return None, None, None
+    tv_ts   = s.tv_ts
+    bot_rcv = s.bot_received_at
+    bot_sent= s.bot_sent_at
+    exch_ts = p.first_exec_at or p.opened_at
+
+    tl_tv_bot   = (bot_rcv - tv_ts).total_seconds()*1000 if tv_ts and bot_rcv else None
+    tl_bot_proc = (bot_sent - bot_rcv).total_seconds()*1000 if bot_sent and bot_rcv else None
+    tl_bot_exch = (exch_ts - bot_sent).total_seconds()*1000 if exch_ts and bot_sent else None
+    return tl_tv_bot, tl_bot_proc, tl_bot_exch
+
 
 def _risk_effective(p: Position) -> Optional[float]:
     """
-    Effektiver Risikobetrag, der 'gesendet' wurde (nach Bot-Overrides).
-    Falls nicht vorhanden, None zurückgeben: der Trade wird aus prozentualen Slippage-Aggregaten ausgeschlossen.
+    Effektiver Risikobetrag (falls vorhanden). Sonst None.
     """
-    # Passen diese Felder nicht, greife auf deine echten Felder zu:
     for attr in ("risk_amount_effective_usdt", "risk_amount_usdt", "risk_initial_usdt"):
         val = getattr(p, attr, None)
         if val is not None:
@@ -46,11 +78,50 @@ def _risk_effective(p: Position) -> Optional[float]:
                 pass
     return None
 
+def _slippage_entry_exit_usdt(pos: Position) -> Tuple[float, float, float]:
+    """
+    Berechnet Entry-/Exit-Slippage in USDT (positiv = Kosten, negativ = Vorteil).
+    - Entry: (entry_vwap - entry_best) * qty; für Shorts wird das Vorzeichen gedreht.
+    - Exit : (exit_vwap  - exit_best)  * qty; für Shorts wird das Vorzeichen gedreht.
+    Gibt (entry_slip, exit_slip, total) zurück.
+    """
+    entry_slip = 0.0
+    exit_slip  = 0.0
+
+    qty = _safe(pos.qty)
+    side = (pos.side or "").lower()
+
+    # Entry-Slippage
+    if pos.entry_price_vwap and pos.entry_price_best and qty:
+        diff_entry = float(pos.entry_price_vwap) - float(pos.entry_price_best)
+        if side == "long":
+            # höherer VWAP als best = teurer Entry = Kosten (+)
+            entry_slip = diff_entry * qty
+        else:
+            # Short: niedrigerer VWAP als best = schlechter Entry = Kosten (+)
+            # => drehe Vorzeichen
+            entry_slip = -diff_entry * qty
+
+    # Exit-Slippage
+    if pos.exit_price_vwap and pos.exit_price_best and qty:
+        diff_exit = float(pos.exit_price_vwap) - float(pos.exit_price_best)
+        if side == "long":
+            # höherer Exit als best = schlechter Exit = Kosten (+)
+            exit_slip = diff_exit * qty
+        else:
+            # Short: tieferer Exit als best = schlechter Exit = Kosten (+)
+            exit_slip = -diff_exit * qty
+
+    return entry_slip, exit_slip, (entry_slip + exit_slip)
+
+
+# -------------------- Aggregierte Summary (overall / today / mtd / d30) --------------------
+
 def compute_summary(
     db: Session,
     *,
     tz: str = "Europe/Zurich",
-    user_id: Optional[int] = None,  # notwendig für Portfolio je Zeitraum
+    user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     tzinfo = ZoneInfo(tz)
     now = datetime.now(tzinfo)
@@ -59,12 +130,9 @@ def compute_summary(
     start_next_day = start_today + timedelta(days=1)
 
     start_mtd = datetime(today.year, today.month, 1, tzinfo=tzinfo)
-    # nächster Monat (exklusiv)
-    if today.month == 12:
-        start_next_month = datetime(today.year + 1, 1, 1, tzinfo=tzinfo)
-    else:
-        start_next_month = datetime(today.year, today.month + 1, 1, tzinfo=tzinfo)
-
+    start_next_month = datetime(today.year + (1 if today.month == 12 else 0),
+                                1 if today.month == 12 else today.month + 1,
+                                1, tzinfo=tzinfo)
     start_d30 = now - timedelta(days=30)
 
     # ---- Equity by day (nur geschlossene Positionen) + Open Count ----
@@ -88,15 +156,24 @@ def compute_summary(
         realized = 0.0
         wins = 0
         total = 0
+
+        entry_slip_total = 0.0
+        exit_slip_total  = 0.0
+
         for p in plist:
             pnl = float(p.pnl_usdt or 0.0)
             realized += pnl
             total += 1
             if pnl > 0:
                 wins += 1
+
+            es, xs, _ts = _slippage_entry_exit_usdt(p)
+            entry_slip_total += es
+            exit_slip_total  += xs
+
         winrate = (wins / total) if total else 0.0
 
-        # Fees aus Executions
+        # Fees aus Executions periodisch aggregiert (fallback: halbe-halbe, falls reduce_only fehlt)
         qexec = db.query(Execution)
         if start: qexec = qexec.filter(Execution.ts >= start)
         if end:   qexec = qexec.filter(Execution.ts < end)
@@ -124,8 +201,8 @@ def compute_summary(
         if end:   qfund = qfund.filter(FundingEvent.ts < end)
         funding = sum(float(f.amount_usdt or 0.0) for f in qfund.all())
 
-        # Platzhalter bis Schritt 5
-        slippage_liq_pct   = 0.0
+        # (Platzhalter: Timelag/Processing falls du das noch ausbauen willst)
+        slippage_liq_pct   = 0.0  # Prozent kannst du im Frontend relativ zum Risiko rechnen
         slippage_time_pct  = 0.0
         timelag_entry_ms   = 0
         timelag_proc_ms    = 0
@@ -146,10 +223,15 @@ def compute_summary(
             "realized_pnl": realized,
             "winrate": winrate,
             "signals": total,
-            "fees_opening_closing_pct": 0.0,  # Prozent kann dein Frontend berechnen, hier Summe liefern:
             "fees_opening_total_usdt": opening_fees,
             "fees_closing_total_usdt": closing_fees,
             "funding_total_usdt": funding,
+            # neue Summen:
+            "entry_slippage_usdt_total": entry_slip_total,
+            "exit_slippage_usdt_total": exit_slip_total,
+            "slippage_net_total": entry_slip_total + exit_slip_total,
+            # (Legacy-/Platzhalter-Keys beibehalten, falls dein Frontend sie nutzt)
+            "fees_opening_closing_pct": 0.0,
             "slippage_liq_pct": slippage_liq_pct,
             "slippage_time_pct": slippage_time_pct,
             "timelag_entry_ms": timelag_entry_ms,
@@ -174,16 +256,7 @@ def compute_summary(
     }
 
 
-
-
-def _safe(x) -> float:
-    try:
-        return float(x or 0.0)
-    except Exception:
-        return 0.0
-
-def _ratio(n: float, d: float) -> Optional[float]:
-    return (n / d * 100.0) if d else None
+# -------------------- Compute Stats (freier Zeitraum) --------------------
 
 def compute_stats(db: Session, start: datetime, end: datetime) -> Dict[str, Any]:
     rows: List[Position] = db.query(Position).filter(
@@ -193,17 +266,30 @@ def compute_stats(db: Session, start: datetime, end: datetime) -> Dict[str, Any]
     ).all()
 
     trades = len(rows)
-    pnl = sum(_safe(p.realized_pnl_net_usdt) for p in rows)
-    wins = sum(1 for p in rows if _safe(p.realized_pnl_net_usdt) > 0)
+    # p.pnl_usdt statt realized_pnl_net_usdt
+    pnl = sum(_safe(getattr(p, "pnl_usdt", 0.0)) for p in rows)
+    wins = sum(1 for p in rows if _safe(getattr(p, "pnl_usdt", 0.0)) > 0)
     win_rate = (wins / trades * 100.0) if trades else None
 
-    fees_abs = sum(_safe(p.fee_opening_usdt) + _safe(p.fee_closing_usdt) for p in rows)
-    funding_abs = sum(_safe(p.funding_usdt) for p in rows)
-    slip_liq_abs = sum(_safe(p.slippage_liquidity_usdt) for p in rows)
-    slip_time_abs = sum(_safe(p.slippage_timelag_usdt) for p in rows)
+    # Fees aus Positionen (falls du lieber direkt die Executions aggregierst → wie oben in compute_summary)
+    fees_abs = sum(
+        _safe(getattr(p, "fee_open_usdt", 0.0)) +
+        _safe(getattr(p, "fee_close_usdt", 0.0)) for p in rows
+    )
+    funding_abs = sum(_safe(getattr(p, "funding_usdt", 0.0)) for p in rows)
 
-    bot_rows = [p for p in rows if p.risk_amount_usdt is not None]
-    denom = sum(_safe(p.risk_amount_usdt) for p in bot_rows)
+    # Slippage (Entry + Exit) positionsweise berechnet und aufsummiert
+    slip_liq_abs = 0.0
+    for p in rows:
+        _, _, total_slip = _slippage_entry_exit_usdt(p)
+        slip_liq_abs += total_slip
+
+    # Falls du zusätzlich eine "timelag"-Slippage führst, hier 0.0 (oder aus Feld)
+    slip_time_abs = sum(_safe(getattr(p, "slippage_timelag_usdt", 0.0)) for p in rows)
+
+    # Prozent relativ zu Summe der Risiken (falls vorhanden)
+    bot_rows = [p for p in rows if getattr(p, "risk_amount_usdt", None) is not None]
+    denom = sum(_safe(getattr(p, "risk_amount_usdt", 0.0)) for p in bot_rows)
 
     return {
         "ok": True,

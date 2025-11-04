@@ -416,9 +416,43 @@ def rebuild_positions(
                     if ob:
                         outbox_item_id = ob.id
 
+                    # --- Best-Preise aus den Fills (falls du sie noch nicht hast) ----------------
+                    # entry_best = min bei Long-Entry, max bei Short-Entry
+                    entry_prices = [float(f["price"]) for f in entry_fills if f.get("price") is not None]
+                    exit_prices  = [float(f["price"]) for f in exit_fills  if f.get("price") is not None]
+
+                    entry_best = None
+                    if entry_prices:
+                        entry_best = min(entry_prices) if first_side == "buy" else max(entry_prices)
+
+                    exit_best = None
+                    if exit_prices:
+                        # Achtung: exit-best ist unabhängig von first_side die "beste" Preisgabe beim Exit
+                        # Long: je tiefer desto schlechter, Short: je tiefer desto besser – Slippage rechnet später metrics.py
+                        # Wir speichern hier nur den besten Fillpreis am Exit:
+                        exit_best = (max(exit_prices) if first_side == "buy" else min(exit_prices))  # siehe Kommentar
+
+                    # --- SL/TP aus TvSignal holen (falls vorhanden), sonst Fallback ----------------
+                    sl_price = None
+                    tp_price = None
+
+                    if tv_signal_id:
+                        tv_sig = db.get(models.TvSignal, tv_signal_id)
+                        if tv_sig:
+                            # TradingView liefert Triggerpreise → als Referenzwerte übernehmen
+                            sl_price = float(tv_sig.stop_loss_tv) if tv_sig.stop_loss_tv else None
+                            tp_price = float(tv_sig.take_profit_tv) if tv_sig.take_profit_tv else None
+
+                    # Fallback, wenn TV nichts geliefert hat: aus Ergebnis ableiten
+                    if not sl_price and not tp_price:
+                        if net_pnl is not None and net_pnl >= 0:
+                            tp_price = exit_best  # Gewinn → Exit war wahrscheinlich TP
+                        else:
+                            sl_price = exit_best  # Verlust → Exit war wahrscheinlich SL
+
                 pos = models.Position(
                     bot_id=bot_id_for_pos,
-                    user_id=user_id_for_pos,                                  # ADDED
+                    user_id=user_id_for_pos,
                     symbol=symbol,
                     side=("long" if first_side == "buy" else "short"),
                     status="closed",
@@ -426,13 +460,16 @@ def rebuild_positions(
                     closed_at=closed_at,
                     qty=qty_open,
                     entry_price_vwap=entry_v,
-                    exit_price_vwap=exit_v,
+                    exit_price_vwap=exit_v,           # bleibt
+                    entry_price_best=entry_best,       # NEW
+                    exit_price_best=exit_best,         # NEW
+                    sl_price=sl_price,                 # NEW
+                    tp_price=tp_price,                 # NEW
                     fee_open_usdt=abs(fee_open),
                     fee_close_usdt=abs(fee_close),
                     funding_usdt=funding_total,
                     pnl_usdt=net_pnl,
                     unrealized_pnl_usdt=None,
-                    # ADDED below:
                     trade_uid=trade_uid,
                     tv_signal_id=tv_signal_id,
                     outbox_item_id=outbox_item_id,
@@ -462,12 +499,14 @@ def rebuild_positions(
 
 def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
     """
-    Baut Positionen anhand von order_link_id-Gruppen auf (keine Teil-Exits).
-    Nutzt funding_events (Fallback über executions), berechnet entry/exit_best
-    und setzt TP/SL basierend auf Gewinn oder Verlust.
+    Baut Positionen anhand von order_link_id-Gruppen (keine Teil-Exits).
+    - Aggregiert pro order_link_id die Fills (VWAP, Best, Fees, Qty)
+    - Paart Entry-Gruppe mit nächster Gegenseite gleicher Menge
+    - Funding aus funding_events, Fallback executions 00:00/08:00/16:00
+    - SL/TP primär aus TvSignal (trade_uid aus order_link_id), sonst Fallback aus Exit-Best
+    - Schreibt entry/exit_best, exit_price_vwap, sl_price, tp_price in Position
+    - Markiert verwendete Executions als is_consumed=True
     """
-
-    # 1) Executions mit order_link_id laden (nur Trades)
     q = (
         db.query(models.Execution)
           .filter(models.Execution.bot_id == bot_id)
@@ -475,17 +514,14 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
           .filter(models.Execution.order_link_id.isnot(None))
           .filter(models.Execution.order_link_id != "")
     )
-
-    # optional: wenn exec_type existiert
     if hasattr(models.Execution, "exec_type"):
         q = q.filter(models.Execution.exec_type.in_([None, "", "Trade"]))
 
-    rows = (
-        q.order_by(models.Execution.symbol.asc(),
-                   models.Execution.ts.asc(),
-                   models.Execution.id.asc())
-         .all()
-    )
+    rows = q.order_by(
+        models.Execution.symbol.asc(),
+        models.Execution.ts.asc(),
+        models.Execution.id.asc()
+    ).all()
     if not rows:
         return 0
 
@@ -495,41 +531,43 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
         sym_groups[r.symbol].append(r)
 
     created = 0
+
+    # user_id des Bots einmalig auflösen (spar SQL)
+    bot_row = db.query(models.Bot).filter(models.Bot.id == bot_id).first()
+    user_id_for_pos = bot_row.user_id if bot_row else None
+
     for symbol, sym_rows in sym_groups.items():
-        # Gruppierung nach order_link_id
+        # map: order_link_id -> list[Execution]
         groups = {}
         for r in sym_rows:
             groups.setdefault(r.order_link_id, []).append(r)
 
-        # Aggregieren pro Order-Gruppe
+        # make aggregates per order_link_id
         grouped = []
         for olid, lst in groups.items():
-            side = (
-                "buy"
-                if sum(1 for x in lst if (x.side or "").lower() == "buy")
-                >= sum(1 for x in lst if (x.side or "").lower() == "sell")
-                else "sell"
-            )
+            buys = sum(1 for x in lst if (x.side or "").lower() == "buy")
+            sells = sum(1 for x in lst if (x.side or "").lower() == "sell")
+            side = "buy" if buys >= sells else "sell"
+
             qty_sum = sum(float(x.qty or 0.0) for x in lst)
-            vwap = (
-                sum(float(x.price or 0.0) * float(x.qty or 0.0) for x in lst) / qty_sum
-                if qty_sum else None
-            )
-            prices = [float(x.price or 0.0) for x in lst]
+            vwap = (sum(float(x.price or 0.0) * float(x.qty or 0.0) for x in lst) / qty_sum) if qty_sum else None
+            prices = [float(x.price or 0.0) for x in lst if x.price is not None]
             best = (min(prices) if side == "buy" else max(prices)) if prices else None
             first_ts = min(x.ts for x in lst if x.ts)
-            last_ts = max(x.ts for x in lst if x.ts)
-            fee_sum = sum(float(x.fee_usdt or 0.0) for x in lst)
+            last_ts  = max(x.ts for x in lst if x.ts)
+            fee_sum  = sum(float(x.fee_usdt or 0.0) for x in lst)
+            row_ids  = [x.id for x in lst]
+
             grouped.append({
                 "olid": olid,
-                "side": side,
+                "side": side,             # "buy" oder "sell"
                 "qty": qty_sum,
                 "vwap": vwap,
                 "best": best,
                 "first_ts": first_ts,
                 "last_ts": last_ts,
                 "fee_sum": fee_sum,
-                "row_ids": [x.id for x in lst],
+                "row_ids": row_ids,
             })
 
         grouped.sort(key=lambda g: (g["first_ts"] or g["last_ts"]))
@@ -538,7 +576,7 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
 
         while i < len(grouped) - 1:
             g1 = grouped[i]
-            # passendes Gegenstück suchen
+            # passendes Gegenstück suchen: nächstes entgegengesetztes mit gleicher Menge
             j = i + 1
             pair = None
             while j < len(grouped):
@@ -552,13 +590,14 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
                 i += 1
                 continue
 
-            entry_g, exit_g = (pair if g1["side"] == "buy" else (pair[1], pair[0]))
+            # Entry ist die BUY-Gruppe, Exit die SELL-Gruppe (unabhängig von Reihenfolge im Stream)
+            entry_g, exit_g = pair if g1["side"] == "buy" else (pair[1], pair[0])
             first_side = "buy" if g1["side"] == "buy" else "sell"
 
             opened_at = entry_g["first_ts"]
             closed_at = exit_g["last_ts"]
 
-            # Funding summieren (A: funding_events, B: executions)
+            # Funding summieren (Events → Fallback Executions)
             funding_total = 0.0
             fe_rows = (
                 db.query(models.FundingEvent)
@@ -575,8 +614,7 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
                     db.query(models.Execution)
                       .filter(models.Execution.bot_id == bot_id,
                               models.Execution.symbol == symbol)
-                      .filter((models.Execution.order_link_id == None)
-                              | (models.Execution.order_link_id == ""))
+                      .filter((models.Execution.order_link_id == None) | (models.Execution.order_link_id == ""))
                       .filter(models.Execution.ts >= opened_at,
                               models.Execution.ts <= closed_at)
                       .all()
@@ -586,10 +624,10 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
                     if hhmm in ("00:00", "08:00", "16:00"):
                         funding_total += float(x.fee_usdt or 0.0)
 
-            # PnL berechnen
+            # PnL (gross/net)
             qty = entry_g["qty"]
             pnl_gross = 0.0
-            if entry_g["vwap"] and exit_g["vwap"] and qty > 0:
+            if entry_g["vwap"] is not None and exit_g["vwap"] is not None and qty > 0:
                 if first_side == "buy":
                     pnl_gross = (exit_g["vwap"] - entry_g["vwap"]) * qty
                 else:
@@ -599,20 +637,39 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
             fee_close = exit_g["fee_sum"]
             pnl_net = pnl_gross - abs(fee_open) - abs(fee_close) + funding_total
 
-            # TP/SL anhand Ergebnis
-            if pnl_net >= 0:
-                tp_price = exit_g["best"]
-                sl_price = None
-            else:
-                sl_price = exit_g["best"]
-                tp_price = None
+            # --- Best-Preise für Entry/Exit --------------------------------------
+            # Entry: bei Buy min→best, bei Sell max→best (wie oben aggregiert)
+            entry_best = entry_g["best"]
+            # Exit: analog — best am Exit (die Aggregationsregel bleibt wie oben)
+            exit_best = exit_g["best"]
+            # ---------------------------------------------------------------------
+
+            # --- SL/TP aus TradingView (TvSignal) oder Fallback ------------------
+            trade_uid = _uid_from_link(entry_g["olid"])  # deine bestehende Logik
+            sl_price = None
+            tp_price = None
+
+            tv_sig = (
+                db.query(models.TvSignal)
+                  .filter(models.TvSignal.bot_id == bot_id,
+                          models.TvSignal.trade_uid == trade_uid)
+                  .first()
+            )
+            if tv_sig:
+                sl_price = float(tv_sig.stop_loss_tv) if tv_sig.stop_loss_tv else None
+                tp_price = float(tv_sig.take_profit_tv) if tv_sig.take_profit_tv else None
+
+            if not sl_price and not tp_price:
+                # plausibler Fallback: Exit-Best als TP/SL je nach Ergebnis
+                if pnl_net is not None and pnl_net >= 0:
+                    tp_price = exit_best
+                else:
+                    sl_price = exit_best
+            # ---------------------------------------------------------------------
 
             pos = models.Position(
                 bot_id=bot_id,
-                user_id=db.query(models.Bot)
-                          .filter(models.Bot.id == bot_id)
-                          .first()
-                          .user_id,
+                user_id=user_id_for_pos,
                 symbol=symbol,
                 side=("long" if first_side == "buy" else "short"),
                 status="closed",
@@ -620,24 +677,24 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
                 closed_at=closed_at,
                 qty=qty,
                 entry_price_vwap=entry_g["vwap"],
-                exit_price_vwap=exit_g["vwap"],
-                entry_price_best=entry_g["best"],
-                exit_price_best=exit_g["best"],
-                sl_price=sl_price,
-                tp_price=tp_price,
+                exit_price_vwap=exit_g["vwap"],   # wichtig: VWAP am Exit
+                entry_price_best=entry_best,       # NEU
+                exit_price_best=exit_best,         # NEU
+                sl_price=sl_price,                 # NEU
+                tp_price=tp_price,                 # NEU
                 fee_open_usdt=abs(fee_open),
                 fee_close_usdt=abs(fee_close),
                 funding_usdt=funding_total,
                 pnl_usdt=pnl_net,
                 first_exec_at=opened_at,
                 last_exec_at=closed_at,
-                trade_uid=_uid_from_link(entry_g["olid"]),
+                trade_uid=trade_uid,
+                tv_signal_id=(tv_sig.id if tv_sig else None),
             )
-
             db.add(pos)
             created += 1
 
-            # Executions markieren
+            # verwendete Executions als konsumiert markieren
             used_ids = entry_g["row_ids"] + exit_g["row_ids"]
             if used_ids:
                 (db.query(models.Execution)
@@ -649,6 +706,7 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
 
     db.commit()
     return created
+
 
 
 

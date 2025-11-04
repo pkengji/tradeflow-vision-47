@@ -947,8 +947,14 @@ def ingest_tv_signal(sig: TvSignalIn, user_id: int = Depends(get_current_user_id
         bot_received_at=datetime.now(timezone.utc),
         raw_json=sig.model_dump_json(),
     )
+    
+    # Fallback: wenn TV keinen TS mitliefert
+    if tv_row.tv_ts is None:
+        tv_row.tv_ts = tv_row.bot_received_at
+
     db.add(tv_row)
-    db.flush()  # id verfügbar
+    db.commit()
+    db.refresh(tv_row)  # id verfügbar
 
     ob = OutboxItem(
         user_id=user_id,
@@ -965,6 +971,14 @@ def ingest_tv_signal(sig: TvSignalIn, user_id: int = Depends(get_current_user_id
     if bot.auto_approve:
         _send_outbox(ob, bot, user_id, db)
         tv_row.bot_sent_at = datetime.now(timezone.utc)  # ADDED
+        db.commit()
+
+    # bevor der Request an Bybit rausgeht:
+    tv_row = db.execute(
+        select(TvSignal).where(TvSignal.trade_uid == ob.trade_uid, TvSignal.bot_id == ob.bot_id)
+    ).scalar_one_or_none()
+    if tv_row and tv_row.bot_sent_at is None:
+        tv_row.bot_sent_at = datetime.now(timezone.utc)
         db.commit()
 
     return {"ok": True, "trade_uid": trade_uid, "tv_signal_id": tv_row.id, "outbox_id": ob.id, "status": ob.status}

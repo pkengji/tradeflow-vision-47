@@ -106,6 +106,7 @@ class Position(Base):
 
     # ---------- EXIT ----------
     exit_price_vwap = Column(Float, nullable=True)
+    exit_price_best = Column(Float, nullable=True)
     sl_price = Column(Float, nullable=True)
     tp_price = Column(Float, nullable=True)
 
