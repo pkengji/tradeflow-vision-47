@@ -10,7 +10,7 @@ from typing import Optional, List, Dict, Any
 import secrets
 from .models import Bot, Position
 from sqlalchemy import or_, select, func
-from .services.bybit_sync import sync_backfill_since, sync_recent_closures, quick_sync_symbol, sync_full_history, rebuild_positions,sync_symbol_recent, sync_recent_all_bots
+from .services.bybit_sync import sync_backfill_since, sync_recent_closures, quick_sync_symbol, sync_full_history, rebuild_positions, rebuild_positions_orderlink, sync_symbol_recent, sync_recent_all_bots
 from .services.symbols import sync_symbols_linear_usdt, list_pairs_payload
 from collections import defaultdict
 from datetime import datetime, timezone, date, timedelta
