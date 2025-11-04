@@ -460,6 +460,197 @@ def rebuild_positions(
     db.commit()
     return created
 
+def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
+    """
+    Baut Positionen anhand von order_link_id-Gruppen auf (keine Teil-Exits).
+    Nutzt funding_events (Fallback über executions), berechnet entry/exit_best
+    und setzt TP/SL basierend auf Gewinn oder Verlust.
+    """
+
+    # 1) Executions mit order_link_id laden (nur Trades)
+    q = (
+        db.query(models.Execution)
+          .filter(models.Execution.bot_id == bot_id)
+          .filter(models.Execution.is_consumed == False)
+          .filter(models.Execution.order_link_id.isnot(None))
+          .filter(models.Execution.order_link_id != "")
+    )
+
+    # optional: wenn exec_type existiert
+    if hasattr(models.Execution, "exec_type"):
+        q = q.filter(models.Execution.exec_type.in_([None, "", "Trade"]))
+
+    rows = (
+        q.order_by(models.Execution.symbol.asc(),
+                   models.Execution.ts.asc(),
+                   models.Execution.id.asc())
+         .all()
+    )
+    if not rows:
+        return 0
+
+    from collections import defaultdict
+    sym_groups = defaultdict(list)
+    for r in rows:
+        sym_groups[r.symbol].append(r)
+
+    created = 0
+    for symbol, sym_rows in sym_groups.items():
+        # Gruppierung nach order_link_id
+        groups = {}
+        for r in sym_rows:
+            groups.setdefault(r.order_link_id, []).append(r)
+
+        # Aggregieren pro Order-Gruppe
+        grouped = []
+        for olid, lst in groups.items():
+            side = (
+                "buy"
+                if sum(1 for x in lst if (x.side or "").lower() == "buy")
+                >= sum(1 for x in lst if (x.side or "").lower() == "sell")
+                else "sell"
+            )
+            qty_sum = sum(float(x.qty or 0.0) for x in lst)
+            vwap = (
+                sum(float(x.price or 0.0) * float(x.qty or 0.0) for x in lst) / qty_sum
+                if qty_sum else None
+            )
+            prices = [float(x.price or 0.0) for x in lst]
+            best = (min(prices) if side == "buy" else max(prices)) if prices else None
+            first_ts = min(x.ts for x in lst if x.ts)
+            last_ts = max(x.ts for x in lst if x.ts)
+            fee_sum = sum(float(x.fee_usdt or 0.0) for x in lst)
+            grouped.append({
+                "olid": olid,
+                "side": side,
+                "qty": qty_sum,
+                "vwap": vwap,
+                "best": best,
+                "first_ts": first_ts,
+                "last_ts": last_ts,
+                "fee_sum": fee_sum,
+                "row_ids": [x.id for x in lst],
+            })
+
+        grouped.sort(key=lambda g: (g["first_ts"] or g["last_ts"]))
+        i = 0
+        eps = 1e-9
+
+        while i < len(grouped) - 1:
+            g1 = grouped[i]
+            # passendes Gegenstück suchen
+            j = i + 1
+            pair = None
+            while j < len(grouped):
+                g2 = grouped[j]
+                if g1["side"] != g2["side"] and abs(g1["qty"] - g2["qty"]) <= eps:
+                    pair = (g1, g2)
+                    break
+                j += 1
+
+            if not pair:
+                i += 1
+                continue
+
+            entry_g, exit_g = (pair if g1["side"] == "buy" else (pair[1], pair[0]))
+            first_side = "buy" if g1["side"] == "buy" else "sell"
+
+            opened_at = entry_g["first_ts"]
+            closed_at = exit_g["last_ts"]
+
+            # Funding summieren (A: funding_events, B: executions)
+            funding_total = 0.0
+            fe_rows = (
+                db.query(models.FundingEvent)
+                  .filter(models.FundingEvent.bot_id == bot_id,
+                          models.FundingEvent.symbol == symbol,
+                          models.FundingEvent.ts >= opened_at,
+                          models.FundingEvent.ts <= closed_at)
+                  .all()
+            )
+            if fe_rows:
+                funding_total = sum(float(fr.amount_usdt or 0.0) for fr in fe_rows)
+            else:
+                fexec = (
+                    db.query(models.Execution)
+                      .filter(models.Execution.bot_id == bot_id,
+                              models.Execution.symbol == symbol)
+                      .filter((models.Execution.order_link_id == None)
+                              | (models.Execution.order_link_id == ""))
+                      .filter(models.Execution.ts >= opened_at,
+                              models.Execution.ts <= closed_at)
+                      .all()
+                )
+                for x in fexec:
+                    hhmm = (x.ts or opened_at).strftime("%H:%M")
+                    if hhmm in ("00:00", "08:00", "16:00"):
+                        funding_total += float(x.fee_usdt or 0.0)
+
+            # PnL berechnen
+            qty = entry_g["qty"]
+            pnl_gross = 0.0
+            if entry_g["vwap"] and exit_g["vwap"] and qty > 0:
+                if first_side == "buy":
+                    pnl_gross = (exit_g["vwap"] - entry_g["vwap"]) * qty
+                else:
+                    pnl_gross = (entry_g["vwap"] - exit_g["vwap"]) * qty
+
+            fee_open = entry_g["fee_sum"]
+            fee_close = exit_g["fee_sum"]
+            pnl_net = pnl_gross - abs(fee_open) - abs(fee_close) + funding_total
+
+            # TP/SL anhand Ergebnis
+            if pnl_net >= 0:
+                tp_price = exit_g["best"]
+                sl_price = None
+            else:
+                sl_price = exit_g["best"]
+                tp_price = None
+
+            pos = models.Position(
+                bot_id=bot_id,
+                user_id=db.query(models.Bot)
+                          .filter(models.Bot.id == bot_id)
+                          .first()
+                          .user_id,
+                symbol=symbol,
+                side=("long" if first_side == "buy" else "short"),
+                status="closed",
+                opened_at=opened_at,
+                closed_at=closed_at,
+                qty=qty,
+                entry_price_vwap=entry_g["vwap"],
+                exit_price_vwap=exit_g["vwap"],
+                entry_price_best=entry_g["best"],
+                exit_price_best=exit_g["best"],
+                sl_price=sl_price,
+                tp_price=tp_price,
+                fee_open_usdt=abs(fee_open),
+                fee_close_usdt=abs(fee_close),
+                funding_usdt=funding_total,
+                pnl_usdt=pnl_net,
+                first_exec_at=opened_at,
+                last_exec_at=closed_at,
+                trade_uid=_uid_from_link(entry_g["olid"]),
+            )
+
+            db.add(pos)
+            created += 1
+
+            # Executions markieren
+            used_ids = entry_g["row_ids"] + exit_g["row_ids"]
+            if used_ids:
+                (db.query(models.Execution)
+                   .filter(models.Execution.id.in_(used_ids))
+                   .update({"is_consumed": True}, synchronize_session=False))
+            db.flush()
+
+            i = j + 1
+
+    db.commit()
+    return created
+
+
 
 # ============================================================
 # Zeitfenster-Helper

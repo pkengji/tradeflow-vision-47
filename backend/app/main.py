@@ -1164,3 +1164,23 @@ def api_portfolio_value(
         date_from=date_from,
         date_to=date_to,
     )
+
+
+# =========================
+# Debug Positions Builder
+# =========================
+
+@app.post("/api/v1/debug/executions/reset_consumed")
+def reset_consumed(bot_id: int = Query(...), db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
+    db.query(models.Execution).filter(models.Execution.bot_id == bot_id).update({"is_consumed": False})
+    db.commit(); return {"ok": True}
+
+
+@app.post("/api/v1/debug/positions/rebuild")
+def debug_rebuild(bot_id: int = Query(...), mode: str = Query("orderlink"),
+                  db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
+    if mode == "orderlink":
+        created = rebuild_positions_orderlink(db, bot_id=bot_id)
+    else:
+        created = rebuild_positions(db, bot_id=bot_id)  # dein bestehender Netting-Builder
+    return {"ok": True, "mode": mode, "positions_created": created}

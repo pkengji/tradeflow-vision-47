@@ -106,6 +106,8 @@ class Position(Base):
 
     # ---------- EXIT ----------
     exit_price_vwap = Column(Float, nullable=True)
+    sl_price = Column(Float, nullable=True)
+    tp_price = Column(Float, nullable=True)
 
     # ---------- Live-Markt ----------
     mark_price = Column(Float, nullable=True)
@@ -169,6 +171,7 @@ class Execution(Base):
     id = Column(Integer, primary_key=True, index=True)
     bot_id = Column(Integer, ForeignKey("bots.id"), nullable=False, index=True)
     symbol = Column(String, nullable=False)
+    exec_type = Column(String, nullable=True) 
 
     side = Column(String, nullable=True)         # 'buy'/'sell'
     price = Column(Float, nullable=True)
