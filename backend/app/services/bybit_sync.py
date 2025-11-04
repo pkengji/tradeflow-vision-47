@@ -4,7 +4,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
 from urllib.parse import unquote
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_, and_
 from sqlalchemy.orm import Session
 
 from .. import models
@@ -47,15 +47,24 @@ def _deep_unquote(s: Optional[str]) -> Optional[str]:
     return prev
 
 
-def _uid_from_link(order_link_id: Optional[str]) -> Optional[str]:
+def _uid_from_link(exchange_order_id: Optional[str]) -> Optional[str]:
     """# ADDED: extrahiert trade_uid aus orderLinkId 'entry-<uid>' oder 'slsl-<uid>'"""
-    if not order_link_id or not isinstance(order_link_id, str):
+    if not exchange_order_id or not isinstance(exchange_order_id, str):
         return None
-    if order_link_id.startswith("entry-") or order_link_id.startswith("slsl-"):
+    if exchange_order_id.startswith("entry-") or exchange_order_id.startswith("slsl-"):
         try:
-            return order_link_id.split("-", 1)[1]
+            return exchange_order_id.split("-", 1)[1]
         except Exception:
             return None
+    return None
+
+def _uid_from_any(order_link_id: Optional[str], exchange_order_id: Optional[str]) -> Optional[str]:
+    if order_link_id:
+        return _uid_from_link(order_link_id)
+    if exchange_order_id:
+        # Wenn deine trade_uid nicht aus exchange_order_id rekonstruierbar ist,
+        # lieber None zurückgeben. Mapping auf TvSignal klappt dann ggf. nicht.
+        return None
     return None
 
 
@@ -208,6 +217,12 @@ def _persist_execution(
         )
         if exists:
             return  # schon da
+    def _g(d, *keys):
+        for k in keys:
+            v = d.get(k)
+            if v not in (None, ""):
+                return v
+        return None
 
     ex = models.Execution(
         bot_id=bot_id,
@@ -222,8 +237,8 @@ def _persist_execution(
         ts=ts,
         # für späteres Debug / Zuordnung:
         exchange_exec_id=exec_id,
-        exchange_order_id=payload.get("orderId"),
-        order_link_id=payload.get("orderLinkId"),
+        exchange_order_id=_g(payload, "orderId", "orderID", "exchangeOrderId", "order_id"),
+        order_link_id=_g(payload, "orderLinkId", "orderLinkID"),
     )
     db.add(ex)
 
@@ -253,11 +268,15 @@ def rebuild_positions(
     user_id: int | None = None,
 ) -> int:
     """
-    Nimmt ALLE Executions aus der DB (scope: bot oder user) und baut daraus saubere Positionen.
-    Funding wird aus der DB dazugerechnet.
-    **NEU:** trade_uid / tv_signal / outbox_item / exec-times werden gesetzt.
+    Sequentieller Positions-Builder.
+    - nutzt nur echte Trade-Executions (order_link_id ODER exchange_order_id vorhanden)
+    - ignoriert Funding/sonstige Events
+    - baut Entry/Exit VWAP + Best-Preise
+    - rechnet Funding aus funding_events
+    - setzt SL/TP (TvSignal → Fallback Exit-Best)
+    - markiert verwendete Executions als is_consumed=True
     """
-    # Scope bestimmen
+    # --- Scope bestimmen ------------------------------------------------------
     q = db.query(models.Execution)
     if bot_id is not None:
         q = q.filter(models.Execution.bot_id == bot_id)
@@ -265,50 +284,54 @@ def rebuild_positions(
         bot_ids = [
             b.id
             for b in db.query(models.Bot)
-            .filter(models.Bot.user_id == user_id, models.Bot.is_deleted == False)
-            .all()
+                      .filter(models.Bot.user_id == user_id, models.Bot.is_deleted == False)
+                      .all()
         ]
         if not bot_ids:
             return 0
         q = q.filter(models.Execution.bot_id.in_(bot_ids))
     else:
-        # wir rebuilden nie "alles von allen", ohne scope
-        return 0
-    
-    q = q.filter(models.Execution.is_consumed == False)  # ADDED: nur un-verbrauchte Executions
+        return 0  # nie alles rebuilden ohne scope
 
-    execs: List[models.Execution] = (
-        q.order_by(
-            models.Execution.symbol.asc(),
-            models.Execution.ts.asc(),
-            models.Execution.id.asc(),
-        ).all()
+    # Nur unbenutzte Trades & keine Fundingexecs (→ Funding hat i. d. R. keine IDs)
+    q = q.filter(models.Execution.is_consumed == False)
+    q = q.filter(
+        or_(
+            and_(models.Execution.order_link_id.isnot(None), models.Execution.order_link_id != ""),
+            and_(models.Execution.exchange_order_id.isnot(None), models.Execution.exchange_order_id != "")
+        )
     )
+    # (optional) exec_type-Filter weglassen, da wir über IDs schon Trades erzwingen
+
+    execs: List[models.Execution] = q.order_by(
+        models.Execution.symbol.asc(),
+        models.Execution.ts.asc(),
+        models.Execution.id.asc(),
+    ).all()
     if not execs:
         return 0
 
-    # pro Symbol sequenziell durchgehen
+    # pro Symbol sequenziell
     by_symbol: Dict[str, List[models.Execution]] = {}
     for e in execs:
         by_symbol.setdefault(e.symbol, []).append(e)
 
     # Cache Bot→User
-    bot_user_cache: dict[int, int] = {}
+    bot_user_cache: dict[int, Optional[int]] = {}
 
     created = 0
 
     for symbol, rows in by_symbol.items():
         net = 0.0
         entry_fills: List[Dict[str, Any]] = []
-        exit_fills: List[Dict[str, Any]] = []
+        exit_fills:  List[Dict[str, Any]] = []
         fee_open = 0.0
         fee_close = 0.0
         opened_at: Optional[datetime] = None
         closed_at: Optional[datetime] = None
         first_side: Optional[str] = None
-        bot_id_for_pos = rows[0].bot_id  # alle rows dieses Symbols haben denselben Bot
+        bot_id_for_pos = rows[0].bot_id
 
-        # ADDED: userid per bot cachen
         if bot_id_for_pos not in bot_user_cache:
             bobj = db.query(models.Bot).filter(models.Bot.id == bot_id_for_pos).first()
             bot_user_cache[bot_id_for_pos] = bobj.user_id if bobj else None
@@ -320,22 +343,22 @@ def rebuild_positions(
                 continue
             side = (r.side or "").lower()
 
-            # neue Position beginnt
+            # neue Position beginnt?
             if net == 0.0:
                 first_side = "buy" if side == "buy" else "sell"
                 opened_at = r.ts
 
-            # Positionsnetto hoch/runterzählen
+            # Netto-Menge fortschreiben
             net += qty if side == "buy" else -qty
 
-            # Fees & Fills
+            # Fill aufnehmen + Fees
             fill_rec = {
-                "price": float(r.price or 0.0), 
+                "price": float(r.price or 0.0),
                 "qty": qty,
                 "ts": r.ts,
-                "order_link_id": r.order_link_id,
-                "_row_id": r.id,                               # ADDED
-                "exchange_exec_id": r.exchange_exec_id,        # ADDED (optional für spätere Hashes)
+                "order_link_id": (r.order_link_id or "").strip(),
+                "exchange_order_id": (r.exchange_order_id or "").strip(),
+                "_row_id": r.id,
             }
             if first_side == "buy":
                 if side == "buy":
@@ -353,34 +376,32 @@ def rebuild_positions(
                     fee_close += float(r.fee_usdt or 0.0)
 
             # Position geschlossen?
-            if abs(net) <= 1e-12:
+            if abs(net) <= max(1e-10, 1e-8 * max(abs(net), 1.0)):
                 closed_at = r.ts
 
                 # VWAP helper
                 def _vwap(fills: List[Dict[str, Any]]) -> tuple[Optional[float], float]:
-                    q = sum(f["qty"] for f in fills)
-                    if q <= 0:
+                    qsum = sum(f["qty"] for f in fills)
+                    if qsum <= 0:
                         return None, 0.0
-                    v = sum(f["price"] * f["qty"] for f in fills) / q
-                    return v, q
+                    v = sum(f["price"] * f["qty"] for f in fills) / qsum
+                    return v, qsum
 
                 entry_v, qty_open = _vwap(entry_fills)
-                exit_v, qty_close = _vwap(exit_fills)
+                exit_v,  qty_close = _vwap(exit_fills)
 
-                # Funding aus DB für diesen Zeitraum holen
+                # Funding im Zeitraum
                 funding_rows = (
                     db.query(models.FundingEvent)
-                    .filter(
-                        models.FundingEvent.bot_id == bot_id_for_pos,
-                        models.FundingEvent.symbol == symbol,
-                        models.FundingEvent.ts >= opened_at,
-                        models.FundingEvent.ts <= closed_at,
-                    )
-                    .all()
+                      .filter(models.FundingEvent.bot_id == bot_id_for_pos,
+                              models.FundingEvent.symbol == symbol,
+                              models.FundingEvent.ts >= opened_at,
+                              models.FundingEvent.ts <= closed_at)
+                      .all()
                 )
-                funding_total = sum((fr.amount_usdt or 0.0) for fr in funding_rows)
+                funding_total = sum(float(fr.amount_usdt or 0.0) for fr in funding_rows)
 
-                # PnL
+                # Brutto-PnL
                 gross = 0.0
                 if entry_v is not None and exit_v is not None and qty_open > 0:
                     if first_side == "buy":
@@ -390,65 +411,55 @@ def rebuild_positions(
 
                 net_pnl = gross - abs(fee_open) - abs(fee_close) + funding_total
 
-                # ADDED: trade_uid aus order_link_id der Entry-Fills
+                # trade_uid aus Entry-Fills (order_link_id → Fallback exchange_order_id)
                 trade_uid: Optional[str] = None
                 for f in entry_fills:
-                    trade_uid = _uid_from_link(f.get("order_link_id"))
+                    olid = f.get("order_link_id")
+                    exid = f.get("exchange_order_id")
+                    trade_uid = _uid_from_any(olid, exid)
                     if trade_uid:
                         break
 
-                # ADDED: referenzieren
+                # referenzen (TvSignal/Outbox)
                 tv_signal_id = None
                 outbox_item_id = None
                 if trade_uid:
-                    tv = (
-                        db.query(models.TvSignal)
-                        .filter(models.TvSignal.trade_uid == trade_uid)
-                        .first()
-                    )
+                    tv = db.query(models.TvSignal).filter(models.TvSignal.trade_uid == trade_uid).first()
                     if tv:
                         tv_signal_id = tv.id
-                    ob = (
-                        db.query(models.OutboxItem)
-                        .filter(models.OutboxItem.trade_uid == trade_uid)
-                        .first()
-                    )
+                    ob = db.query(models.OutboxItem).filter(models.OutboxItem.trade_uid == trade_uid).first()
                     if ob:
                         outbox_item_id = ob.id
 
-                    # --- Best-Preise aus den Fills (falls du sie noch nicht hast) ----------------
-                    # entry_best = min bei Long-Entry, max bei Short-Entry
-                    entry_prices = [float(f["price"]) for f in entry_fills if f.get("price") is not None]
-                    exit_prices  = [float(f["price"]) for f in exit_fills  if f.get("price") is not None]
+                # --- Best-Preise (immer berechnen!) ------------------------------
+                entry_prices = [float(f["price"]) for f in entry_fills if f.get("price") is not None]
+                exit_prices  = [float(f["price"]) for f in exit_fills  if f.get("price") is not None]
 
-                    entry_best = None
-                    if entry_prices:
-                        entry_best = min(entry_prices) if first_side == "buy" else max(entry_prices)
+                entry_best = None
+                if entry_prices:
+                    entry_best = min(entry_prices) if first_side == "buy" else max(entry_prices)
 
-                    exit_best = None
-                    if exit_prices:
-                        # Achtung: exit-best ist unabhängig von first_side die "beste" Preisgabe beim Exit
-                        # Long: je tiefer desto schlechter, Short: je tiefer desto besser – Slippage rechnet später metrics.py
-                        # Wir speichern hier nur den besten Fillpreis am Exit:
-                        exit_best = (max(exit_prices) if first_side == "buy" else min(exit_prices))  # siehe Kommentar
+                exit_best = None
+                if exit_prices:
+                    # Exit: Gegenseite zum Entry
+                    exit_best = (max(exit_prices) if first_side == "buy" else min(exit_prices))
+                # -----------------------------------------------------------------
 
-                    # --- SL/TP aus TvSignal holen (falls vorhanden), sonst Fallback ----------------
-                    sl_price = None
-                    tp_price = None
+                # --- SL/TP: TvSignal → Fallback Exit-Best -----------------------
+                sl_price = None
+                tp_price = None
+                if tv_signal_id:
+                    tv_sig = db.get(models.TvSignal, tv_signal_id)
+                    if tv_sig:
+                        sl_price = float(tv_sig.stop_loss_tv)   if tv_sig.stop_loss_tv   is not None else None
+                        tp_price = float(tv_sig.take_profit_tv) if tv_sig.take_profit_tv is not None else None
 
-                    if tv_signal_id:
-                        tv_sig = db.get(models.TvSignal, tv_signal_id)
-                        if tv_sig:
-                            # TradingView liefert Triggerpreise → als Referenzwerte übernehmen
-                            sl_price = float(tv_sig.stop_loss_tv) if tv_sig.stop_loss_tv else None
-                            tp_price = float(tv_sig.take_profit_tv) if tv_sig.take_profit_tv else None
-
-                    # Fallback, wenn TV nichts geliefert hat: aus Ergebnis ableiten
-                    if not sl_price and not tp_price:
-                        if net_pnl is not None and net_pnl >= 0:
-                            tp_price = exit_best  # Gewinn → Exit war wahrscheinlich TP
-                        else:
-                            sl_price = exit_best  # Verlust → Exit war wahrscheinlich SL
+                if not sl_price and not tp_price:
+                    if net_pnl is not None and net_pnl >= 0:
+                        tp_price = exit_best
+                    else:
+                        sl_price = exit_best
+                # -----------------------------------------------------------------
 
                 pos = models.Position(
                     bot_id=bot_id_for_pos,
@@ -460,11 +471,11 @@ def rebuild_positions(
                     closed_at=closed_at,
                     qty=qty_open,
                     entry_price_vwap=entry_v,
-                    exit_price_vwap=exit_v,           # bleibt
-                    entry_price_best=entry_best,       # NEW
-                    exit_price_best=exit_best,         # NEW
-                    sl_price=sl_price,                 # NEW
-                    tp_price=tp_price,                 # NEW
+                    exit_price_vwap=exit_v,
+                    entry_price_best=entry_best,
+                    exit_price_best=exit_best,
+                    sl_price=sl_price,
+                    tp_price=tp_price,
                     fee_open_usdt=abs(fee_open),
                     fee_close_usdt=abs(fee_close),
                     funding_usdt=funding_total,
@@ -479,18 +490,19 @@ def rebuild_positions(
                 db.add(pos)
                 created += 1
 
-                # ADDED: verwendete Executions als konsumiert markieren
+                # Executions markieren
                 used_ids = [f["_row_id"] for f in (entry_fills + exit_fills) if f.get("_row_id")]
                 if used_ids:
                     (db.query(models.Execution)
-                    .filter(models.Execution.id.in_(used_ids))
-                    .update({"is_consumed": True}, synchronize_session=False))
+                       .filter(models.Execution.id.in_(used_ids))
+                       .update({"is_consumed": True}, synchronize_session=False))
                     db.flush()
 
-                # reset für nächste Position in diesem Symbol
+                # Reset
                 net = 0.0
-                entry_fills, exit_fills = [], []
-                fee_open, fee_close = 0.0, 0.0
+                entry_fills.clear()
+                exit_fills.clear()
+                fee_open = fee_close = 0.0
                 opened_at = closed_at = None
                 first_side = None
 
@@ -511,8 +523,8 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
         db.query(models.Execution)
           .filter(models.Execution.bot_id == bot_id)
           .filter(models.Execution.is_consumed == False)
-          .filter(models.Execution.order_link_id.isnot(None))
-          .filter(models.Execution.order_link_id != "")
+          .filter(models.Execution.exchange_order_id.isnot(None))
+          .filter(models.Execution.exchange_order_id != "")
     )
     if hasattr(models.Execution, "exec_type"):
         q = q.filter(models.Execution.exec_type.in_([None, "", "Trade"]))
@@ -540,7 +552,7 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
         # map: order_link_id -> list[Execution]
         groups = {}
         for r in sym_rows:
-            groups.setdefault(r.order_link_id, []).append(r)
+            groups.setdefault(r.exchange_order_id, []).append(r)
 
         # make aggregates per order_link_id
         grouped = []
@@ -614,7 +626,7 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
                     db.query(models.Execution)
                       .filter(models.Execution.bot_id == bot_id,
                               models.Execution.symbol == symbol)
-                      .filter((models.Execution.order_link_id == None) | (models.Execution.order_link_id == ""))
+                      .filter((models.Execution.exchange_order_id == None) | (models.Execution.exchange_order_id == ""))
                       .filter(models.Execution.ts >= opened_at,
                               models.Execution.ts <= closed_at)
                       .all()
@@ -645,7 +657,7 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
             # ---------------------------------------------------------------------
 
             # --- SL/TP aus TradingView (TvSignal) oder Fallback ------------------
-            trade_uid = _uid_from_link(entry_g["olid"])  # deine bestehende Logik
+            trade_uid = _uid_from_any(entry_g["olid"])  # deine bestehende Logik
             sl_price = None
             tp_price = None
 
