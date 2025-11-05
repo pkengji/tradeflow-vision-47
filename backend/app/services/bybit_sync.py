@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
 from urllib.parse import unquote
+from collections import defaultdict
 
 from sqlalchemy import select, func, or_, and_
 from sqlalchemy.orm import Session
@@ -261,339 +262,118 @@ def _persist_funding_event(db: Session, bot_id: int, ev: Dict[str, Any]):
 # Positions-Rebuild (aus DB)
 # ============================================================
 
-def rebuild_positions(
-    db: Session,
-    *,
-    bot_id: int | None = None,
-    user_id: int | None = None,
-) -> int:
-    """
-    Sequentieller Positions-Builder.
-    - nutzt nur echte Trade-Executions (order_link_id ODER exchange_order_id vorhanden)
-    - ignoriert Funding/sonstige Events
-    - baut Entry/Exit VWAP + Best-Preise
-    - rechnet Funding aus funding_events
-    - setzt SL/TP (TvSignal → Fallback Exit-Best)
-    - markiert verwendete Executions als is_consumed=True
-    """
-    # --- Scope bestimmen ------------------------------------------------------
-    q = db.query(models.Execution)
-    if bot_id is not None:
-        q = q.filter(models.Execution.bot_id == bot_id)
-    elif user_id is not None:
-        bot_ids = [
-            b.id
-            for b in db.query(models.Bot)
-                      .filter(models.Bot.user_id == user_id, models.Bot.is_deleted == False)
-                      .all()
-        ]
-        if not bot_ids:
-            return 0
-        q = q.filter(models.Execution.bot_id.in_(bot_ids))
-    else:
-        return 0  # nie alles rebuilden ohne scope
+# app/services/bybit_sync.py
 
-    # Nur unbenutzte Trades & keine Fundingexecs (→ Funding hat i. d. R. keine IDs)
-    q = q.filter(models.Execution.is_consumed == False)
-    q = q.filter(
-        or_(
-            and_(models.Execution.order_link_id.isnot(None), models.Execution.order_link_id != ""),
-            and_(models.Execution.exchange_order_id.isnot(None), models.Execution.exchange_order_id != "")
-        )
-    )
-    # (optional) exec_type-Filter weglassen, da wir über IDs schon Trades erzwingen
 
-    execs: List[models.Execution] = q.order_by(
-        models.Execution.symbol.asc(),
-        models.Execution.ts.asc(),
-        models.Execution.id.asc(),
-    ).all()
-    if not execs:
-        return 0
+def _vwap_q(lst):
+    q = sum(float(x.qty or 0.0) for x in lst)
+    if q <= 0:
+        return None, 0.0
+    v = sum(float((x.price or 0.0)) * float((x.qty or 0.0)) for x in lst) / q
+    return v, q
 
-    # pro Symbol sequenziell
-    by_symbol: Dict[str, List[models.Execution]] = {}
-    for e in execs:
-        by_symbol.setdefault(e.symbol, []).append(e)
+def _best_price(lst, side_first: str):
+    prices = [float(x.price) for x in lst if getattr(x, "price", None) is not None]
+    if not prices:
+        return None
+    return (min(prices) if side_first == "buy" else max(prices))
 
-    # Cache Bot→User
-    bot_user_cache: dict[int, Optional[int]] = {}
-
-    created = 0
-
-    for symbol, rows in by_symbol.items():
-        net = 0.0
-        entry_fills: List[Dict[str, Any]] = []
-        exit_fills:  List[Dict[str, Any]] = []
-        fee_open = 0.0
-        fee_close = 0.0
-        opened_at: Optional[datetime] = None
-        closed_at: Optional[datetime] = None
-        first_side: Optional[str] = None
-        bot_id_for_pos = rows[0].bot_id
-
-        if bot_id_for_pos not in bot_user_cache:
-            bobj = db.query(models.Bot).filter(models.Bot.id == bot_id_for_pos).first()
-            bot_user_cache[bot_id_for_pos] = bobj.user_id if bobj else None
-        user_id_for_pos = bot_user_cache.get(bot_id_for_pos)
-
-        for r in rows:
-            qty = float(r.qty or 0.0)
-            if qty == 0.0:
-                continue
-            side = (r.side or "").lower()
-
-            # neue Position beginnt?
-            if net == 0.0:
-                first_side = "buy" if side == "buy" else "sell"
-                opened_at = r.ts
-
-            # Netto-Menge fortschreiben
-            net += qty if side == "buy" else -qty
-
-            # Fill aufnehmen + Fees
-            fill_rec = {
-                "price": float(r.price or 0.0),
-                "qty": qty,
-                "ts": r.ts,
-                "order_link_id": (r.order_link_id or "").strip(),
-                "exchange_order_id": (r.exchange_order_id or "").strip(),
-                "_row_id": r.id,
-            }
-            if first_side == "buy":
-                if side == "buy":
-                    entry_fills.append(fill_rec)
-                    fee_open += float(r.fee_usdt or 0.0)
-                else:
-                    exit_fills.append(fill_rec)
-                    fee_close += float(r.fee_usdt or 0.0)
-            else:
-                if side == "sell":
-                    entry_fills.append(fill_rec)
-                    fee_open += float(r.fee_usdt or 0.0)
-                else:
-                    exit_fills.append(fill_rec)
-                    fee_close += float(r.fee_usdt or 0.0)
-
-            # Position geschlossen?
-            if abs(net) <= max(1e-10, 1e-8 * max(abs(net), 1.0)):
-                closed_at = r.ts
-
-                # VWAP helper
-                def _vwap(fills: List[Dict[str, Any]]) -> tuple[Optional[float], float]:
-                    qsum = sum(f["qty"] for f in fills)
-                    if qsum <= 0:
-                        return None, 0.0
-                    v = sum(f["price"] * f["qty"] for f in fills) / qsum
-                    return v, qsum
-
-                entry_v, qty_open = _vwap(entry_fills)
-                exit_v,  qty_close = _vwap(exit_fills)
-
-                # Funding im Zeitraum
-                funding_rows = (
-                    db.query(models.FundingEvent)
-                      .filter(models.FundingEvent.bot_id == bot_id_for_pos,
-                              models.FundingEvent.symbol == symbol,
-                              models.FundingEvent.ts >= opened_at,
-                              models.FundingEvent.ts <= closed_at)
-                      .all()
-                )
-                funding_total = sum(float(fr.amount_usdt or 0.0) for fr in funding_rows)
-
-                # Brutto-PnL
-                gross = 0.0
-                if entry_v is not None and exit_v is not None and qty_open > 0:
-                    if first_side == "buy":
-                        gross = (exit_v - entry_v) * qty_open
-                    else:
-                        gross = (entry_v - exit_v) * qty_open
-
-                net_pnl = gross - abs(fee_open) - abs(fee_close) + funding_total
-
-                # trade_uid aus Entry-Fills (order_link_id → Fallback exchange_order_id)
-                trade_uid: Optional[str] = None
-                for f in entry_fills:
-                    olid = f.get("order_link_id")
-                    exid = f.get("exchange_order_id")
-                    trade_uid = _uid_from_any(olid, exid)
-                    if trade_uid:
-                        break
-
-                # referenzen (TvSignal/Outbox)
-                tv_signal_id = None
-                outbox_item_id = None
-                if trade_uid:
-                    tv = db.query(models.TvSignal).filter(models.TvSignal.trade_uid == trade_uid).first()
-                    if tv:
-                        tv_signal_id = tv.id
-                    ob = db.query(models.OutboxItem).filter(models.OutboxItem.trade_uid == trade_uid).first()
-                    if ob:
-                        outbox_item_id = ob.id
-
-                # --- Best-Preise (immer berechnen!) ------------------------------
-                entry_prices = [float(f["price"]) for f in entry_fills if f.get("price") is not None]
-                exit_prices  = [float(f["price"]) for f in exit_fills  if f.get("price") is not None]
-
-                entry_best = None
-                if entry_prices:
-                    entry_best = min(entry_prices) if first_side == "buy" else max(entry_prices)
-
-                exit_best = None
-                if exit_prices:
-                    # Exit: Gegenseite zum Entry
-                    exit_best = (max(exit_prices) if first_side == "buy" else min(exit_prices))
-                # -----------------------------------------------------------------
-
-                # --- SL/TP: TvSignal → Fallback Exit-Best -----------------------
-                sl_price = None
-                tp_price = None
-                if tv_signal_id:
-                    tv_sig = db.get(models.TvSignal, tv_signal_id)
-                    if tv_sig:
-                        sl_price = float(tv_sig.stop_loss_tv)   if tv_sig.stop_loss_tv   is not None else None
-                        tp_price = float(tv_sig.take_profit_tv) if tv_sig.take_profit_tv is not None else None
-
-                if not sl_price and not tp_price:
-                    if net_pnl is not None and net_pnl >= 0:
-                        tp_price = exit_best
-                    else:
-                        sl_price = exit_best
-                # -----------------------------------------------------------------
-
-                pos = models.Position(
-                    bot_id=bot_id_for_pos,
-                    user_id=user_id_for_pos,
-                    symbol=symbol,
-                    side=("long" if first_side == "buy" else "short"),
-                    status="closed",
-                    opened_at=opened_at,
-                    closed_at=closed_at,
-                    qty=qty_open,
-                    entry_price_vwap=entry_v,
-                    exit_price_vwap=exit_v,
-                    entry_price_best=entry_best,
-                    exit_price_best=exit_best,
-                    sl_price=sl_price,
-                    tp_price=tp_price,
-                    fee_open_usdt=abs(fee_open),
-                    fee_close_usdt=abs(fee_close),
-                    funding_usdt=funding_total,
-                    pnl_usdt=net_pnl,
-                    unrealized_pnl_usdt=None,
-                    trade_uid=trade_uid,
-                    tv_signal_id=tv_signal_id,
-                    outbox_item_id=outbox_item_id,
-                    first_exec_at=opened_at,
-                    last_exec_at=closed_at,
-                )
-                db.add(pos)
-                created += 1
-
-                # Executions markieren
-                used_ids = [f["_row_id"] for f in (entry_fills + exit_fills) if f.get("_row_id")]
-                if used_ids:
-                    (db.query(models.Execution)
-                       .filter(models.Execution.id.in_(used_ids))
-                       .update({"is_consumed": True}, synchronize_session=False))
-                    db.flush()
-
-                # Reset
-                net = 0.0
-                entry_fills.clear()
-                exit_fills.clear()
-                fee_open = fee_close = 0.0
-                opened_at = closed_at = None
-                first_side = None
-
-    db.commit()
-    return created
 
 def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
     """
-    Baut Positionen anhand von order_link_id-Gruppen (keine Teil-Exits).
-    - Aggregiert pro order_link_id die Fills (VWAP, Best, Fees, Qty)
-    - Paart Entry-Gruppe mit nächster Gegenseite gleicher Menge
-    - Funding aus funding_events, Fallback executions 00:00/08:00/16:00
-    - SL/TP primär aus TvSignal (trade_uid aus order_link_id), sonst Fallback aus Exit-Best
-    - Schreibt entry/exit_best, exit_price_vwap, sl_price, tp_price in Position
-    - Markiert verwendete Executions als is_consumed=True
+    'Fallback' als Hauptlogik:
+    - Gruppiert Executions pro symbol nach exchange_order_id (Fallback: order_link_id).
+    - Sortiert Gruppen chronologisch (first_ts).
+    - Paart n mit erstem späteren m mit Gegenseite und ≈ gleicher Menge.
+    - Berechnet VWAP/best, Fees, Funding (pnl_net = pnl_gross - fees_open - fees_close - funding_raw).
+    - Markiert verwendete Executions als is_consumed=1.
+    - Übrig gebliebene Gruppen werden als status='open' Position angelegt.
     """
+
+    # 0/1/NULL is_consumed robust filtern
     q = (
         db.query(models.Execution)
           .filter(models.Execution.bot_id == bot_id)
-          .filter(models.Execution.is_consumed == False)
-          .filter(models.Execution.exchange_order_id.isnot(None))
-          .filter(models.Execution.exchange_order_id != "")
+          .filter(
+              (models.Execution.is_consumed == False) |
+              (models.Execution.is_consumed == 0) |
+              (models.Execution.is_consumed.is_(None))
+          )
+          .order_by(models.Execution.symbol.asc(),
+                    models.Execution.ts.asc(),
+                    models.Execution.id.asc())
     )
-    if hasattr(models.Execution, "exec_type"):
-        q = q.filter(models.Execution.exec_type.in_([None, "", "Trade"]))
-
-    rows = q.order_by(
-        models.Execution.symbol.asc(),
-        models.Execution.ts.asc(),
-        models.Execution.id.asc()
-    ).all()
-    if not rows:
+    execs = q.all()
+    if not execs:
         return 0
 
-    from collections import defaultdict
-    sym_groups = defaultdict(list)
-    for r in rows:
-        sym_groups[r.symbol].append(r)
+    # Pro Symbol sammeln
+    by_symbol: dict[str, list[models.Execution]] = defaultdict(list)
+    for e in execs:
+        by_symbol[e.symbol].append(e)
 
     created = 0
+    user_id_cache: dict[int, int] = {}
 
-    # user_id des Bots einmalig auflösen (spar SQL)
-    bot_row = db.query(models.Bot).filter(models.Bot.id == bot_id).first()
-    user_id_for_pos = bot_row.user_id if bot_row else None
+    def _user_id_for(bid: int) -> int | None:
+        if bid in user_id_cache:
+            return user_id_cache[bid]
+        b = db.query(models.Bot).filter(models.Bot.id == bid).first()
+        user_id_cache[bid] = b.user_id if b else None
+        return user_id_cache[bid]
 
-    for symbol, sym_rows in sym_groups.items():
-        # map: order_link_id -> list[Execution]
-        groups = {}
-        for r in sym_rows:
-            groups.setdefault(r.exchange_order_id, []).append(r)
+    for symbol, rows in by_symbol.items():
+        # Gruppenbildung: key = exchange_order_id (preferiert), sonst order_link_id
+        groups: dict[str, list[models.Execution]] = {}
+        for r in rows:
+            key = r.exchange_order_id or r.order_link_id or ""
+            if not key:
+                # Ohne Key: packen wir in einen eigenen "orphans"-Bucket je exec_id,
+                # damit nichts verloren geht (jede Exec wird zu einer Mini-Gruppe).
+                key = f"__orphans__#{r.id}"
+            groups.setdefault(key, []).append(r)
 
-        # make aggregates per order_link_id
-        grouped = []
-        for olid, lst in groups.items():
-            buys = sum(1 for x in lst if (x.side or "").lower() == "buy")
-            sells = sum(1 for x in lst if (x.side or "").lower() == "sell")
-            side = "buy" if buys >= sells else "sell"
+        # Aggregation pro Gruppe
+        agg: list[dict] = []
+        for key, lst in groups.items():
+            first_buy_ts  = min((x.ts for x in lst if (x.side or "").lower()=="buy"),  default=None)
+            first_sell_ts = min((x.ts for x in lst if (x.side or "").lower()=="sell"), default=None)
+            side = "buy" if first_buy_ts and (not first_sell_ts or first_buy_ts <= first_sell_ts) else "sell"
 
-            qty_sum = sum(float(x.qty or 0.0) for x in lst)
-            vwap = (sum(float(x.price or 0.0) * float(x.qty or 0.0) for x in lst) / qty_sum) if qty_sum else None
-            prices = [float(x.price or 0.0) for x in lst if x.price is not None]
-            best = (min(prices) if side == "buy" else max(prices)) if prices else None
-            first_ts = min(x.ts for x in lst if x.ts)
-            last_ts  = max(x.ts for x in lst if x.ts)
+            vwap, qty = _vwap_q(lst)
+            best = _best_price(lst, side)
+            first_ts = min(x.ts for x in lst if x.ts) if lst else None
+            last_ts  = max(x.ts for x in lst if x.ts) if lst else None
             fee_sum  = sum(float(x.fee_usdt or 0.0) for x in lst)
-            row_ids  = [x.id for x in lst]
 
-            grouped.append({
-                "olid": olid,
-                "side": side,             # "buy" oder "sell"
-                "qty": qty_sum,
+            agg.append({
+                "key": key,
+                "side": side,
+                "qty": qty,
                 "vwap": vwap,
                 "best": best,
                 "first_ts": first_ts,
                 "last_ts": last_ts,
                 "fee_sum": fee_sum,
-                "row_ids": row_ids,
+                "rows": lst,  # für consume & Bestpreise
+                "bot_id": lst[0].bot_id if lst else None,
             })
 
-        grouped.sort(key=lambda g: (g["first_ts"] or g["last_ts"]))
+        # Chronologisch sortieren
+        agg.sort(key=lambda g: (g["first_ts"] or datetime.utcnow()))
+
         i = 0
         eps = 1e-9
+        used_row_ids: set[int] = set()
 
-        while i < len(grouped) - 1:
-            g1 = grouped[i]
-            # passendes Gegenstück suchen: nächstes entgegengesetztes mit gleicher Menge
+        while i < len(agg) - 1:
+            g1 = agg[i]
+            # Suche erstes späteres Gegenstück mit gegensätzlicher Seite und passender Menge
             j = i + 1
             pair = None
-            while j < len(grouped):
-                g2 = grouped[j]
-                if g1["side"] != g2["side"] and abs(g1["qty"] - g2["qty"]) <= eps:
+            while j < len(agg):
+                g2 = agg[j]
+                if g1["side"] != g2["side"] and abs((g1["qty"] or 0.0) - (g2["qty"] or 0.0)) <= eps:
                     pair = (g1, g2)
                     break
                 j += 1
@@ -602,122 +382,436 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
                 i += 1
                 continue
 
-            # Entry ist die BUY-Gruppe, Exit die SELL-Gruppe (unabhängig von Reihenfolge im Stream)
-            entry_g, exit_g = pair if g1["side"] == "buy" else (pair[1], pair[0])
-            first_side = "buy" if g1["side"] == "buy" else "sell"
+            if (g1["first_ts"] or datetime.utcnow()) <= (g2["first_ts"] or datetime.utcnow()):
+                entry_g, exit_g = g1, g2
+            else:
+                entry_g, exit_g = g2, g1
+            side_first = entry_g["side"]
 
+            v_entry = entry_g["vwap"]; v_exit = exit_g["vwap"]
+            q_entry = entry_g["qty"];   q_exit = exit_g["qty"]
+            if not (v_entry and v_exit and (q_entry or 0.0) > 0):
+                i = j + 1
+                continue
+
+            fee_open  = entry_g["fee_sum"]
+            fee_close = exit_g["fee_sum"]
             opened_at = entry_g["first_ts"]
             closed_at = exit_g["last_ts"]
 
-            # Funding summieren (Events → Fallback Executions)
-            funding_total = 0.0
-            fe_rows = (
-                db.query(models.FundingEvent)
-                  .filter(models.FundingEvent.bot_id == bot_id,
-                          models.FundingEvent.symbol == symbol,
-                          models.FundingEvent.ts >= opened_at,
-                          models.FundingEvent.ts <= closed_at)
-                  .all()
+            # Funding im Fenster (raw addieren; in pnl wird abgezogen)
+            funding = sum(
+                float(f.amount_usdt or 0.0)
+                for f in db.query(models.FundingEvent)
+                           .filter(models.FundingEvent.bot_id == entry_g["bot_id"])
+                           .filter(models.FundingEvent.symbol == symbol)
+                           .filter(models.FundingEvent.ts >= opened_at)
+                           .filter(models.FundingEvent.ts <= closed_at)
             )
-            if fe_rows:
-                funding_total = sum(float(fr.amount_usdt or 0.0) for fr in fe_rows)
-            else:
+
+            # Fallback B: Executions ohne Link-IDs bei 00:00/08:00/16:00
+            if funding == 0.0:
                 fexec = (
                     db.query(models.Execution)
-                      .filter(models.Execution.bot_id == bot_id,
-                              models.Execution.symbol == symbol)
-                      .filter((models.Execution.exchange_order_id == None) | (models.Execution.exchange_order_id == ""))
-                      .filter(models.Execution.ts >= opened_at,
-                              models.Execution.ts <= closed_at)
-                      .all()
+                    .filter(models.Execution.bot_id == entry_g["bot_id"])
+                    .filter(models.Execution.symbol == symbol)
+                    .filter(
+                        ((models.Execution.order_link_id == None) | (models.Execution.order_link_id == "")) &
+                        ((models.Execution.exchange_order_id == None) | (models.Execution.exchange_order_id == ""))
+                    )
+                    .filter(models.Execution.ts >= opened_at)
+                    .filter(models.Execution.ts <= closed_at)
+                    .all()
                 )
                 for x in fexec:
-                    hhmm = (x.ts or opened_at).strftime("%H:%M")
-                    if hhmm in ("00:00", "08:00", "16:00"):
-                        funding_total += float(x.fee_usdt or 0.0)
+                    if x.ts and x.ts.strftime("%H:%M") in ("00:00","08:00","16:00"):
+                        funding += float(x.fee_usdt or 0.0)
 
-            # PnL (gross/net)
-            qty = entry_g["qty"]
-            pnl_gross = 0.0
-            if entry_g["vwap"] is not None and exit_g["vwap"] is not None and qty > 0:
-                if first_side == "buy":
-                    pnl_gross = (exit_g["vwap"] - entry_g["vwap"]) * qty
-                else:
-                    pnl_gross = (entry_g["vwap"] - exit_g["vwap"]) * qty
 
-            fee_open = entry_g["fee_sum"]
-            fee_close = exit_g["fee_sum"]
-            pnl_net = pnl_gross - abs(fee_open) - abs(fee_close) + funding_total
 
-            # --- Best-Preise für Entry/Exit --------------------------------------
-            # Entry: bei Buy min→best, bei Sell max→best (wie oben aggregiert)
-            entry_best = entry_g["best"]
-            # Exit: analog — best am Exit (die Aggregationsregel bleibt wie oben)
-            exit_best = exit_g["best"]
-            # ---------------------------------------------------------------------
+            # PnL (gross -> net); Funding: PnL - funding_raw (negatives funding -> PnL plus)
+            if side_first == "buy":
+                pnl_gross = (v_exit - v_entry) * q_entry
+            else:
+                pnl_gross = (v_entry - v_exit) * q_entry
+            pnl_net = pnl_gross - abs(fee_open) - abs(fee_close) - funding
 
-            # --- SL/TP aus TradingView (TvSignal) oder Fallback ------------------
-            trade_uid = _uid_from_any(entry_g["olid"])  # deine bestehende Logik
-            sl_price = None
-            tp_price = None
+            # Bestpreise
+            best_entry = _best_price(entry_g["rows"], side_first) or v_entry
+            exit_side_for_best = "sell" if side_first == "buy" else "buy"
+            best_exit  = _best_price(exit_g["rows"], exit_side_for_best) or v_exit
 
-            tv_sig = (
-                db.query(models.TvSignal)
-                  .filter(models.TvSignal.bot_id == bot_id,
-                          models.TvSignal.trade_uid == trade_uid)
-                  .first()
-            )
-            if tv_sig:
-                sl_price = float(tv_sig.stop_loss_tv) if tv_sig.stop_loss_tv else None
-                tp_price = float(tv_sig.take_profit_tv) if tv_sig.take_profit_tv else None
-
-            if not sl_price and not tp_price:
-                # plausibler Fallback: Exit-Best als TP/SL je nach Ergebnis
-                if pnl_net is not None and pnl_net >= 0:
-                    tp_price = exit_best
-                else:
-                    sl_price = exit_best
-            # ---------------------------------------------------------------------
-
+            bot_id_pos = entry_g["bot_id"]
             pos = models.Position(
-                bot_id=bot_id,
-                user_id=user_id_for_pos,
+                bot_id=bot_id_pos,
+                user_id=_user_id_for(bot_id_pos),
                 symbol=symbol,
-                side=("long" if first_side == "buy" else "short"),
+                side=("long" if side_first == "buy" else "short"),
                 status="closed",
                 opened_at=opened_at,
                 closed_at=closed_at,
-                qty=qty,
-                entry_price_vwap=entry_g["vwap"],
-                exit_price_vwap=exit_g["vwap"],   # wichtig: VWAP am Exit
-                entry_price_best=entry_best,       # NEU
-                exit_price_best=exit_best,         # NEU
-                sl_price=sl_price,                 # NEU
-                tp_price=tp_price,                 # NEU
+                qty=q_entry,
+                entry_price_vwap=v_entry,
+                exit_price_vwap=v_exit,
+                entry_price_best=best_entry,
+                exit_price_best=best_exit,
                 fee_open_usdt=abs(fee_open),
                 fee_close_usdt=abs(fee_close),
-                funding_usdt=funding_total,
+                funding_usdt=funding,
                 pnl_usdt=pnl_net,
                 first_exec_at=opened_at,
                 last_exec_at=closed_at,
-                trade_uid=trade_uid,
-                tv_signal_id=(tv_sig.id if tv_sig else None),
             )
-            db.add(pos)
-            created += 1
+            db.add(pos); created += 1
 
-            # verwendete Executions als konsumiert markieren
-            used_ids = entry_g["row_ids"] + exit_g["row_ids"]
-            if used_ids:
-                (db.query(models.Execution)
-                   .filter(models.Execution.id.in_(used_ids))
-                   .update({"is_consumed": True}, synchronize_session=False))
+            # Executions konsumieren
+            for x in (entry_g["rows"] + exit_g["rows"]):
+                used_row_ids.add(x.id)
+
+            # Springe hinter das verwendete j
+            i = j + 1
+
+
+        # --- REST: Netting über nicht verwendete Rows + ggf. auto-close > 14d ---
+        cutoff = datetime.now(timezone.utc) - timedelta(days=14)
+
+        remaining_rows = []
+        for g in agg:
+            for x in g["rows"]:
+                if x.id not in used_row_ids:
+                    remaining_rows.append(x)
+
+        if remaining_rows:
+            # chronologisch
+            remaining_rows.sort(key=lambda r: (r.ts or datetime.now(timezone.utc), r.id or 0))
+
+            net = 0.0
+            entry_fills, exit_fills = [], []
+            fee_open_r, fee_close_r = 0.0, 0.0
+            first_side_r = None
+            opened_at_r = None
+
+            def _vwap_q_execs(fills):
+                q = sum(float(getattr(e, "qty", 0.0) or 0.0) for e in fills)
+                if q <= 0:
+                    return None, 0.0
+                v = sum(float((e.price or 0.0)) * float((e.qty or 0.0)) for e in fills) / q
+                return v, q
+
+            def _best_exec_price(fills, side):
+                prices = [float(e.price) for e in fills if getattr(e, "price", None) is not None]
+                if not prices:
+                    return None
+                return min(prices) if side == "buy" else max(prices)
+
+            for e in remaining_rows:
+                side = (e.side or "").lower()
+                qty  = float(e.qty or 0.0)
+                if qty == 0.0:
+                    used_row_ids.add(e.id)
+                    continue
+
+                if net == 0.0:
+                    first_side_r = side
+                    opened_at_r  = e.ts
+                net += qty if side == "buy" else -qty
+
+                if side == first_side_r:
+                    entry_fills.append(e);  fee_open_r  += float(e.fee_usdt or 0.0)
+                else:
+                    exit_fills.append(e);   fee_close_r += float(e.fee_usdt or 0.0)
+
+                # geschlossen?
+                if abs(net) <= 1e-12:
+                    closed_at_r = e.ts
+                    v_entry_r, q_entry_r = _vwap_q_execs(entry_fills)
+                    v_exit_r,  q_exit_r  = _vwap_q_execs(exit_fills)
+                    if v_entry_r is not None and v_exit_r is not None and q_entry_r > 0:
+                        if first_side_r == "buy":
+                            pnl_gross_r = (v_exit_r - v_entry_r) * q_entry_r
+                            best_entry_r = _best_exec_price(entry_fills, "buy");  best_exit_r = _best_exec_price(exit_fills, "sell")
+                        else:
+                            pnl_gross_r = (v_entry_r - v_exit_r) * q_entry_r
+                            best_entry_r = _best_exec_price(entry_fills, "sell"); best_exit_r = _best_exec_price(exit_fills, "buy")
+
+                        # Funding im Fenster (raw addieren, später abziehen)
+                        funding_raw_r = sum(
+                            float(f.amount_usdt or 0.0)
+                            for f in db.query(models.FundingEvent)
+                                    .filter(models.FundingEvent.bot_id == e.bot_id)
+                                    .filter(models.FundingEvent.symbol == symbol)
+                                    .filter(models.FundingEvent.ts >= opened_at_r)
+                                    .filter(models.FundingEvent.ts <= closed_at_r)
+                        )
+                        pnl_net_r = pnl_gross_r - abs(fee_open_r) - abs(fee_close_r) - funding_raw_r
+
+                        pos = models.Position(
+                            bot_id=e.bot_id,
+                            user_id=_user_id_for(e.bot_id),
+                            symbol=symbol,
+                            side=("long" if first_side_r == "buy" else "short"),
+                            status="closed",
+                            opened_at=opened_at_r,
+                            closed_at=closed_at_r,
+                            qty=q_entry_r,
+                            entry_price_vwap=v_entry_r,
+                            exit_price_vwap=v_exit_r,
+                            entry_price_best=best_entry_r or v_entry_r,
+                            exit_price_best=best_exit_r  or v_exit_r,
+                            fee_open_usdt=abs(fee_open_r),
+                            fee_close_usdt=abs(fee_close_r),
+                            funding_usdt=funding_raw_r,
+                            pnl_usdt=pnl_net_r,
+                            first_exec_at=opened_at_r,
+                            last_exec_at=closed_at_r,
+                        )
+                        db.add(pos); created += 1
+
+                    # consume & reset
+                    for z in (entry_fills + exit_fills):
+                        used_row_ids.add(z.id)
+                    entry_fills, exit_fills = [], []
+                    fee_open_r = fee_close_r = 0.0
+                    first_side_r = None
+                    opened_at_r  = None
+
+            # falls danach noch Netto-Exposure übrig ist → ggf. auto-close, wenn alt
+            if abs(net) > 1e-12 and remaining_rows:
+                last_ts   = remaining_rows[-1].ts
+                if last_ts and (last_ts.replace(tzinfo=timezone.utc) if last_ts.tzinfo is None else last_ts) <= cutoff and entry_fills:
+                    # synthetischer Close zum letzten Fill-Preis
+                    last_price = float(remaining_rows[-1].price or 0.0)
+                    v_entry_r, q_entry_r = _vwap_q_execs(entry_fills)
+                    if v_entry_r and q_entry_r > 0 and last_price > 0:
+                        if first_side_r == "buy":
+                            pnl_gross_r = (last_price - v_entry_r) * q_entry_r
+                            best_entry_r = _best_exec_price(entry_fills, "buy");  best_exit_r = last_price
+                        else:
+                            pnl_gross_r = (v_entry_r - last_price) * q_entry_r
+                            best_entry_r = _best_exec_price(entry_fills, "sell"); best_exit_r = last_price
+
+                        funding_raw_r = sum(
+                            float(f.amount_usdt or 0.0)
+                            for f in db.query(models.FundingEvent)
+                                    .filter(models.FundingEvent.bot_id == entry_fills[0].bot_id)
+                                    .filter(models.FundingEvent.symbol == symbol)
+                                    .filter(models.FundingEvent.ts >= opened_at_r)
+                                    .filter(models.FundingEvent.ts <= last_ts)
+                        )
+
+                        # (optional) Fallback-Exec-Funding auch hier:
+                        if funding_raw_r == 0.0:
+                            fexec2 = (
+                                db.query(models.Execution)
+                                .filter(models.Execution.bot_id == entry_fills[0].bot_id)
+                                .filter(models.Execution.symbol == symbol)
+                                .filter(
+                                    ((models.Execution.order_link_id == None) | (models.Execution.order_link_id == "")) &
+                                    ((models.Execution.exchange_order_id == None) | (models.Execution.exchange_order_id == ""))
+                                )
+                                .filter(models.Execution.ts >= opened_at_r)
+                                .filter(models.Execution.ts <= last_ts)
+                                .all()
+                            )
+                            for x in fexec2:
+                                if x.ts and x.ts.strftime("%H:%M") in ("00:00","08:00","16:00"):
+                                    funding_raw_r += float(x.fee_usdt or 0.0)
+
+                        pnl_net_r = pnl_gross_r - abs(fee_open_r) - abs(fee_close_r) - funding_raw_r
+
+
+                        pos = models.Position(
+                            bot_id=entry_fills[0].bot_id,
+                            user_id=_user_id_for(entry_fills[0].bot_id),
+                            symbol=symbol,
+                            side=("long" if first_side_r == "buy" else "short"),
+                            status="closed",                               # auto-closed (alt)
+                            opened_at=opened_at_r,
+                            closed_at=last_ts,
+                            qty=q_entry_r,
+                            entry_price_vwap=v_entry_r,
+                            exit_price_vwap=last_price,
+                            entry_price_best=best_entry_r or v_entry_r,
+                            exit_price_best=best_exit_r  or last_price,
+                            fee_open_usdt=abs(fee_open_r),
+                            fee_close_usdt=abs(fee_close_r),
+                            funding_usdt=funding_raw_r,
+                            pnl_usdt=pnl_net_r,
+                            first_exec_at=opened_at_r,
+                            last_exec_at=last_ts,
+                        )
+                        db.add(pos); created += 1
+
+                    for z in entry_fills:
+                        used_row_ids.add(z.id)
+
+        # zum Schluss die verwendeten Execs wirklich konsumieren
+        if used_row_ids:
+            (db.query(models.Execution)
+            .filter(models.Execution.id.in_(list(used_row_ids)))
+            .update({"is_consumed": 1}, synchronize_session=False))
             db.flush()
 
-            i = j + 1
+
+        # Offen gebliebene Gruppen -> offene Position (status='open')
+        # (alles, was noch nicht konsumiert wurde)
+        # Wir konsumieren sie trotzdem, damit der Rebuilder idempotent bleibt.
+        for g in agg:
+            remaining = [x for x in g["rows"] if x.id not in used_row_ids]
+            if not remaining:
+                continue
+            v_open, q_open = _vwap_q(remaining)
+            if not v_open or q_open <= 0:
+                continue
+            opened_at = min(x.ts for x in remaining if x.ts)
+            last_ts   = max(x.ts for x in remaining if x.ts)
+            best_open = _best_price(remaining, (g["side"] or "buy"))
+
+            bot_id_pos = g["bot_id"]
+            pos = models.Position(
+                bot_id=bot_id_pos,
+                user_id=_user_id_for(bot_id_pos),
+                symbol=symbol,
+                side=("long" if (g["side"] or "buy") == "buy" else "short"),
+                status="open",
+                opened_at=opened_at,
+                closed_at=None,
+                qty=q_open,
+                entry_price_vwap=v_open,
+                exit_price_vwap=None,
+                entry_price_best=best_open,
+                exit_price_best=None,
+                fee_open_usdt=None,
+                fee_close_usdt=None,
+                funding_usdt=None,
+                pnl_usdt=None,
+                first_exec_at=opened_at,
+                last_exec_at=last_ts,
+            )
+            db.add(pos); created += 1
+            for x in remaining:
+                used_row_ids.add(x.id)
+
+        if used_row_ids:
+            (db.query(models.Execution)
+               .filter(models.Execution.id.in_(list(used_row_ids)))
+               .update({"is_consumed": 1}, synchronize_session=False))
+            db.flush()
+            used_row_ids.clear()
 
     db.commit()
     return created
+
+
+# --- Alternative builder ohne orderlink/exchange_id, rein zeitlich ---
+def rebuild_positions(db: Session, *, bot_id: int) -> int:
+    """
+    Alternativer Rebuilder nur nach Symbol/TS (keine Order-IDs).
+    Nutzt Netting + Fallback analog zur orderlink-Version.
+    """
+    q = (
+        db.query(models.Execution)
+        .filter(models.Execution.bot_id == bot_id)
+        .filter(models.Execution.is_consumed == False)
+        .order_by(models.Execution.symbol.asc(), models.Execution.ts.asc(), models.Execution.id.asc())
+    )
+    execs = q.all()
+    if not execs:
+        return 0
+
+    grouped = defaultdict(list)
+    for e in execs:
+        grouped[e.symbol].append(e)
+
+    created = 0
+    for symbol, rows in grouped.items():
+        rows.sort(key=lambda x: x.ts or datetime.utcnow())
+        net = 0.0
+        entry, exit = [], []
+        fee_open, fee_close = 0.0, 0.0
+        first_side = None
+        opened_at, closed_at = None, None
+        for e in rows:
+            side = (e.side or "").lower()
+            qty = float(e.qty or 0.0)
+            if net == 0.0:
+                first_side = side
+                opened_at = e.ts
+            net += qty if side == "buy" else -qty
+            if side == first_side:
+                entry.append(e)
+                fee_open += float(e.fee_usdt or 0.0)
+            else:
+                exit.append(e)
+                fee_close += float(e.fee_usdt or 0.0)
+            if abs(net) <= 1e-8:
+                closed_at = e.ts
+                qsum = sum(float(x.qty or 0.0) for x in entry)
+                if qsum > 0:
+                    vwap_entry = sum(float(x.price or 0.0) * float(x.qty or 0.0) for x in entry) / qsum
+                    vwap_exit = sum(float(x.price or 0.0) * float(x.qty or 0.0) for x in exit) / qsum
+                    gross = (vwap_exit - vwap_entry) * qsum if first_side == "buy" else (vwap_entry - vwap_exit) * qsum
+                    pnl_net = gross - abs(fee_open) - abs(fee_close)
+                    pos = models.Position(
+                        bot_id=bot_id,
+                        user_id=db.query(models.Bot).filter(models.Bot.id == bot_id).first().user_id,
+                        symbol=symbol,
+                        side=("long" if first_side == "buy" else "short"),
+                        status="closed",
+                        opened_at=opened_at,
+                        closed_at=closed_at,
+                        qty=qsum,
+                        entry_price_vwap=vwap_entry,
+                        exit_price_vwap=vwap_exit,
+                        pnl_usdt=pnl_net,
+                        fee_open_usdt=abs(fee_open),
+                        fee_close_usdt=abs(fee_close),
+                        first_exec_at=opened_at,
+                        last_exec_at=closed_at,
+                    )
+
+
+                    db.add(pos)
+                    created += 1
+                    used = entry + exit
+                    db.query(models.Execution).filter(models.Execution.id.in_([x.id for x in used])).update({"is_consumed": True})
+                    db.flush()
+                net, entry, exit, fee_open, fee_close = 0, [], [], 0, 0
+
+        # Fallback: offene Reste
+        remaining = db.query(models.Execution).filter(
+            models.Execution.bot_id == bot_id,
+            models.Execution.symbol == symbol,
+            models.Execution.is_consumed == False,
+        ).all()
+        if remaining:
+            qty_sum = sum(float(r.qty or 0.0) for r in remaining)
+            prices = [float(r.price or 0.0) for r in remaining if r.price]
+            if prices:
+                first_ts = min(r.ts for r in remaining if r.ts)
+                last_ts = max(r.ts for r in remaining if r.ts)
+                vwap_r = sum(float(r.price or 0.0) * float(r.qty or 0.0) for r in remaining) / abs(qty_sum)
+                pos = models.Position(
+                    bot_id=bot_id,
+                    user_id=db.query(models.Bot).filter(models.Bot.id == bot_id).first().user_id,
+                    symbol=symbol,
+                    side=("long" if qty_sum > 0 else "short"),
+                    status="closed",
+                    opened_at=first_ts,
+                    closed_at=last_ts,
+                    qty=abs(qty_sum),
+                    entry_price_vwap=vwap_r,
+                    exit_price_vwap=vwap_r,
+                    pnl_usdt=0.0,
+                )
+                db.add(pos)
+                created += 1
+                db.query(models.Execution).filter(models.Execution.id.in_([r.id for r in remaining])).update({"is_consumed": True})
+                db.flush()
+
+    db.commit()
+    return created
+
 
 
 
