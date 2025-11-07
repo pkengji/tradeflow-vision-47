@@ -1084,7 +1084,7 @@ def _on_exec(row, ctx):
             price=price, qty=qty, fee_usdt=fee, is_maker=is_maker, reduce_only=reduce_only, ts=ts
         )
         db.add(ex); db.commit()
-        reconcile_symbol(db, bot_id, symbol)
+        sync_symbol_recent(db, bot_id, symbol, hours=2)
     finally:
         db.close()
 
