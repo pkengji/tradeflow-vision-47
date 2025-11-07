@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..bybit_v5_data import BybitV5Data
+from ..services.positions import reconcile_symbol
 
 
 # ============================================================
@@ -261,8 +262,6 @@ def _persist_funding_event(db: Session, bot_id: int, ev: Dict[str, Any]):
 # ============================================================
 # Positions-Rebuild (aus DB)
 # ============================================================
-
-# app/services/bybit_sync.py
 
 
 def _vwap_q(lst):
@@ -660,19 +659,39 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
             remaining = [x for x in g["rows"] if x.id not in used_row_ids]
             if not remaining:
                 continue
-            v_open, q_open = _vwap_q(remaining)
+
+            # schon offene Position vorhanden?
+            exists = (
+                db.query(models.Position.id)
+                .filter(models.Position.bot_id == g["bot_id"])
+                .filter(models.Position.symbol == symbol)
+                .filter(models.Position.status == "open")
+                .first()
+            )
+            if exists:
+                continue
+
+            side_first = (g["side"] or "buy").lower()
+
+            # VWAP/Qty für die Entry-Seite der Rest-Gruppe
+            entry_side_execs = [x for x in remaining if (x.side or "").lower() == side_first]
+            v_open, q_open = _vwap_q(entry_side_execs if entry_side_execs else remaining)
             if not v_open or q_open <= 0:
                 continue
+
             opened_at = min(x.ts for x in remaining if x.ts)
             last_ts   = max(x.ts for x in remaining if x.ts)
-            best_open = _best_price(remaining, (g["side"] or "buy"))
+            best_open = _best_price(remaining, side_first)
 
-            bot_id_pos = g["bot_id"]
+            # Gebühren: nur Fees der Entry-Seite
+            fee_open_group = sum(float(x.fee_usdt or 0.0) for x in entry_side_execs) if entry_side_execs \
+                            else sum(float(x.fee_usdt or 0.0) for x in remaining)
+
             pos = models.Position(
-                bot_id=bot_id_pos,
-                user_id=_user_id_for(bot_id_pos),
+                bot_id=g["bot_id"],
+                user_id=_user_id_for(g["bot_id"]),
                 symbol=symbol,
-                side=("long" if (g["side"] or "buy") == "buy" else "short"),
+                side=("long" if side_first == "buy" else "short"),
                 status="open",
                 opened_at=opened_at,
                 closed_at=None,
@@ -681,21 +700,18 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
                 exit_price_vwap=None,
                 entry_price_best=best_open,
                 exit_price_best=None,
-                fee_open_usdt=None,
+                fee_open_usdt=abs(fee_open_group),
                 fee_close_usdt=None,
-                funding_usdt=None,
+                funding_usdt=0.0,    # kein Funding für offene Positionen
                 pnl_usdt=None,
                 first_exec_at=opened_at,
                 last_exec_at=last_ts,
             )
             db.add(pos); created += 1
-            for x in remaining:
-                used_row_ids.add(x.id)
 
-        if used_row_ids:
-            (db.query(models.Execution)
-               .filter(models.Execution.id.in_(list(used_row_ids)))
-               .update({"is_consumed": 1}, synchronize_session=False))
+            # WICHTIG: remaining NICHT konsumieren (kein is_consumed=1),
+            # damit sie beim späteren Closing sauber gematcht werden.
+
             db.flush()
             used_row_ids.clear()
 
@@ -791,6 +807,7 @@ def rebuild_positions(db: Session, *, bot_id: int) -> int:
                 first_ts = min(r.ts for r in remaining if r.ts)
                 last_ts = max(r.ts for r in remaining if r.ts)
                 vwap_r = sum(float(r.price or 0.0) * float(r.qty or 0.0) for r in remaining) / abs(qty_sum)
+
                 pos = models.Position(
                     bot_id=bot_id,
                     user_id=db.query(models.Bot).filter(models.Bot.id == bot_id).first().user_id,
@@ -876,7 +893,7 @@ def sync_symbol_recent(
             _persist_funding_event(db, bot.id, ev)
 
     # Positionen neu aufbauen
-    rebuilt = rebuild_positions(db, bot_id=bot.id)
+    recon = reconcile_symbol(db, bot.id, symbol)
 
     db.commit()
     return {
@@ -885,7 +902,7 @@ def sync_symbol_recent(
         "symbol": symbol,
         "hours": hours,
         "executions_persisted": len(execs),
-        "positions_rebuilt": rebuilt,
+        "positions_reconciled": recon,
     }
 
 
@@ -906,18 +923,22 @@ def sync_recent_closures(
     client = BybitV5Data(api_key, api_secret)
 
     end_ms = _now_ms()
-    start_ms = end_ms - int(timedelta(hours=max(1, lookback_hours)).total_seconds() * 1000)
+    if bot.last_sync_at:
+        start_base = bot.last_sync_at - timedelta(hours=1)  # Sicherheitspuffer
+        start_ms = int(start_base.timestamp() * 1000)
+    else:
+        start_ms = end_ms - int(timedelta(hours=max(1, lookback_hours)).total_seconds() * 1000)
 
     syms = _load_all_linear_usdt_symbols(client)
 
     total_execs = 0
+    affected_syms: set[str] = set() 
+    
     for sym in syms:
         lst = _fetch_executions(client, sym, start_ms, end_ms, max_pages=10)
         for r in lst:
             _persist_execution(
-                db,
-                bot.id,
-                sym,
+                db, bot.id, sym,
                 (r.get("side") or "").lower(),
                 _f(r.get("execPrice")),
                 _f(r.get("execQty")),
@@ -927,15 +948,20 @@ def sync_recent_closures(
                 _dt_ms(r.get("execTime")),
                 r,
             )
-        total_execs += len(lst)
+        if lst:
+            affected_syms.add(sym)
+            total_execs += len(lst)
 
     # Funding für das Fenster
     fund_rows = _fetch_funding_tx(client, start_ms, end_ms, max_pages=10)
     for ev in fund_rows:
         _persist_funding_event(db, bot.id, ev)
 
-    # Rebuild
-    rebuilt = rebuild_positions(db, bot_id=bot.id)
+    # oder in recent_closures/backfill: set(syms) bzw. nur jene, für die execs kamen
+    reconciled = {s: reconcile_symbol(db, bot.id, s) for s in affected_syms}
+
+    bot.last_sync_at = datetime.now(timezone.utc)
+    db.add(bot)
     db.commit()
 
     return {
@@ -944,7 +970,7 @@ def sync_recent_closures(
         "lookback_hours": lookback_hours,
         "executions_persisted": total_execs,
         "funding_persisted": len(fund_rows),
-        "positions_rebuilt": rebuilt,
+        "positions_reconciled": reconciled,
     }
 
 
@@ -1008,7 +1034,6 @@ def sync_backfill_since(
                 )
             db.commit()
             inserted_execs += len(exec_cache)
-            inserted_positions += rebuild_positions(db, bot_id=bot.id)
 
     # 2) Funding in 7-Tage-Chunks
     for win_start, win_end in _iter_windows(since_fund, end_ms, chunk_days=7):
@@ -1021,6 +1046,9 @@ def sync_backfill_since(
         except Exception:
             pass
 
+    # 3) Positionen neu erstellen:
+    inserted_positions = rebuild_positions_orderlink(db, bot_id=bot.id)
+
     return {
         "ok": True,
         "mode": "backfill_since",
@@ -1030,7 +1058,6 @@ def sync_backfill_since(
         "symbols_scanned": len(syms),
         "window": {"since_ms": since_ms, "end_ms": end_ms},
     }
-
 
 # ============================================================
 # Voll-Historie (Convenience)
@@ -1087,7 +1114,9 @@ def quick_sync_symbol(
         _persist_funding_event(db, bot.id, ev)
     db.commit()
 
-    rebuilt = rebuild_positions(db, bot_id=bot.id)
+    affected_syms = set([symbol])  # quick_sync_symbol
+    # oder in recent_closures/backfill: set(syms) bzw. nur jene, für die execs kamen
+    reconciled = {s: reconcile_symbol(db, bot.id, s) for s in affected_syms}
 
     return {
         "ok": True,
@@ -1095,7 +1124,7 @@ def quick_sync_symbol(
         "symbol": symbol,
         "inserted_execs": len(exec_rows),
         "inserted_funding_events": len(fund_rows),
-        "positions_rebuilt": rebuilt,
+        "positions_reconciled": reconciled,
         "window": {"start_ms": start_ms, "end_ms": end_ms},
     }
 
@@ -1117,3 +1146,5 @@ def sync_recent_all_bots(
         except Exception as e:
             results.append({"bot_id": b.id, "ok": False, "error": str(e)})
     return {"ok": True, "bots": results}
+
+

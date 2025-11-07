@@ -55,10 +55,10 @@ class Bot(Base):
     # Bybit linking
     api_key = Column(String, nullable=True)
     api_secret = Column(String, nullable=True)
-
+    
     # ADDED: optional Kennzeichnung Main vs Sub (für Cashflow-Auswertung)
     account_kind = Column(String, nullable=True)  # "main" | "sub" (Dropdown im UI)  # ADDED
-
+    last_sync_at = Column(DateTime(timezone=True), nullable=True)
     positions = relationship("Position", back_populates="bot")
 
 

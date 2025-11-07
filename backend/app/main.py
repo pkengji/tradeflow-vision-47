@@ -10,11 +10,11 @@ from typing import Optional, List, Dict, Any
 import secrets
 from .models import Bot, Position
 from sqlalchemy import or_, select, func
-from .services.bybit_sync import sync_backfill_since, sync_recent_closures, quick_sync_symbol, sync_full_history, rebuild_positions, rebuild_positions_orderlink, sync_symbol_recent, sync_recent_all_bots
+from .services.bybit_sync import sync_backfill_since, sync_recent_closures, quick_sync_symbol, sync_full_history,rebuild_positions_orderlink, sync_symbol_recent, sync_recent_all_bots, reconcile_symbol
 from .services.symbols import sync_symbols_linear_usdt, list_pairs_payload
 from collections import defaultdict
 from datetime import datetime, timezone, date, timedelta
-from app.services.positions import handle_position_close
+from app.services.positions import handle_position_close, reconcile_symbol
 from app.services.portfolio_sync import sync_cashflows as pf_sync_cashflows, compute_portfolio_value as pf_compute_portfolio_value
 
 from .database import Base, engine, SessionLocal
@@ -38,6 +38,10 @@ app.add_middleware(
 )
 
 Base.metadata.create_all(bind=engine)
+with engine.connect() as con:
+    cols = [r[1] for r in con.exec_driver_sql("PRAGMA table_info(bots)").fetchall()]
+    if "last_sync_at" not in cols:
+        con.exec_driver_sql("ALTER TABLE bots ADD COLUMN last_sync_at TIMESTAMP NULL")
 
 position_cache: dict[tuple[int, str], dict] = {}   # key = (bot_id, symbol)
 
@@ -400,6 +404,15 @@ def list_positions(
         }
         items.append(item)
 
+        # AFTER building 'item' in list_positions():
+        if r.status == "open":
+            live = position_cache.get((r.bot_id, r.symbol))
+            if live:
+                item["mark_price"] = live.get("mark_price", item["mark_price"])
+                # Optional: live PnL anzeigen (nicht in DB schreiben)
+                if live.get("unrealised_pnl") is not None:
+                    item["pnl"] = live["unrealised_pnl"]
+
     return {"items": items, "total": total, "page": 1, "page_size": len(items)}
 
 
@@ -416,6 +429,15 @@ def get_position(
     pnl_value = (r.unrealized_pnl_usdt if r.status == "open" and r.unrealized_pnl_usdt is not None else r.pnl_usdt)
     entry_price = (r.entry_price_vwap or r.entry_price_best or r.entry_price_trigger)
 
+    # Overlay mit live cache
+    if r.status == "open":
+        live = position_cache.get((r.bot_id, r.symbol))
+        if live:
+            mark_price = live.get("mark_price", r.mark_price)
+            pnl_value = live.get("unrealised_pnl", pnl_value)
+    else:
+        mark_price = r.mark_price
+
     return {
         "id": r.id,
         "bot_id": r.bot_id,
@@ -429,7 +451,7 @@ def get_position(
         "entry_price_best": r.entry_price_best,
         "entry_price_vwap": r.entry_price_vwap,
         "exit_price": r.exit_price_vwap,
-        "mark_price": r.mark_price,
+        "mark_price": mark_price,
         "pnl": pnl_value,
         "fee_open_usdt": r.fee_open_usdt,
         "fee_close_usdt": r.fee_close_usdt,
@@ -443,6 +465,18 @@ def get_position(
         "first_exec_at": getattr(r, "first_exec_at", None),
         "last_exec_at": getattr(r, "last_exec_at", None),
     }
+
+
+@app.get("/api/v1/positions/marks")
+def get_live_marks(bot_id: int | None = None, symbol: str | None = None):
+    def ok(k):
+        b,s = k
+        return (bot_id is None or b == bot_id) and (symbol is None or s == symbol.upper())
+    out = []
+    for (b,s), v in position_cache.items():
+        if ok((b,s)):
+            out.append({"bot_id": b, "symbol": s, **v})
+    return {"items": out}
 
 
 @app.get("/api/v1/funding")
@@ -985,9 +1019,12 @@ def ingest_tv_signal(sig: TvSignalIn, user_id: int = Depends(get_current_user_id
 
 
 @app.post("/api/v1/outbox/{outbox_id}/approve")
-def approve_outbox(outbox_id: int, user: User = Depends(get_current_user_id), db: Session = Depends(get_db)):
-    from .models import OutboxItem, Bot
+def approve_outbox(
+    outbox_id: int,
+    db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
+):
+    from .models import OutboxItem, Bot
     ob = db.get(OutboxItem, outbox_id)
     if not ob or ob.user_id != user_id:
         raise HTTPException(404, "outbox not found")
@@ -996,7 +1033,7 @@ def approve_outbox(outbox_id: int, user: User = Depends(get_current_user_id), db
         raise HTTPException(404, "bot not found")
     if ob.status != "pending_approval":
         return {"ok": True, "status": ob.status}
-    _send_outbox(ob, bot, user, db)
+    _send_outbox(ob, bot, user_id, db)
     return {"ok": True, "status": ob.status}
 
 
@@ -1047,22 +1084,38 @@ def _on_exec(row, ctx):
             price=price, qty=qty, fee_usdt=fee, is_maker=is_maker, reduce_only=reduce_only, ts=ts
         )
         db.add(ex); db.commit()
-        from .services.bybit_sync import rebuild_positions
-        rebuild_positions(db, bot_id=bot_id)
+        reconcile_symbol(db, bot_id, symbol)
     finally:
         db.close()
 
 def _on_position(row: dict, ctx: dict):
+    from math import isclose
     bot_id = ctx.get("bot_id")
-    symbol = row.get("symbol") or row.get("s")
+    symbol = (row.get("symbol") or row.get("s") or "").upper()
     if not bot_id or not symbol:
         return
+
     size = float(row.get("size") or 0.0)
     avg_price = float(row.get("avgPrice") or 0.0)
     mark_price = float(row.get("markPrice") or 0.0)
     unreal = float(row.get("unrealisedPnl") or 0.0)
 
-    position_cache[(bot_id, symbol)] = {"size": size, "avg_price": avg_price, "mark_price": mark_price, "unrealised_pnl": unreal, "ts": time.time()}
+    # 1) live cache updaten
+    position_cache[(bot_id, symbol)] = {
+        "size": size,
+        "avg_price": avg_price,
+        "mark_price": mark_price,
+        "unrealised_pnl": unreal,
+        "ts": time.time(),
+    }
+
+    # 2) Wenn die Position auf 0 fällt → Close erkannt → Re-Sync nur Symbol
+    if isclose(size, 0.0, rel_tol=0.0, abs_tol=1e-12):
+        with SessionLocal() as db:
+            try:
+                sync_symbol_recent(db, bot_id, symbol, hours=2)
+            except Exception as e:
+                print(f"[WS ERROR] pos sync failed for {symbol}: {e}")
 
 def _start_ws_for_bot(bot):
     if not bot.is_active: return
@@ -1087,17 +1140,11 @@ def task_start_ws_for_active_bots():
     finally:
         db.close()
 
-def task_rebuild_all_bots():
-    with SessionLocal() as db:
-        bots = db.execute(select(Bot)).scalars().all()
-        for b in bots:
-            rebuild_positions(db, bot_id=b.id)
-
 @app.on_event("startup")
 def _on_startup():
     import threading
     threading.Thread(target=task_start_ws_for_active_bots, daemon=True).start()
-    threading.Thread(target=task_rebuild_all_bots, daemon=True).start()
+    #threading.Thread(target=task_rebuild_all_bots, daemon=True).start() --> wir müssen nicht alle bots (positions) rebuilden
 
 
 # ============================================================
@@ -1191,10 +1238,7 @@ def reset_consumed(bot_id: int = Query(...), db: Session = Depends(get_db), user
 
 
 @app.post("/api/v1/debug/positions/rebuild")
-def debug_rebuild(bot_id: int = Query(...), mode: str = Query("orderlink"),
+def debug_rebuild(bot_id: int = Query(...),
                   db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
-    if mode == "orderlink":
-        created = rebuild_positions_orderlink(db, bot_id=bot_id)
-    else:
-        created = rebuild_positions(db, bot_id=bot_id)  # dein bestehender Netting-Builder
-    return {"ok": True, "mode": mode, "positions_created": created}
+    created = rebuild_positions_orderlink(db, bot_id=bot_id)
+    return {"ok": True, "positions_created": created}

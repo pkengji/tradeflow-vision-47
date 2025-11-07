@@ -6,6 +6,7 @@ import json
 import requests
 from typing import Optional, Dict, Any, List, Tuple, Callable
 import websocket
+from websocket import create_connection, WebSocketConnectionClosedException
 import threading
 from .database import SessionLocal
 from . import models
@@ -193,34 +194,42 @@ class BybitWS:
     def _run(self):
         while not self._stop:
             try:
-                self.ws = websocket.create_connection(self.ws_url, timeout=10)
+                self.ws = create_connection(self.ws_url, timeout=10)
                 # auth
                 self.ws.send(json.dumps(self._auth_msg()))
                 # subscribe
                 self.ws.send(json.dumps(self._sub_msg()))
 
+                last_ping = time.time()
                 while not self._stop:
+                    # keep-alive alle 20s
+                    if time.time() - last_ping >= 20:
+                        try:
+                            self.ws.send(json.dumps({"op": "ping"}))
+                        except Exception:
+                            break
+                        last_ping = time.time()
+
                     msg = self.ws.recv()
                     if not msg:
                         break
                     data = json.loads(msg)
-                    topic = data.get("topic")
-                    # private executions
-                    if topic and "execution" in topic.lower():
+                    topic = data.get("topic") or ""
+                    # executions
+                    if "execution" in topic.lower():
                         for row in data.get("data", []):
                             try:
                                 self.on_exec(row, self.ctx)
                             except Exception:
                                 pass
                     # positions
-                    if topic and "position" in topic.lower():
+                    if "position" in topic.lower():
                         for row in data.get("data", []):
                             try:
                                 self.on_position(row, self.ctx)
                             except Exception:
                                 pass
             except Exception:
-                # beim Fehler kurz warten und neu verbinden
                 time.sleep(3)
             finally:
                 try:
@@ -243,50 +252,6 @@ class BybitWS:
                 self.ws.close()
         except Exception:
             pass
-            
-    def on_position_update(self, data):
-        for pos_data in data.get("data", []):
-            symbol = pos_data["symbol"]
-            mark_price = float(pos_data["markPrice"])
-            bot_id = self.bot_id   # muss im ctx gesetzt werden, wenn du die WS instanzierst
 
-            with SessionLocal() as db:
-                position = (
-                    db.query(models.Position)
-                      .filter(models.Position.symbol == symbol)
-                      .filter(models.Position.bot_id == bot_id)
-                      .filter(models.Position.status == "open")
-                      .order_by(models.Position.opened_at.desc())
-                      .first()
-                )
-                if not position:
-                    continue
-
-                position.mark_price = mark_price
-
-                entry_for_pnl = (
-                    position.entry_price_vwap
-                    or position.entry_price_best
-                    or position.entry_price_trigger
-                    or 0.0
-                )
-
-                unreal = compute_pnl(
-                    side=position.side,
-                    qty=position.qty or 0.0,
-                    entry_price=entry_for_pnl,
-                    mark_price=mark_price,
-                    fees_open=position.fee_open_usdt or 0.0,
-                    fees_close=0.0,
-                )
-
-                # nur hier reinschreiben
-                position.unrealized_pnl_usdt = unreal
-
-                # für offene Trades wollen wir auch gleich das „sichtbare“
-                position.pnl_usdt = unreal
-
-                db.add(position)
-                db.commit()
 
     
