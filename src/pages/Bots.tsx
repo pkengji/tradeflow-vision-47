@@ -13,6 +13,25 @@ export default function Bots() {
     queryFn: api.getBots,
   });
 
+  const { data: botsWithSymbolCount } = useQuery({
+    queryKey: ['bots-with-counts'],
+    queryFn: async () => {
+      const allBots = await api.getBots();
+      const withCounts = await Promise.all(
+        allBots.map(async (bot) => {
+          try {
+            const symbols = await api.getBotSymbols(bot.id);
+            return { ...bot, pairs_count: symbols?.filter(s => s.enabled).length || 0 };
+          } catch {
+            return { ...bot, pairs_count: 0 };
+          }
+        })
+      );
+      return withCounts;
+    },
+    enabled: !!bots,
+  });
+
   const toggleAutoApproveMutation = useMutation({
     mutationFn: async ({ botId, newValue }: { botId: number; newValue: boolean }) => {
       return api.setBotAutoApprove(botId, newValue);
@@ -31,7 +50,7 @@ export default function Bots() {
     }
   };
 
-  const visibleBots = (bots ?? []).filter(b => b.status !== 'deleted');
+  const visibleBots = (botsWithSymbolCount ?? bots ?? []).filter(b => b.status !== 'deleted' && !b.is_deleted);
 
   const handleAutoApproveToggle = (e: React.MouseEvent, bot: Bot) => {
     e.preventDefault();

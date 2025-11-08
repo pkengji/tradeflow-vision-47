@@ -55,6 +55,12 @@ export default function BotDetail() {
     enabled: !isNaN(botId!) || isNew,
   });
 
+  const { data: botSymbols } = useQuery({
+    queryKey: ['bot-symbols', botId],
+    queryFn: () => api.getBotSymbols(botId!),
+    enabled: !!botId && !isNew,
+  });
+
   const [name, setName] = useState('');
   const [uuid, setUuid] = useState('');
   const [userSecret, setUserSecret] = useState('');
@@ -110,39 +116,57 @@ export default function BotDetail() {
     if (bot) {
       setName(bot.name || '');
       setUuid(bot.uuid || '');
-      setUserSecret((bot as any).user_secret || generateSecureId(64)); // Per-user secret
-      setApiKey((bot as any).api_key || '');
-      setApiSecret((bot as any).api_secret || '');
+      setApiKey(bot.api_key_masked || '');
       setAutoApprove(!!bot.auto_approve);
-      // TODO: Load pairs from bot data when available
-      setPairs([
-        { symbol: 'BTCUSDT', leverage: 10, tvMultiplier: 1.5, directions: { long: true, short: true } },
-        { symbol: 'ETHUSDT', leverage: 'max', tvMultiplier: 2.0, directions: { long: true, short: false } },
-      ]);
+      
+      // Load bot symbols from backend
+      if (botSymbols) {
+        setPairs(botSymbols.map((bs: any) => ({
+          symbol: bs.symbol,
+          leverage: bs.leverage_override || 10,
+          tvMultiplier: bs.target_risk_amount || 1.0,
+          directions: { long: true, short: true }, // Backend doesn't store this yet
+        })));
+      }
     }
-  }, [bot]);
+  }, [bot, botSymbols]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       const botData = {
         name,
-        uuid,
-        api_key: apiKey,
-        api_secret: apiSecret,
+        description: '',
+        exchange: 'bybit',
+        strategy: '',
+        timeframe: '',
         auto_approve: autoApprove,
-        // TODO: Add more fields as needed
       };
       
+      let savedBot;
       if (isNew) {
-        return api.createBot(botData);
+        savedBot = await api.createBot(botData);
       } else {
-        return api.updateBot(botId!, botData);
+        savedBot = await api.updateBot(botId!, botData);
       }
+      
+      // Save bot symbols
+      if (savedBot && pairs.length > 0) {
+        const symbolsData = pairs.map(p => ({
+          symbol: p.symbol,
+          enabled: true,
+          target_risk_amount: p.tvMultiplier,
+          leverage_override: p.leverage === 'max' ? null : p.leverage,
+        }));
+        await api.setBotSymbols(savedBot.id, symbolsData);
+      }
+      
+      return savedBot;
     },
     onSuccess: () => {
       toast.success('Bot gespeichert');
       qc.invalidateQueries({ queryKey: ['bots'] });
       qc.invalidateQueries({ queryKey: ['bot', botId] });
+      qc.invalidateQueries({ queryKey: ['bot-symbols', botId] });
       navigate('/bots');
     },
     onError: (error: any) => {

@@ -216,35 +216,29 @@ export type TradesResponse = {
 // ---------- API-Funktionen ----------
 
 async function getBots(): Promise<Bot[]> {
-  try {
-    const rows = await http<BotRow[]>('/api/v1/bots');
-    return rows.map((b) => ({
-      id: b.id,
-      name: b.name,
-      user_id: b.user_id,
-      uuid: b.uuid,
-      description: b.description ?? null,
-      exchange: b.exchange ?? null,
-      strategy: b.strategy ?? null,
-      timeframe: b.timeframe ?? null,
-      status: b.status,
-      auto_approve: b.auto_approve,
-      position_mode: b.position_mode ?? null,
-      margin_mode: b.margin_mode ?? null,
-      default_leverage: b.default_leverage ?? null,
-      tv_risk_multiplier_default: b.tv_risk_multiplier_default ?? null,
-      is_active: b.is_active,
-      is_deleted: b.is_deleted,
-      created_at: b.created_at,
-      updated_at: b.updated_at ?? null,
-      has_exchange_keys: b.has_exchange_keys ?? false,
-      api_key_masked: b.api_key_masked ?? null,
-    }));
-  } catch (error) {
-    console.warn('API Error, using mock data:', error);
-    const { MOCK_BOTS } = await import('./mockData');
-    return MOCK_BOTS;
-  }
+  const rows = await http<BotRow[]>('/api/v1/bots');
+  return rows.map((b) => ({
+    id: b.id,
+    name: b.name,
+    user_id: b.user_id,
+    uuid: b.uuid,
+    description: b.description ?? null,
+    exchange: b.exchange ?? null,
+    strategy: b.strategy ?? null,
+    timeframe: b.timeframe ?? null,
+    status: b.status,
+    auto_approve: b.auto_approve,
+    position_mode: b.position_mode ?? null,
+    margin_mode: b.margin_mode ?? null,
+    default_leverage: b.default_leverage ?? null,
+    tv_risk_multiplier_default: b.tv_risk_multiplier_default ?? null,
+    is_active: b.is_active,
+    is_deleted: b.is_deleted,
+    created_at: b.created_at,
+    updated_at: b.updated_at ?? null,
+    has_exchange_keys: b.has_exchange_keys ?? false,
+    api_key_masked: b.api_key_masked ?? null,
+  }));
 }
 
 async function pauseBot(id: number) {
@@ -263,6 +257,14 @@ async function setBotExchangeKeys(id: number, api_key: string, api_secret: strin
   return http(`/api/v1/bots/${id}/exchange-keys`, { method: 'PUT', body: { api_key, api_secret } });
 }
 
+async function getBotSymbols(bot_id: number): Promise<any[]> {
+  return http(`/api/v1/bots/${bot_id}/symbols`);
+}
+
+async function setBotSymbols(bot_id: number, symbols: any[]): Promise<any[]> {
+  return http(`/api/v1/bots/${bot_id}/symbols`, { method: 'PUT', body: symbols });
+}
+
 async function setBotAutoApprove(bot_id: number, auto_approve: boolean) {
   return http(`/api/v1/bots/${bot_id}/auto-approve`, {
     method: 'PATCH',
@@ -273,52 +275,40 @@ async function setBotAutoApprove(bot_id: number, auto_approve: boolean) {
 type PositionsParams = { status?: string; bot_id?: number; symbol?: string; side?: string };
 
 async function getPositions(params?: PositionsParams): Promise<{ items: PositionListItem[] }> {
-  try {
-    const res = await http<{ items: any[]; total: number; page: number; page_size: number }>('/api/v1/positions', { query: params });
-    const items = (res.items ?? []).map((p: any): PositionListItem => ({
-      id: p.id,
-      bot_id: p.bot_id,
-      bot_name: p.bot_name ?? null,
-      symbol: p.symbol,
-      side: p.side ?? null,
-      status: p.status,
-      qty: p.qty ?? null,
-      entry_price: p.entry_price ?? null,
-      entry_price_trigger: p.entry_price_trigger ?? null,
-      entry_price_best: p.entry_price_best ?? null,
-      entry_price_vwap: p.entry_price_vwap ?? null,
-      exit_price: p.exit_price ?? null,
-      mark_price: p.mark_price ?? null,
-      sl: p.sl_price ?? null,
-      tp: p.tp_price ?? null,
-      pnl: p.pnl ?? null,
-      fee_open_usdt: p.fee_open_usdt ?? null,
-      fee_close_usdt: p.fee_close_usdt ?? null,
-      funding_usdt: p.funding_usdt ?? null,
-      opened_at: p.opened_at ?? null,
-      closed_at: p.closed_at ?? null,
-      trade_uid: p.trade_uid ?? null,
-      tv_signal_id: p.tv_signal_id ?? null,
-      outbox_item_id: p.outbox_item_id ?? null,
-      first_exec_at: p.first_exec_at ?? null,
-      last_exec_at: p.last_exec_at ?? null,
-    }));
-    return { items };
-  } catch (error) {
-    console.warn('API Error, using mock data:', error);
-    const { generateAllMockTrades } = await import('./mockData');
-    return { items: generateAllMockTrades() };
-  }
+  const res = await http<{ items: any[]; total: number; page: number; page_size: number }>('/api/v1/positions', { query: params });
+  const items = (res.items ?? []).map((p: any): PositionListItem => ({
+    id: p.id,
+    bot_id: p.bot_id,
+    bot_name: p.bot_name ?? null,
+    symbol: p.symbol,
+    side: p.side ?? null,
+    status: p.status,
+    qty: p.qty ?? null,
+    entry_price: p.entry_price ?? null,
+    entry_price_trigger: p.entry_price_trigger ?? null,
+    entry_price_best: p.entry_price_best ?? null,
+    entry_price_vwap: p.entry_price_vwap ?? null,
+    exit_price: p.exit_price ?? null,
+    mark_price: p.mark_price ?? null,
+    sl: p.sl_price ?? null,
+    tp: p.tp_price ?? null,
+    pnl: p.pnl ?? null,
+    fee_open_usdt: p.fee_open_usdt ?? null,
+    fee_close_usdt: p.fee_close_usdt ?? null,
+    funding_usdt: p.funding_usdt ?? null,
+    opened_at: p.opened_at ?? null,
+    closed_at: p.closed_at ?? null,
+    trade_uid: p.trade_uid ?? null,
+    tv_signal_id: p.tv_signal_id ?? null,
+    outbox_item_id: p.outbox_item_id ?? null,
+    first_exec_at: p.first_exec_at ?? null,
+    last_exec_at: p.last_exec_at ?? null,
+  }));
+  return { items };
 }
 
 async function getPosition(id: number): Promise<any> {
-  try {
-    return await http<any>(`/api/v1/positions/${id}`);
-  } catch (error) {
-    console.warn('API Error, using mock data:', error);
-    const { generateMockPositionDetail } = await import('./mockData');
-    return generateMockPositionDetail(id);
-  }
+  return await http<any>(`/api/v1/positions/${id}`);
 }
 
 async function setPositionSlTp(position_id: number, params: { sl?: number; tp?: number }) {
@@ -330,44 +320,21 @@ async function closePosition(position_id: number) {
 }
 
 async function getOrders(position_id: number): Promise<any[]> {
-  try {
-    return await http<any[]>('/api/v1/orders', { query: { position_id } });
-  } catch (error) {
-    console.warn('API Error, using mock data:', error);
-    const { generateMockOrders } = await import('./mockData');
-    return generateMockOrders(position_id);
-  }
+  return await http<any[]>('/api/v1/orders', { query: { position_id } });
 }
 
 async function getFunding(position_id: number): Promise<any[]> {
-  try {
-    return await http<any[]>('/api/v1/funding', { query: { position_id } });
-  } catch (error) {
-    console.warn('API Error, using mock data:', error);
-    const { generateMockFunding } = await import('./mockData');
-    return generateMockFunding(position_id);
-  }
+  return await http<any[]>('/api/v1/funding', { query: { position_id } });
 }
 
 async function getSymbols(): Promise<string[]> {
-  try {
-    const rows = await http<SymbolRow[]>('/api/v1/symbols');
-    return rows.map((s) => s.symbol ?? (s as any).name ?? String(s));
-  } catch (error) {
-    console.warn('API Error, using mock data:', error);
-    const { MOCK_SYMBOLS } = await import('./mockData');
-    return MOCK_SYMBOLS;
-  }
+  const rows = await http<SymbolRow[]>('/api/v1/symbols');
+  return rows.map((s) => s.symbol ?? (s as any).name ?? String(s));
 }
 
 async function getDailyPnl(params?: { days?: number; bot_id?: number }): Promise<PnlDailyPoint[]> {
-  try {
-    const rows = await http<PnlDailyRowRaw[]>('/api/v1/dashboard/daily-pnl', { query: params });
-    return rows.map((r) => ({ date: r.day, pnl: r.pnl_net_usdt ?? 0 }));
-  } catch (error) {
-    console.warn('API Error getting daily PnL:', error);
-    return [];
-  }
+  const rows = await http<PnlDailyRowRaw[]>('/api/v1/dashboard/daily-pnl', { query: params });
+  return rows.map((r) => ({ date: r.day, pnl: r.pnl_net_usdt ?? 0 }));
 }
 
 async function getOutbox(params?: { status?: string; limit?: number }): Promise<OutboxItem[]> {
@@ -391,15 +358,13 @@ async function logAction(event: string, payload?: any): Promise<null | any> {
 }
 
 async function getAvailablePairs(): Promise<Array<{ symbol: string; name: string; icon: string }>> {
-  try {
-    // TODO: Replace with actual API call when available
-    // return http<Array<{ symbol: string; name: string; icon: string }>>('/api/v1/pairs');
-    throw new Error('Not implemented');
-  } catch (error) {
-    console.warn('API Error, using mock data:', error);
-    const { MOCK_AVAILABLE_PAIRS } = await import('./mockData');
-    return MOCK_AVAILABLE_PAIRS;
-  }
+  // Using symbols endpoint for now
+  const symbols = await getSymbols();
+  return symbols.map(symbol => ({
+    symbol,
+    name: symbol.replace('USDT', ''),
+    icon: `https://cryptoicons.org/api/icon/${symbol.replace('USDT', '').toLowerCase()}/32`
+  }));
 }
 
 // Bot management
@@ -481,6 +446,8 @@ export const api = {
   setBotAutoApprove,
   getBotExchangeKeys,
   setBotExchangeKeys,
+  getBotSymbols,
+  setBotSymbols,
 
   // Positions / Trades
   getPositions,
