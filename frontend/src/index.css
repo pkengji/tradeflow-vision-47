@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 220 20% 10%;
+    --foreground: 210 15% 95%;
+
+    --card: 220 18% 14%;
+    --card-foreground: 210 15% 95%;
+
+    --popover: 220 18% 14%;
+    --popover-foreground: 210 15% 95%;
+
+    --primary: 210 12% 85%;
+    --primary-foreground: 220 20% 10%;
+
+    --secondary: 220 16% 18%;
+    --secondary-foreground: 210 15% 95%;
+
+    --muted: 220 16% 18%;
+    --muted-foreground: 210 10% 60%;
+
+    --accent: 220 16% 20%;
+    --accent-foreground: 210 15% 95%;
+
+    --success: 137 96% 58%;
+    --success-foreground: 128 61% 13%;
+    
+    --danger: 12 87% 49%;
+    --danger-foreground: 4 69% 23%;
+
+    --destructive: 12 87% 49%;
+    --destructive-foreground: 4 69% 23%;
+
+    --border: 220 16% 22%;
+    --input: 220 16% 22%;
+    --ring: 210 12% 85%;
+
+    --radius: 0.5rem;
+
+    --chart-1: 210 12% 85%;
+    --chart-2: 142 70% 45%;
+    --chart-3: 0 70% 50%;
+    --chart-4: 43 80% 55%;
+    --chart-5: 280 60% 58%;
+
+    /* Trading-specific colors */
+    --long: 137 96% 58%;
+    --long-foreground: 128 61% 13%;
+    --short: 12 87% 49%;
+    --short-foreground: 4 69% 23%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+  
+  /* Typography Scale */
+  :root {
+    --font-size-page-title: 1rem; /* 16px - für Seitentitel auf Mobile */
+    --font-size-section-title: 0.875rem; /* 14px - Untertitel 1 (Gesamtansicht etc.) */
+    --font-size-subsection-title: 0.75rem; /* 12px - Untertitel 2 (Portfolio total etc.) */
+    --font-size-value-large: 1.5rem; /* 24px - Portfoliowert */
+    --font-size-value-medium: 1.125rem; /* 18px - Metriken */
+    --font-size-label: 0.75rem; /* 12px - Labels */
+  }
+}
