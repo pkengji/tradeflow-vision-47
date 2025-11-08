@@ -46,6 +46,7 @@ async function http<T = any>(path: string, opts: FetchOpts = {}): Promise<T> {
         : JSON.stringify(opts.body),
     signal: controller.signal,
     mode: 'cors',
+    credentials: 'include',
   }).catch((e) => {
     clearTimeout(timeout);
     throw new Error(`Network error: ${e}`);
@@ -412,6 +413,7 @@ async function updateBot(id: number, data: Partial<Bot>): Promise<Bot> {
 }
 
 // Auth
+
 async function login(credentials: { email?: string; username?: string; password: string }): Promise<any> {
   return http('/api/v1/auth/login', { method: 'POST', body: credentials });
 }

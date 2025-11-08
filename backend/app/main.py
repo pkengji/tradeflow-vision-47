@@ -32,14 +32,23 @@ app = FastAPI(title="TradingBot Backend (User Scope Patch)", version="0.3.0")
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
 
 ALLOWED_ORIGINS = [
-    "http://localhost:8080", "http://127.0.0.1:8080", "http://localhost:5173", "http://127.0.0.1:5173",
-    "https://*lovable.dev*", "https://*lovable.app*", "https://joane-afflated-solicitously.ngrok-free.dev"]
+    "https://lovable.dev",
+    "https://app.lovable.dev",
+    "https://studio.lovable.dev",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "https://joane-afflated-solicitously.ngrok-free.dev",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r".*",
+    #allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    max_age=600,
 )
 
 Base.metadata.create_all(bind=engine)
@@ -162,7 +171,7 @@ def login(body: LoginBody, db: Session = Depends(get_db)):
 
     payload = {"ok": True, "user": UserOut.model_validate(u, from_attributes=True).model_dump()}
     resp = JSONResponse(content=payload)
-    resp.set_cookie(key="uid", value=str(u.id), httponly=True, samesite="lax", secure=False, path="/")
+    resp.set_cookie(key="uid", value=str(u.id), httponly=True, samesite="none", secure=True, path="/")
     return resp
 
 @app.post("/api/v1/auth/logout")
