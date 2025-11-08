@@ -69,22 +69,31 @@ async function http<T = any>(path: string, opts: FetchOpts = {}): Promise<T> {
   return (await res.json()) as T;
 }
 
-// ---------- Roh-Typen vom Backend ----------
+// ---------- Roh-Typen vom Backend (aktualisiert) ----------
 
 type BotRow = {
   id: number;
   name: string;
+  user_id: number;
+  uuid: string;
+  description?: string | null;
+  exchange?: string | null;
   strategy?: string | null;
   timeframe?: string | null;
-  tv_risk_multiplier_default?: number | null;
+  status: string; // 'active' | 'paused' | 'deleted'
+  auto_approve: boolean;
   position_mode?: string | null;
   margin_mode?: string | null;
   default_leverage?: number | null;
-  status: 'active' | 'paused' | 'deleted';
-  auto_approve: boolean;
-  is_deleted?: boolean;
-  created_at?: string;
+  tv_risk_multiplier_default?: number | null;
+  is_active: boolean;
+  is_deleted: boolean;
+  created_at: string;
   updated_at?: string | null;
+  api_key?: string | null;
+  api_secret?: string | null;
+  has_exchange_keys?: boolean;
+  api_key_masked?: string | null;
 };
 
 type SymbolRow = {
@@ -109,36 +118,53 @@ type PnlDailyRowRaw = {
 export type Bot = {
   id: number;
   name: string;
+  user_id: number;
+  uuid: string;
+  description?: string | null;
+  exchange?: string | null;
   strategy?: string | null;
   timeframe?: string | null;
-  tv_risk_multiplier_default?: number | null;
+  status: string; // 'active' | 'paused' | 'deleted'
+  auto_approve: boolean;
   position_mode?: string | null;
   margin_mode?: string | null;
   default_leverage?: number | null;
-  status: 'active' | 'paused' | 'deleted';
-  auto_approve: boolean;
-  uuid: string | null;
-  secret: string | null;
-  max_leverage: number | null;
-  is_deleted?: boolean;
-  created_at?: string;
+  tv_risk_multiplier_default?: number | null;
+  is_active: boolean;
+  is_deleted: boolean;
+  created_at: string;
   updated_at?: string | null;
+  has_exchange_keys?: boolean;
+  api_key_masked?: string | null;
 };
 
 export type PositionListItem = {
   id: number;
-  symbol: string;
-  side: 'long' | 'short';
-  status: string;
-  entry_price: number | null;
-  qty: number | null;
+  bot_id: number;
   bot_name: string | null;
+  symbol: string;
+  side: 'long' | 'short' | null;
+  status: string; // 'open' | 'closed'
+  qty: number | null;
+  entry_price: number | null;
+  entry_price_trigger?: number | null;
+  entry_price_best?: number | null;
+  entry_price_vwap?: number | null;
+  exit_price?: number | null; // exit_price_vwap
+  mark_price?: number | null;
+  sl?: number | null; // sl_price
+  tp?: number | null; // tp_price
+  pnl: number | null; // pnl_usdt oder unrealized_pnl_usdt
+  fee_open_usdt?: number | null;
+  fee_close_usdt?: number | null;
+  funding_usdt?: number | null;
   opened_at: string | null;
   closed_at: string | null;
-  pnl: number | null;
-  sl?: number | null;          // aus sl_trigger (oder sl_limit)
-  tp?: number | null;          // aus tp_trigger
-  exit_price?: number | null;  // bei closed: als "mark"-Ersatz
+  trade_uid?: string | null;
+  tv_signal_id?: number | null;
+  outbox_item_id?: number | null;
+  first_exec_at?: string | null;
+  last_exec_at?: string | null;
 };
 
 export type PnlDailyPoint = { date: string; pnl: number };
@@ -195,20 +221,24 @@ async function getBots(): Promise<Bot[]> {
     return rows.map((b) => ({
       id: b.id,
       name: b.name,
+      user_id: b.user_id,
+      uuid: b.uuid,
+      description: b.description ?? null,
+      exchange: b.exchange ?? null,
       strategy: b.strategy ?? null,
       timeframe: b.timeframe ?? null,
-      tv_risk_multiplier_default: b.tv_risk_multiplier_default ?? null,
+      status: b.status,
+      auto_approve: b.auto_approve,
       position_mode: b.position_mode ?? null,
       margin_mode: b.margin_mode ?? null,
       default_leverage: b.default_leverage ?? null,
-      status: b.status,
-      auto_approve: b.auto_approve,
-      uuid: null,
-      secret: null,
-      max_leverage: null,
-      is_deleted: b.is_deleted ?? false,
+      tv_risk_multiplier_default: b.tv_risk_multiplier_default ?? null,
+      is_active: b.is_active,
+      is_deleted: b.is_deleted,
       created_at: b.created_at,
       updated_at: b.updated_at ?? null,
+      has_exchange_keys: b.has_exchange_keys ?? false,
+      api_key_masked: b.api_key_masked ?? null,
     }));
   } catch (error) {
     console.warn('API Error, using mock data:', error);
@@ -226,6 +256,12 @@ async function resumeBot(id: number) {
 async function deleteBot(id: number) {
   return http(`/api/v1/bots/${id}`, { method: 'DELETE' });
 }
+async function getBotExchangeKeys(id: number): Promise<{ api_key_masked: string | null; has_api_secret: boolean }> {
+  return http(`/api/v1/bots/${id}/exchange-keys`);
+}
+async function setBotExchangeKeys(id: number, api_key: string, api_secret: string) {
+  return http(`/api/v1/bots/${id}/exchange-keys`, { method: 'PUT', body: { api_key, api_secret } });
+}
 
 async function setBotAutoApprove(bot_id: number, auto_approve: boolean) {
   return http(`/api/v1/bots/${bot_id}/auto-approve`, {
@@ -238,21 +274,34 @@ type PositionsParams = { status?: string; bot_id?: number; symbol?: string; side
 
 async function getPositions(params?: PositionsParams): Promise<{ items: PositionListItem[] }> {
   try {
-    const res = await http<PositionsResponseRaw>('/api/v1/positions', { query: params });
+    const res = await http<{ items: any[]; total: number; page: number; page_size: number }>('/api/v1/positions', { query: params });
     const items = (res.items ?? []).map((p: any): PositionListItem => ({
       id: p.id,
-      symbol: p.symbol,
-      side: p.side,
-      status: p.status,
-      entry_price: p.entry_price ?? null,
-      qty: p.qty ?? p.tv_qty ?? null,
+      bot_id: p.bot_id,
       bot_name: p.bot_name ?? null,
+      symbol: p.symbol,
+      side: p.side ?? null,
+      status: p.status,
+      qty: p.qty ?? null,
+      entry_price: p.entry_price ?? null,
+      entry_price_trigger: p.entry_price_trigger ?? null,
+      entry_price_best: p.entry_price_best ?? null,
+      entry_price_vwap: p.entry_price_vwap ?? null,
+      exit_price: p.exit_price ?? null,
+      mark_price: p.mark_price ?? null,
+      sl: p.sl_price ?? null,
+      tp: p.tp_price ?? null,
+      pnl: p.pnl ?? null,
+      fee_open_usdt: p.fee_open_usdt ?? null,
+      fee_close_usdt: p.fee_close_usdt ?? null,
+      funding_usdt: p.funding_usdt ?? null,
       opened_at: p.opened_at ?? null,
       closed_at: p.closed_at ?? null,
-      pnl: p.realized_pnl_net_usdt ?? null,
-      sl: p.sl_trigger ?? null,
-      tp: p.tp_trigger ?? null,
-      exit_price: p.exit_price ?? null,
+      trade_uid: p.trade_uid ?? null,
+      tv_signal_id: p.tv_signal_id ?? null,
+      outbox_item_id: p.outbox_item_id ?? null,
+      first_exec_at: p.first_exec_at ?? null,
+      last_exec_at: p.last_exec_at ?? null,
     }));
     return { items };
   } catch (error) {
@@ -312,8 +361,13 @@ async function getSymbols(): Promise<string[]> {
 }
 
 async function getDailyPnl(params?: { days?: number; bot_id?: number }): Promise<PnlDailyPoint[]> {
-  const rows = await http<PnlDailyRowRaw[]>('/api/v1/dashboard/daily-pnl', { query: params });
-  return rows.map((r) => ({ date: r.day, pnl: r.pnl_net_usdt ?? 0 }));
+  try {
+    const rows = await http<PnlDailyRowRaw[]>('/api/v1/dashboard/daily-pnl', { query: params });
+    return rows.map((r) => ({ date: r.day || r.date, pnl: r.pnl_net_usdt ?? r.pnl ?? 0 }));
+  } catch (error) {
+    console.warn('API Error getting daily PnL:', error);
+    return [];
+  }
 }
 
 async function getOutbox(params?: { status?: string; limit?: number }): Promise<OutboxItem[]> {
@@ -357,37 +411,49 @@ async function updateBot(id: number, data: Partial<Bot>): Promise<Bot> {
   return http<Bot>(`/api/v1/bots/${id}`, { method: 'PATCH', body: data });
 }
 
+// Auth
+async function login(credentials: { email?: string; username?: string; password: string }): Promise<any> {
+  return http('/api/v1/auth/login', { method: 'POST', body: credentials });
+}
+
+async function logout(): Promise<any> {
+  return http('/api/v1/auth/logout', { method: 'POST' });
+}
+
+async function getMe(): Promise<any> {
+  return http('/api/v1/me');
+}
+
 // User settings
-async function updateUserProfile(data: { name?: string; email?: string }): Promise<any> {
-  return http('/api/v1/user/profile', { method: 'PATCH', body: data });
+async function updateUserProfile(data: { username?: string; email?: string }): Promise<any> {
+  return http('/api/v1/me', { method: 'PATCH', body: data });
 }
 
-async function updateUserPassword(data: { current_password: string; new_password: string }): Promise<any> {
-  return http('/api/v1/user/password', { method: 'PATCH', body: data });
+async function updateUserPassword(data: { new_password: string }): Promise<any> {
+  return http('/api/v1/me/password', { method: 'POST', body: data });
 }
 
-// Timezone settings
-async function updateTimezone(data: { use_system: boolean; timezone?: string }): Promise<any> {
-  return http('/api/v1/user/timezone', { method: 'PATCH', body: data });
+async function getWebhookSecret(): Promise<{ webhook_secret: string }> {
+  return http('/api/v1/me/webhook-secret');
 }
 
-// Notification settings
-async function getNotificationSettings(): Promise<any> {
-  return http('/api/v1/user/notifications');
-}
-
-async function updateNotificationSettings(settings: any): Promise<any> {
-  return http('/api/v1/user/notifications', { method: 'PATCH', body: settings });
+async function rotateWebhookSecret(): Promise<{ webhook_secret: string }> {
+  return http('/api/v1/me/webhook-secret/rotate', { method: 'POST' });
 }
 
 // User management (admin)
-async function createUser(data: { username: string; email: string; password: string; role: string }): Promise<any> {
-  return http('/api/v1/admin/users', { method: 'POST', body: data });
+async function createUser(data: { username: string; email: string; password: string; role?: string }): Promise<any> {
+  return http('/api/v1/users', { method: 'POST', body: data });
 }
 
 // ---------- Export-Objekt ----------
 
 export const api = {
+  // Auth
+  login,
+  logout,
+  getMe,
+
   // Bots
   getBots,
   createBot,
@@ -396,6 +462,8 @@ export const api = {
   resumeBot,
   deleteBot,
   setBotAutoApprove,
+  getBotExchangeKeys,
+  setBotExchangeKeys,
 
   // Positions / Trades
   getPositions,
@@ -421,9 +489,8 @@ export const api = {
   // User settings
   updateUserProfile,
   updateUserPassword,
-  updateTimezone,
-  getNotificationSettings,
-  updateNotificationSettings,
+  getWebhookSecret,
+  rotateWebhookSecret,
 
   // Admin
   createUser,
