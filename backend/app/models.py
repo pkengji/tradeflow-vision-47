@@ -248,6 +248,9 @@ class Symbol(Base):
     quote_currency: Mapped[str] = mapped_column(String)
     max_leverage: Mapped[float] = mapped_column(Float, default=100.0)
     refreshed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    icon_url = Column(String, nullable=True)                 # Quelle (CDN/Coingecko…)
+    icon_local_path = Column(String, nullable=True)          # z.B. "icons/btc.png"
+    icon_last_synced_at = Column(DateTime(timezone=True), nullable=True)
 
 
 # =========================

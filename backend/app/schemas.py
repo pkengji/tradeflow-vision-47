@@ -109,7 +109,7 @@ class SymbolOut(BaseModel):
     base_currency: str
     quote_currency: str
     max_leverage: float
-    icon_candidates: list[str] = []
+    icon: Optional[str] = None
     # refreshed_at lassen wir in der Response weg (kannst du leicht ergänzen)
 
 # ---------- Positions / Outbox / PnL ----------

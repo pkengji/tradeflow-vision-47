@@ -11,7 +11,7 @@ import secrets
 from .models import Bot, Position
 from sqlalchemy import or_, select, func
 from .services.bybit_sync import sync_backfill_since, sync_recent_closures, quick_sync_symbol, sync_full_history,rebuild_positions_orderlink, sync_symbol_recent, sync_recent_all_bots, reconcile_symbol
-from .services.symbols import sync_symbols_linear_usdt, list_pairs_payload
+from .services.symbols import sync_symbols_linear_usdt, list_pairs_payload, ensure_symbol_icon
 from collections import defaultdict
 from datetime import datetime, timezone, date, timedelta
 from app.services.positions import handle_position_close, reconcile_symbol
@@ -25,13 +25,16 @@ from .schemas import (
     PositionOut, PositionsResponse, OutboxOut, DailyPnlPoint
 )
 from . import crud
+from starlette.staticfiles import StaticFiles
 
 app = FastAPI(title="TradingBot Backend (User Scope Patch)", version="0.3.0")
 
-ALLOWED_ORIGINS = ["http://localhost:8080", "http://127.0.0.1:8080", "http://localhost:5173", "http://127.0.0.1:5173"]
+app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
+
+ALLOWED_ORIGINS = ["http://localhost:8080", "http://127.0.0.1:8080", "http://localhost:5173", "http://127.0.0.1:5173", "http://lovable.dev/projects/ea6e77ba-85b1-417c-983b-b0320eb916ea"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -715,31 +718,59 @@ def symbols_sync(db: Session = Depends(get_db), user_id: int = Depends(get_curre
     count = sync_symbols_linear_usdt(db, bybit_client)
     return {"ok": True, "updated": count}
 
-def icon_candidates_for(base: str) -> list[str]:
-    b = (base or "").lower()
-    if not b: return []
-    return [
-        f"https://assets.coincap.io/assets/icons/{b}@2x.png",
-        f"https://cryptoicons.org/api/icon/{b}/64",
-        f"https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/svg/color/{b}.svg",
-        f"https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/svg/black/{b}.svg",
-    ]
+
+@app.post("/api/v1/symbols/icons/refresh")
+def refresh_symbols_icons(db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id), max_age_days: int = 30):
+    syms = db.execute(select(models.Symbol)).scalars().all()
+    updated = 0
+    for s in syms:
+        before = s.icon_local_path
+        url = ensure_symbol_icon(db, s, max_age_days=max_age_days)
+        if url and (before != s.icon_local_path):
+            updated += 1
+    db.commit()
+    return {"ok": True, "updated": updated, "count": len(syms)}
+
+# Optional: wöchentlicher Hintergrund-Refresh (einfacher Thread)
+import threading, time
+def _weekly_icon_refresher():
+    while True:
+        try:
+            with SessionLocal() as db:
+                syms = db.execute(select(models.Symbol)).scalars().all()
+                for s in syms:
+                    ensure_symbol_icon(db, s, max_age_days=7)
+                db.commit()
+        except Exception as e:
+            print("[icons] refresh error:", e)
+        time.sleep(7 * 24 * 3600)  # wöchentlich
+
+@app.on_event("startup")
+def _start_icon_refresher():
+    t = threading.Thread(target=_weekly_icon_refresher, daemon=True)
+    t.start()
 
 @app.get("/api/v1/pairs")
 def list_pairs():
     with SessionLocal() as db:
-        rows = db.query(models.Symbol).all()
+        rows = db.query(models.Symbol).order_by(models.Symbol.symbol.asc()).all()
         out = []
         for r in rows:
-            out.append(SymbolOut(
-                symbol=r.symbol,
-                tick_size=r.tick_size,
-                step_size=r.step_size,
-                base_currency=r.base_currency,
-                quote_currency=r.quote_currency,
-                max_leverage=r.max_leverage,
-                icon_candidates=icon_candidates_for(r.base_currency),
-            ))
+            # Sicherstellen, dass das Icon lokal liegt (lädt nur, wenn fehlt/alt)
+            icon_url = ensure_symbol_icon(db, r, max_age_days=30) \
+                       or r.icon_url \
+                       or f"https://cryptoicons.org/api/icon/{(r.base_currency or '').lower()}/64"
+
+            out.append({
+                "symbol": r.symbol,
+                "tick_size": r.tick_size,
+                "step_size": r.step_size,
+                "base_currency": r.base_currency,
+                "quote_currency": r.quote_currency,
+                "max_leverage": r.max_leverage,
+                "icon": icon_url,  # << nur eine finale URL
+            })
+        db.commit()
         return out
 
 @app.get("/api/v1/symbols/all", response_model=List[str])

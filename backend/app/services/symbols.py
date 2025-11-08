@@ -1,12 +1,15 @@
 # app/services/symbols.py
 from __future__ import annotations
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+
+import os, io, requests
 
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from .. import models
+
 
 # Versuche deinen bestehenden v5-Client zu nutzen (signiert); Market-Info ist public,
 # aber wir verwenden _request falls vorhanden.
@@ -14,6 +17,9 @@ try:
     from ..bybit_v5 import BybitV5Client  # dein existierender Client
 except Exception:
     BybitV5Client = None  # type: ignore
+
+ICONS_DIR = os.path.join(os.path.dirname(__file__), "static", "icons")  # app/static/icons
+os.makedirs(ICONS_DIR, exist_ok=True)
 
 # --- Utils ---
 
@@ -130,22 +136,77 @@ def sync_symbols_linear_usdt(db: Session, bybit_client: Optional[Any] = None) ->
 
 # --- Query Helpers für API ---
 
-def list_pairs_payload(db: Session) -> List[Dict[str, Any]]:
+def _base_from_symbol(sym: str) -> str:
+    # "BTCUSDT" → "BTC"
+    return (sym or "").upper().replace("USDT", "").replace("USD", "").replace("PERP", "")
+
+def _candidate_icon_urls(base: str) -> list[str]:
+    b = base.lower()
+    return [
+        f"https://cryptoicons.org/api/icon/{b}/64",               # schnell, häufig ausreichend
+        f"https://assets.coingecko.com/coins/images/1/large/{b}.png",  # heuristisch/fallback
+    ]
+
+def _fetch_first_ok(urls: list[str]) -> tuple[bytes, str] | tuple[None, None]:
+    for u in urls:
+        try:
+            r = requests.get(u, timeout=6)
+            if r.ok and r.content:
+                return r.content, u
+        except Exception:
+            pass
+    return None, None
+
+def ensure_symbol_icon(db: Session, sym: models.Symbol, max_age_days: int = 30) -> str | None:
     """
-    Gibt frontend-fertige Pairs mit Precision & Icon zurück.
+    Stellt sicher, dass das Icon lokal vorliegt (app/static/icons/<base>.png).
+    Gibt die relative URL zurück: '/static/icons/<base>.png' oder None.
     """
+    base = _base_from_symbol(sym.symbol)
+    if not base:
+        return None
+
+    filename = f"{base.lower()}.png"
+    local_rel = f"icons/{filename}"
+    local_abs = os.path.join(ICONS_DIR, filename)
+
+    # Reuse, wenn frisch genug und Datei existiert
+    fresh_enough = sym.icon_last_synced_at and (datetime.now(timezone.utc) - sym.icon_last_synced_at) < timedelta(days=max_age_days)
+    if sym.icon_local_path and os.path.exists(os.path.join(os.path.dirname(ICONS_DIR), sym.icon_local_path)) and fresh_enough:
+        return f"/static/{sym.icon_local_path}"
+
+    # Download versuchen
+    content, src = _fetch_first_ok(_candidate_icon_urls(base))
+    if content:
+        with open(local_abs, "wb") as f:
+            f.write(content)
+        sym.icon_local_path = local_rel
+        sym.icon_url = src
+        sym.icon_last_synced_at = datetime.now(timezone.utc)
+        db.add(sym)
+        db.flush()
+        return f"/static/{local_rel}"
+
+    # Fallback: keine Datei → None lassen
+    return None
+
+
+def list_pairs_payload(db: Session) -> list[dict]:
     rows = db.execute(select(models.Symbol).order_by(models.Symbol.symbol.asc())).scalars().all()
-    out: List[Dict[str, Any]] = []
+    out = []
     for r in rows:
         price_decimals = _decimals_from_increment(r.tick_size or 0.0)
         qty_decimals = _decimals_from_increment(r.step_size or 0.0)
         base = (r.base_currency or "").upper()
-        icon = f"https://cryptoicons.org/api/icon/{base.lower()}/64"  # simple CDN; funktioniert für die gängigen Tickers
+
+        # NEU: Icon lokal sicherstellen (nicht bei jedem Request – max_age z.B. 30 Tage)
+        icon_url = ensure_symbol_icon(db, r, max_age_days=30) or r.icon_url \
+                   or f"https://cryptoicons.org/api/icon/{base.lower()}/64"
 
         out.append({
             "symbol": r.symbol,
-            "name": base,                   # Anzeigename = Base-Coin
-            "icon": icon,                   # Icon-URL
+            "name": base,
+            "icon": icon_url,                       # bevorzugt lokal
             "base": base,
             "quote": (r.quote_currency or "").upper(),
             "price_decimals": price_decimals,

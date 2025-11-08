@@ -365,32 +365,46 @@ def _consume_execs_for_position(db: Session, pos: models.Position, *, both_sides
 
 def close_if_match(db: Session, bot_id: int, symbol: str):
     pos = (db.query(models.Position)
-             .filter(models.Position.bot_id == bot_id,
-                     models.Position.symbol == symbol,
-                     models.Position.status == "open")
-             .first())
+           .filter(models.Position.bot_id == bot_id,
+                   models.Position.symbol == symbol,
+                   models.Position.status == "open")
+           .first())
     if not pos:
         return None
 
-    # Exits aggregieren (deine vorhandene Logik nutzen)
+    # Exits aggregieren
     exit_vwap, fee_close, exit_ts = _aggregate_exits_for_position(db, pos.id)
-    if not exit_vwap:
-        return None  # noch nicht genug Exits
+    if exit_vwap is None or exit_ts is None:
+        return None  # noch nicht genug/valide Exits
 
-    entry_px = pos.entry_price_vwap or pos.entry_price_trigger or 0.0
-    qty = float(pos.qty or 0.0)
-    side = (pos.side or "long").lower()
-    pnl_usdt = compute_pnl(
-        side=side,
-        qty=qty,
-        entry_price=entry_px,
-        mark_price=exit_vwap,
-        fees_open=float(pos.fee_open_usdt or 0.0),
-        fees_close=float(fee_close or 0.0),
+    fee_close = float(fee_close or 0.0)
+
+    # Funding im Fenster [opened_at, exit_ts]
+    funding_total = sum(
+        float(f.amount_usdt or 0.0)
+        for f in (db.query(models.FundingEvent)
+                    .filter(models.FundingEvent.bot_id == pos.bot_id)
+                    .filter(models.FundingEvent.symbol == pos.symbol)
+                    .filter(models.FundingEvent.ts >= pos.opened_at)
+                    .filter(models.FundingEvent.ts <= exit_ts))
     )
 
-    # finalize & beide Seiten konsumieren
-    pos = _finalize_position(db, pos, exit_price=exit_vwap, pnl_usdt=pnl_usdt, fee_close_usdt=float(fee_close or 0.0), closed_at=exit_ts)
+    pnl_usdt = compute_pnl(
+        side=(pos.side or "long").lower(),
+        qty=float(pos.qty or 0.0),
+        entry_price=(pos.entry_price_vwap or pos.entry_price_trigger or 0.0),
+        mark_price=exit_vwap,
+        fees_open=float(pos.fee_open_usdt or 0.0),
+        fees_close=fee_close,
+    ) - funding_total
+
+    pos = _finalize_position(
+        db, pos,
+        exit_price=exit_vwap,
+        pnl_usdt=pnl_usdt,
+        fee_close_usdt=fee_close,
+        closed_at=exit_ts,
+    )
     _consume_execs_for_position(db, pos, both_sides=True)
     return pos
 
