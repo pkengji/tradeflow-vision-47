@@ -17,8 +17,8 @@ import { toast } from 'sonner';
 import { TrendingUp } from 'lucide-react';
 
 export default function Login() {
-  const [email, setEmail] = useState('trader@example.com');
-  const [password, setPassword] = useState('password');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
@@ -31,11 +31,11 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      await login(email, password);
+      await login(username, password);
       toast.success('Erfolgreich angemeldet');
       navigate('/');
     } catch (error) {
-      toast.error('Anmeldung fehlgeschlagen');
+      toast.error('Anmeldung fehlgeschlagen. Bitte überprüfen Sie Ihre Zugangsdaten.');
     } finally {
       setIsLoading(false);
     }
@@ -75,13 +75,13 @@ export default function Login() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">E-Mail</Label>
+              <Label htmlFor="username">Benutzername</Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="trader@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="username"
+                type="text"
+                placeholder="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 required
               />
             </div>

@@ -1,16 +1,17 @@
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
+import { api } from '@/lib/api';
 
 export type Role = 'admin' | 'trader';
 export interface User {
   id: string;
   email: string;
-  name: string;
+  username: string;
   role: Role;
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -23,28 +24,44 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('auth_token');
-    const savedUser = localStorage.getItem('user');
-    if (token && savedUser) {
+    // Check if user is already logged in via cookie
+    const checkAuth = async () => {
       try {
-        const u: User = JSON.parse(savedUser);
-        setUser({ ...u, role: 'admin' });
-      } catch {}
-    }
-    setIsLoading(false);
+        const response = await api.getMe();
+        if (response.ok && response.user) {
+          setUser({
+            id: response.user.id,
+            email: response.user.email,
+            username: response.user.username,
+            role: response.user.is_admin ? 'admin' : 'trader',
+          });
+        }
+      } catch (error) {
+        // Not logged in
+        setUser(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    checkAuth();
   }, []);
 
-  const login = async (email: string, _password: string) => {
-    // Replace with real API call later
-    const mock: User = { id: '1', email, name: 'Owner', role: 'admin' };
-    localStorage.setItem('auth_token', 'mock-token');
-    localStorage.setItem('user', JSON.stringify(mock));
-    setUser(mock);
+  const login = async (username: string, password: string) => {
+    const response = await api.login({ username, password });
+    if (response.ok && response.user) {
+      setUser({
+        id: response.user.id,
+        email: response.user.email,
+        username: response.user.username,
+        role: response.user.is_admin ? 'admin' : 'trader',
+      });
+    } else {
+      throw new Error('Login fehlgeschlagen');
+    }
   };
 
   const logout = async () => {
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('user');
+    await api.logout();
     setUser(null);
   };
 

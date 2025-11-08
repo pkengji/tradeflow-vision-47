@@ -14,13 +14,13 @@ import api from '@/lib/api';
 export default function SettingsAccount() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [username, setUsername] = useState(user?.name ?? '');
+  const [username, setUsername] = useState(user?.username ?? '');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
   const profileMutation = useMutation({
     mutationFn: async () => {
-      if (username !== user?.name) {
+      if (username !== user?.username) {
         await api.updateUserProfile({ username });
       }
       if (newPassword) {
