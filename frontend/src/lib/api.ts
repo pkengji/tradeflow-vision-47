@@ -368,6 +368,8 @@ export type SymbolInfo = {
   step_size?: number;
   base_currency?: string;
   quote_currency?: string;
+  icon_url?: string;
+  icon_local_path?: string;
 };
 
 async function getAllSymbols(): Promise<SymbolInfo[]> {
@@ -379,6 +381,8 @@ async function getAllSymbols(): Promise<SymbolInfo[]> {
     step_size: s.step_size ?? s.stepSize,
     base_currency: s.base_currency ?? s.baseCurrency,
     quote_currency: s.quote_currency ?? s.quoteCurrency,
+    icon_url: s.icon_url,
+    icon_local_path: s.icon_local_path,
   }));
 }
 
@@ -425,13 +429,14 @@ async function logAction(event: string, payload?: any): Promise<null | any> {
   });
 }
 
-async function getAvailablePairs(): Promise<Array<{ symbol: string; name: string; icon: string; max_leverage?: number }>> {
+async function getAvailablePairs(): Promise<Array<{ symbol: string; name: string; icon?: string; icon_url?: string; max_leverage?: number }>> {
   try {
     const symbols = await getAllSymbols();
     return symbols.map((s) => ({
       symbol: s.symbol,
       name: s.base_currency || s.symbol.replace('USDT', ''),
-      icon: '●', // Default icon
+      icon: s.icon_local_path || s.icon_url, // Prioritize local path, then URL
+      icon_url: s.icon_url,
       max_leverage: s.max_leverage,
     }));
   } catch (error) {

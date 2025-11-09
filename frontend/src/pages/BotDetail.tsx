@@ -73,8 +73,6 @@ export default function BotDetail() {
   const [sortBy, setSortBy] = useState<'symbol' | 'leverage' | 'multiplier'>('symbol');
   const [addPairDialogOpen, setAddPairDialogOpen] = useState(false);
   const [selectedNewPairs, setSelectedNewPairs] = useState<string[]>([]);
-  const [showUserSecret, setShowUserSecret] = useState(false);
-  const [showApiSecret, setShowApiSecret] = useState(false);
 
   // Generate secure UUID and Secret for new bot
   const generateSecureId = (length: number = 32): string => {
@@ -108,7 +106,6 @@ export default function BotDetail() {
   const { data: webhookSecretData } = useQuery({
     queryKey: ['webhookSecret'],
     queryFn: () => api.getWebhookSecret(),
-    enabled: !isNew,
   });
 
   // Get max leverage for each pair (from backend)
@@ -131,10 +128,14 @@ export default function BotDetail() {
         { symbol: 'ETHUSDT', leverage: 'max', tvMultiplier: 2.0, directions: { long: true, short: false } },
       ]);
     }
+  }, [bot]);
+
+  // Initialize webhook secret separately
+  useMemo(() => {
     if (webhookSecretData?.webhook_secret) {
       setWebhookSecret(webhookSecretData.webhook_secret);
     }
-  }, [bot, webhookSecretData]);
+  }, [webhookSecretData]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -531,7 +532,18 @@ export default function BotDetail() {
                             : ''
                         }`}
                       >
-                        <span className="mr-2 text-lg">{pair.icon}</span>
+                        {pair.icon ? (
+                          <img 
+                            src={pair.icon} 
+                            alt={pair.symbol}
+                            className="mr-2 h-5 w-5 rounded-full object-cover"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                        ) : (
+                          <span className="mr-2 text-lg">●</span>
+                        )}
                         <span className="font-medium">{pair.symbol}</span>
                         <span className="ml-2 text-xs text-muted-foreground">{pair.name}</span>
                       </CommandItem>
@@ -586,9 +598,27 @@ export default function BotDetail() {
               return (
                 <div key={pair.symbol} className="py-1 flex items-start gap-1.5">
                   {/* Icon */}
-                  <div className="w-6 h-6 rounded-full bg-[#FF9500] flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="text-sm">{pairInfo?.icon || '●'}</span>
-                  </div>
+                  {pairInfo?.icon ? (
+                    <img 
+                      src={pairInfo.icon} 
+                      alt={pair.symbol}
+                      className="w-6 h-6 rounded-full object-cover shrink-0 mt-0.5"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        const parent = e.currentTarget.parentElement;
+                        if (parent) {
+                          const fallback = document.createElement('div');
+                          fallback.className = 'w-6 h-6 rounded-full bg-[#FF9500] flex items-center justify-center shrink-0 mt-0.5';
+                          fallback.innerHTML = '<span class="text-sm">●</span>';
+                          parent.insertBefore(fallback, e.currentTarget);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div className="w-6 h-6 rounded-full bg-[#FF9500] flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="text-sm">●</span>
+                    </div>
+                  )}
 
                   {/* Symbol + Long/Short Buttons */}
                   <div className="flex flex-col gap-0.5 min-w-0">
