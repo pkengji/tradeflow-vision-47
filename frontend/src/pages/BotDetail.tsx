@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, type Bot } from '@/lib/api';
+import { api, type Bot, type SymbolInfo } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -57,10 +57,12 @@ export default function BotDetail() {
 
   const [name, setName] = useState('');
   const [uuid, setUuid] = useState('');
-  const [userSecret, setUserSecret] = useState('');
+  const [webhookSecret, setWebhookSecret] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
   const [autoApprove, setAutoApprove] = useState(false);
+  const [showWebhookSecret, setShowWebhookSecret] = useState(false);
+  const [showApiSecret, setShowApiSecret] = useState(false);
   const [pairs, setPairs] = useState<BotPair[]>([]);
   const [globalLeverage, setGlobalLeverage] = useState<number | 'max' | ''>('');
   const [globalMultiplier, setGlobalMultiplier] = useState<number | ''>('');
@@ -98,11 +100,21 @@ export default function BotDetail() {
     queryFn: () => api.getAvailablePairs(),
   });
 
+  const { data: allSymbolsInfo = [] } = useQuery<SymbolInfo[]>({
+    queryKey: ['allSymbolsInfo'],
+    queryFn: () => api.getAllSymbols(),
+  });
+
+  const { data: webhookSecretData } = useQuery({
+    queryKey: ['webhookSecret'],
+    queryFn: () => api.getWebhookSecret(),
+    enabled: !isNew,
+  });
+
   // Get max leverage for each pair (from backend)
   const getMaxLeverage = (symbol: string): number => {
-    const pairInfo = availablePairs.find(p => p.symbol === symbol);
-    // TODO: Use actual max leverage from backend when available
-    return (pairInfo as any)?.maxLeverage || 100;
+    const symbolInfo = allSymbolsInfo.find(s => s.symbol === symbol);
+    return symbolInfo?.max_leverage || 100;
   };
 
   // Initialize form when bot loads
@@ -110,7 +122,6 @@ export default function BotDetail() {
     if (bot) {
       setName(bot.name || '');
       setUuid(bot.uuid || '');
-      setUserSecret((bot as any).user_secret || generateSecureId(64)); // Per-user secret
       setApiKey((bot as any).api_key || '');
       setApiSecret((bot as any).api_secret || '');
       setAutoApprove(!!bot.auto_approve);
@@ -120,7 +131,10 @@ export default function BotDetail() {
         { symbol: 'ETHUSDT', leverage: 'max', tvMultiplier: 2.0, directions: { long: true, short: false } },
       ]);
     }
-  }, [bot]);
+    if (webhookSecretData?.webhook_secret) {
+      setWebhookSecret(webhookSecretData.webhook_secret);
+    }
+  }, [bot, webhookSecretData]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -183,9 +197,10 @@ export default function BotDetail() {
         if (globalLeverage !== '') {
           const maxLev = getMaxLeverage(p.symbol);
           if (globalLeverage === 'max') {
-            newLeverage = 'max';
+            newLeverage = maxLev;
           } else {
-            newLeverage = Math.min(globalLeverage, maxLev);
+            // Apply the minimum of global leverage and symbol's max leverage
+            newLeverage = Math.min(Number(globalLeverage), maxLev);
           }
         }
         return {
@@ -194,6 +209,7 @@ export default function BotDetail() {
           tvMultiplier: globalMultiplier !== '' ? globalMultiplier : p.tvMultiplier,
         };
       }));
+      toast.success('Globale Einstellungen übernommen');
     }
   };
 
@@ -301,28 +317,31 @@ export default function BotDetail() {
           </div>
 
           <div>
-            <Label>User Secret (einmalig pro User)</Label>
+            <Label>Webhook Secret</Label>
             <div className="relative mt-1">
               <Input 
-                value={userSecret} 
-                type={showUserSecret ? 'text' : 'password'}
+                value={webhookSecret} 
+                type={showWebhookSecret ? 'text' : 'password'}
                 readOnly
                 className="pr-20 bg-muted"
+                placeholder={isNew ? 'Wird nach Speichern generiert' : 'Lade...'}
               />
               <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-1">
                 <Button 
                   size="icon" 
                   variant="ghost"
-                  onClick={() => setShowUserSecret(!showUserSecret)}
+                  onClick={() => setShowWebhookSecret(!showWebhookSecret)}
                   className="h-8 w-8"
+                  disabled={!webhookSecret}
                 >
-                  {showUserSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showWebhookSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
                 <Button 
                   size="icon" 
                   variant="ghost"
-                  onClick={() => copyToClipboard(userSecret, 'User Secret')}
+                  onClick={() => copyToClipboard(webhookSecret, 'Webhook Secret')}
                   className="h-8 w-8"
+                  disabled={!webhookSecret}
                 >
                   <Copy className="h-4 w-4" />
                 </Button>
