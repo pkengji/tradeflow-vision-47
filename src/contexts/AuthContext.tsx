@@ -27,15 +27,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Check if user is already logged in via cookie
     const checkAuth = async () => {
       try {
-        const response = await api.getMe();
-        if (response.ok && response.user) {
-          setUser({
-            id: response.user.id,
-            email: response.user.email,
-            username: response.user.username,
-            role: response.user.is_admin ? 'admin' : 'trader',
-          });
-        }
+        const userData = await api.getMe();
+        // getMe returns user object directly (not wrapped in {ok, user})
+        setUser({
+          id: userData.id,
+          email: userData.email,
+          username: userData.username,
+          role: userData.role === 'admin' ? 'admin' : 'trader',
+        });
       } catch (error) {
         // Not logged in
         setUser(null);
@@ -53,7 +52,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         id: response.user.id,
         email: response.user.email,
         username: response.user.username,
-        role: response.user.is_admin ? 'admin' : 'trader',
+        role: response.user.role === 'admin' ? 'admin' : 'trader',
       });
     } else {
       throw new Error('Login fehlgeschlagen');
