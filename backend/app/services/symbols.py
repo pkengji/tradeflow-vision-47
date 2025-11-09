@@ -18,7 +18,7 @@ try:
 except Exception:
     BybitV5Client = None  # type: ignore
 
-ICONS_DIR = os.path.join(os.path.dirname(__file__), "static", "icons")  # app/static/icons
+ICONS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "icons")
 os.makedirs(ICONS_DIR, exist_ok=True)
 
 # --- Utils ---
@@ -129,9 +129,12 @@ def sync_symbols_linear_usdt(db: Session, bybit_client: Optional[Any] = None) ->
                 refreshed_at=now,
             )
             db.add(row)
+            db.flush()
+        ensure_symbol_icon(db, row, max_age_days=0)  
         updated += 1
 
     db.commit()
+
     return updated
 
 # --- Query Helpers für API ---
@@ -172,8 +175,12 @@ def ensure_symbol_icon(db: Session, sym: models.Symbol, max_age_days: int = 30) 
 
     # Reuse, wenn frisch genug und Datei existiert
     fresh_enough = sym.icon_last_synced_at and (datetime.now(timezone.utc) - sym.icon_last_synced_at) < timedelta(days=max_age_days)
-    if sym.icon_local_path and os.path.exists(os.path.join(os.path.dirname(ICONS_DIR), sym.icon_local_path)) and fresh_enough:
+    # Falls noch kein Icon jemals vorhanden, sofort laden
+    if sym.icon_local_path and os.path.exists(local_abs) and fresh_enough:
         return f"/static/{sym.icon_local_path}"
+    elif not sym.icon_local_path or not os.path.exists(local_abs):
+        # Erzwinge Download, wenn kein Icon lokal oder Pfad ungültig
+        pass  # lässt den Download unten im Code durchlaufen
 
     # Download versuchen
     content, src = _fetch_first_ok(_candidate_icon_urls(base))

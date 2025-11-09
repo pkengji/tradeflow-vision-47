@@ -157,7 +157,7 @@ def rotate_my_secret(db: Session = Depends(get_db), user_id: int = Depends(get_c
     return {"webhook_secret": u.webhook_secret}
 
 @app.post("/api/v1/auth/login")
-def login(body: LoginBody, db: Session = Depends(get_db)):
+def login(body: LoginBody, response: Response, db: Session = Depends(get_db)):
     ident = (body.email or body.username or "").strip()
     if not ident:
         raise HTTPException(400, "email or username required")
@@ -169,16 +169,23 @@ def login(body: LoginBody, db: Session = Depends(get_db)):
     if not u or u.password_hash != body.password:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    payload = {"ok": True, "user": UserOut.model_validate(u, from_attributes=True).model_dump()}
-    resp = JSONResponse(content=payload)
-    resp.set_cookie(key="uid", value=str(u.id), httponly=True, samesite="none", secure=True, path="/")
-    return resp
+    # Cookie direkt auf Response setzen
+    response.set_cookie(
+        key="uid",
+        value=str(u.id),
+        httponly=True,
+        samesite="none",
+        secure=True,
+        path="/",
+    )
+
+    return {"ok": True, "user": UserOut.model_validate(u, from_attributes=True).model_dump()}
 
 @app.post("/api/v1/auth/logout")
-def logout():
-    resp = JSONResponse({"ok": True})
-    resp.delete_cookie("uid", path="/")
-    return resp
+def logout(response: Response):
+    response.delete_cookie("uid", path="/")
+    return {"ok": True}
+
 
 @app.get("/api/v1/auth/whoami")
 def whoami(user_id: int = Depends(get_current_user_id)):
