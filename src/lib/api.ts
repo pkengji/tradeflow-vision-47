@@ -358,16 +358,6 @@ async function logAction(event: string, payload?: any): Promise<null | any> {
   });
 }
 
-async function getAvailablePairs(): Promise<Array<{ symbol: string; name: string; icon: string }>> {
-  // Using symbols endpoint for now
-  const symbols = await getSymbols();
-  return symbols.map(symbol => ({
-    symbol,
-    name: symbol.replace('USDT', ''),
-    icon: `https://cryptoicons.org/api/icon/${symbol.replace('USDT', '').toLowerCase()}/32`
-  }));
-}
-
 // Bot management
 async function createBot(data: Partial<Bot>): Promise<Bot> {
   return http<Bot>('/api/v1/bots', { method: 'POST', body: data });
@@ -463,7 +453,6 @@ export const api = {
   // Symbols / PnL
   getSymbols,
   getDailyPnl,
-  getAvailablePairs,
 
   // Outbox
   getOutbox,

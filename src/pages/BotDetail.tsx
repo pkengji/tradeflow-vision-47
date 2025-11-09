@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Plus, Search, Trash2, Save, Copy, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -117,6 +117,21 @@ const { data: webhookSecretData } = useQuery({
   queryFn: () => api.getWebhookSecret(),
 });
 
+// Initialize userSecret from webhookSecretData
+useEffect(() => {
+  if (webhookSecretData?.webhook_secret) {
+    setUserSecret(webhookSecretData.webhook_secret);
+  }
+}, [webhookSecretData]);
+
+// Initialize API keys from exchangeKeys
+useEffect(() => {
+  if (exchangeKeys) {
+    setApiKey(exchangeKeys.api_key_masked || '');
+    setApiSecret(exchangeKeys.has_api_secret ? '********' : '');
+  }
+}, [exchangeKeys]);
+
 // Get max leverage for each pair (from backend)
 const getMaxLeverage = (symbol: string): number => {
   const info = symbolsInfo.find(s => s.symbol === symbol);
@@ -128,8 +143,6 @@ useMemo(() => {
   if (bot) {
     setName(bot.name || '');
     setUuid(bot.uuid || '');
-    setApiKey(exchangeKeys?.api_key_masked || bot.api_key_masked || '');
-    setApiSecret(exchangeKeys?.has_api_secret ? '********' : '');
     setAutoApprove(!!bot.auto_approve);
     
     // Load bot symbols from backend
@@ -142,7 +155,7 @@ useMemo(() => {
       })));
     }
   }
-}, [bot, botSymbols, exchangeKeys]);
+}, [bot, botSymbols]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
