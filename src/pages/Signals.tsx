@@ -29,67 +29,9 @@ function ExportCSV({ url, filename }: { url: string; filename: string }) {
   );
 }
 
-// Mock-Daten (bis Backend-Feed/Filter angeschlossen ist)
-const mockSignals = [
-  {
-    id: 1,
-    timestamp: new Date(Date.now() - 300000).toISOString(),
-    type: 'entry',
-    status: 'completed',
-    botId: 1,
-    botName: 'Bot Alpha',
-    symbol: 'BTCUSDT',
-    positionSize: 21075.25,
-    humanMessage: 'Position erfolgreich eröffnet',
-  },
-  {
-    id: 2,
-    timestamp: new Date(Date.now() - 600000).toISOString(),
-    type: 'modify',
-    status: 'pending',
-    botId: 1,
-    botName: 'Bot Alpha',
-    symbol: 'ETHUSDT',
-    positionSize: 5614.50,
-    humanMessage: 'Warte auf Trade-Eröffnung',
-  },
-  {
-    id: 3,
-    timestamp: new Date(Date.now() - 900000).toISOString(),
-    type: 'exit',
-    status: 'failed',
-    botId: 2,
-    botName: 'Bot Beta',
-    symbol: 'XRPUSDT',
-    positionSize: 5234.00,
-    humanMessage: 'Position konnte nicht geschlossen werden - Insufficient margin',
-  },
-  {
-    id: 4,
-    timestamp: new Date(Date.now() - 1200000).toISOString(),
-    type: 'exit',
-    status: 'rejected',
-    botId: 1,
-    botName: 'Bot Alpha',
-    symbol: 'SOLUSDT',
-    positionSize: 3420.80,
-    humanMessage: 'Order rejected by exchange - Position not found',
-  },
-  {
-    id: 5,
-    timestamp: new Date(Date.now() - 150000).toISOString(),
-    type: 'entry',
-    status: 'waiting_for_approval',
-    botId: 2,
-    botName: 'Bot Beta',
-    symbol: 'ADAUSDT',
-    positionSize: 8950.00,
-    humanMessage: 'Warte auf manuelle Freigabe',
-  },
-];
-
 export default function Signals() {
   const navigate = useNavigate();
+  const [outboxItems, setOutboxItems] = useState<any[]>([]);
   const [filters, setFilters] = useState<TradesFilters>({
     botIds: [],
     symbols: [],
@@ -105,7 +47,7 @@ export default function Signals() {
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
-  const [selectedSignal, setSelectedSignal] = useState<typeof mockSignals[0] | null>(null);
+  const [selectedSignal, setSelectedSignal] = useState<any>(null);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -129,6 +71,10 @@ export default function Signals() {
         const symbolsList = await api.getSymbols();
         setSymbols(symbolsList);
       } catch {}
+      try {
+        const items = await api.getOutbox();
+        setOutboxItems(items);
+      } catch {}
     })();
   }, []);
 
@@ -143,7 +89,7 @@ export default function Signals() {
     });
   };
 
-  const handleSignalClick = (signal: typeof mockSignals[0]) => {
+  const handleSignalClick = (signal: any) => {
     if (signal.status === 'waiting_for_approval') {
       setSelectedSignal(signal);
     } else {
@@ -155,7 +101,8 @@ export default function Signals() {
     if (!selectedSignal) return;
     try {
       await api.approveOutbox(selectedSignal.id);
-      // Reload signals or update state
+      const items = await api.getOutbox();
+      setOutboxItems(items);
       setSelectedSignal(null);
     } catch (error) {
       console.error('Failed to approve signal:', error);
@@ -166,7 +113,8 @@ export default function Signals() {
     if (!selectedSignal) return;
     try {
       await api.rejectOutbox(selectedSignal.id);
-      // Reload signals or update state
+      const items = await api.getOutbox();
+      setOutboxItems(items);
       setSelectedSignal(null);
     } catch (error) {
       console.error('Failed to reject signal:', error);
@@ -174,11 +122,10 @@ export default function Signals() {
   };
 
   const getStatusBadge = (status: string) => {
-    if (status === 'completed') return <Badge variant="default" className="text-xs bg-[#0D3512] text-[#2DFB68]">completed</Badge>;
+    if (status === 'sent' || status === 'approved') return <Badge variant="default" className="text-xs bg-[#0D3512] text-[#2DFB68]">{status}</Badge>;
     if (status === 'failed') return <Badge variant="destructive" className="text-xs bg-[#641812] text-[#EA3A10]">failed</Badge>;
     if (status === 'rejected') return <Badge variant="secondary" className="text-xs">rejected</Badge>;
-    if (status === 'pending') return <Badge variant="secondary" className="text-xs">pending</Badge>;
-    if (status === 'waiting_for_approval') return <Badge variant="default" className="text-xs">waiting for approval</Badge>;
+    if (status === 'queued') return <Badge variant="secondary" className="text-xs">queued</Badge>;
     return <Badge variant="outline" className="text-xs">{status}</Badge>;
   };
 
@@ -241,10 +188,10 @@ export default function Signals() {
 
         {/* Liste */}
         <div className="divide-y divide-border">
-          {mockSignals.map((signal) => (
+          {outboxItems.map((item) => (
             <div
-              key={signal.id}
-              onClick={() => handleSignalClick(signal)}
+              key={item.id}
+              onClick={() => handleSignalClick(item)}
               className="cursor-pointer hover:bg-muted/30 transition-colors py-2"
             >
               <div className="flex items-start gap-3">
@@ -256,36 +203,30 @@ export default function Signals() {
                 {/* Content */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-sm">{signal.symbol}</span>
-                    <Badge variant="outline" className="text-xs capitalize">{signal.type}</Badge>
+                    <span className="font-semibold text-sm">Outbox #{item.id}</span>
+                    <Badge variant="outline" className="text-xs capitalize">{item.kind}</Badge>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{signal.botName}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    {new Date(item.created_at).toLocaleString('de-CH')}
+                  </div>
                 </div>
 
                 {/* Right side */}
                 <div className="text-right flex-shrink-0">
-                  <div className="text-sm font-semibold">{signal.positionSize.toLocaleString()} USDT</div>
                   <div className="mt-0.5">
-                    {getStatusBadge(signal.status)}
+                    {getStatusBadge(item.status)}
                   </div>
                 </div>
               </div>
-
-              {/* Error message if failed/rejected */}
-              {(signal.status === 'failed' || signal.status === 'rejected') && (
-                <div className="text-xs text-muted-foreground mt-2 pl-13">
-                  {signal.humanMessage}
-                </div>
-              )}
             </div>
           ))}
-          {mockSignals.length === 0 && (
+          {outboxItems.length === 0 && (
             <div className="text-sm text-muted-foreground py-4">Keine Signals gefunden.</div>
           )}
         </div>
 
-        {/* Action buttons for waiting_for_approval signals */}
-        {selectedSignal && selectedSignal.status === 'waiting_for_approval' && (
+        {/* Action buttons for queued signals */}
+        {selectedSignal && selectedSignal.status === 'queued' && (
           <div className="fixed inset-x-0 bottom-16 bg-card border-t p-3 flex gap-3 z-50">
             <Button 
               className="flex-1" 

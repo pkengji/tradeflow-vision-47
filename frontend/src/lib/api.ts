@@ -361,6 +361,44 @@ async function getSymbols(): Promise<string[]> {
   }
 }
 
+export type SymbolInfo = {
+  symbol: string;
+  max_leverage?: number;
+  tick_size?: number;
+  step_size?: number;
+  base_currency?: string;
+  quote_currency?: string;
+  icon_url?: string;
+  icon_local_path?: string;
+};
+
+async function getAllSymbols(): Promise<SymbolInfo[]> {
+  const rows = await http<any[]>('/api/v1/symbols/all');
+  return rows.map((s) => ({
+    symbol: s.symbol,
+    max_leverage: s.max_leverage ?? s.maxLeverage ?? 100,
+    tick_size: s.tick_size ?? s.tickSize,
+    step_size: s.step_size ?? s.stepSize,
+    base_currency: s.base_currency ?? s.baseCurrency,
+    quote_currency: s.quote_currency ?? s.quoteCurrency,
+    icon_url: s.icon_url,
+    icon_local_path: s.icon_local_path,
+  }));
+}
+
+export type BotSymbolSetting = {
+  id: number;
+  bot_id: number;
+  symbol: string;
+  enabled: boolean;
+  target_risk_amount?: number;
+  leverage_override?: number;
+};
+
+async function getBotSymbols(bot_id: number): Promise<BotSymbolSetting[]> {
+  return http<BotSymbolSetting[]>(`/api/v1/bots/${bot_id}/symbols`);
+}
+
 async function getDailyPnl(params?: { days?: number; bot_id?: number }): Promise<PnlDailyPoint[]> {
   try {
     const rows = await http<PnlDailyRowRaw[]>('/api/v1/dashboard/daily-pnl', { query: params });
@@ -391,11 +429,16 @@ async function logAction(event: string, payload?: any): Promise<null | any> {
   });
 }
 
-async function getAvailablePairs(): Promise<Array<{ symbol: string; name: string; icon: string }>> {
+async function getAvailablePairs(): Promise<Array<{ symbol: string; name: string; icon?: string; icon_url?: string; max_leverage?: number }>> {
   try {
-    // TODO: Replace with actual API call when available
-    // return http<Array<{ symbol: string; name: string; icon: string }>>('/api/v1/pairs');
-    throw new Error('Not implemented');
+    const symbols = await getAllSymbols();
+    return symbols.map((s) => ({
+      symbol: s.symbol,
+      name: s.base_currency || s.symbol.replace('USDT', ''),
+      icon: s.icon_local_path || s.icon_url, // Prioritize local path, then URL
+      icon_url: s.icon_url,
+      max_leverage: s.max_leverage,
+    }));
   } catch (error) {
     console.warn('API Error, using mock data:', error);
     const { MOCK_AVAILABLE_PAIRS } = await import('./mockData');
@@ -479,6 +522,8 @@ export const api = {
 
   // Symbols / PnL
   getSymbols,
+  getAllSymbols,
+  getBotSymbols,
   getDailyPnl,
   getAvailablePairs,
 
