@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Bot } from '@/lib/api';
+import { getAllSymbols, type SymbolInfo } from '@/lib/symbols';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -55,11 +56,17 @@ export default function BotDetail() {
     enabled: !isNaN(botId!) || isNew,
   });
 
-  const { data: botSymbols } = useQuery({
-    queryKey: ['bot-symbols', botId],
-    queryFn: () => api.getBotSymbols(botId!),
-    enabled: !!botId && !isNew,
-  });
+const { data: botSymbols } = useQuery({
+  queryKey: ['bot-symbols', botId],
+  queryFn: () => api.getBotSymbols(botId!),
+  enabled: !!botId && !isNew,
+});
+
+const { data: exchangeKeys } = useQuery({
+  queryKey: ['exchange-keys', botId],
+  queryFn: () => api.getBotExchangeKeys(botId!),
+  enabled: !!botId && !isNew,
+});
 
   const [name, setName] = useState('');
   const [uuid, setUuid] = useState('');
@@ -99,37 +106,43 @@ export default function BotDetail() {
     }
   }, [isNew, uuid]);
 
-  const { data: availablePairs = [] } = useQuery({
-    queryKey: ['availablePairs'],
-    queryFn: () => api.getAvailablePairs(),
-  });
+const { data: symbolsInfo = [] } = useQuery<SymbolInfo[]>({
+  queryKey: ['allSymbolsInfo'],
+  queryFn: () => getAllSymbols(),
+});
 
-  // Get max leverage for each pair (from backend)
-  const getMaxLeverage = (symbol: string): number => {
-    const pairInfo = availablePairs.find(p => p.symbol === symbol);
-    // TODO: Use actual max leverage from backend when available
-    return (pairInfo as any)?.maxLeverage || 100;
-  };
+// Webhook secret (user-specific)
+const { data: webhookSecretData } = useQuery({
+  queryKey: ['webhookSecret'],
+  queryFn: () => api.getWebhookSecret(),
+});
 
-  // Initialize form when bot loads
-  useMemo(() => {
-    if (bot) {
-      setName(bot.name || '');
-      setUuid(bot.uuid || '');
-      setApiKey(bot.api_key_masked || '');
-      setAutoApprove(!!bot.auto_approve);
-      
-      // Load bot symbols from backend
-      if (botSymbols) {
-        setPairs(botSymbols.map((bs: any) => ({
-          symbol: bs.symbol,
-          leverage: bs.leverage_override || 10,
-          tvMultiplier: bs.target_risk_amount || 1.0,
-          directions: { long: true, short: true }, // Backend doesn't store this yet
-        })));
-      }
+// Get max leverage for each pair (from backend)
+const getMaxLeverage = (symbol: string): number => {
+  const info = symbolsInfo.find(s => s.symbol === symbol);
+  return info?.max_leverage ?? 100;
+};
+
+// Initialize form when bot loads
+useMemo(() => {
+  if (bot) {
+    setName(bot.name || '');
+    setUuid(bot.uuid || '');
+    setApiKey(exchangeKeys?.api_key_masked || bot.api_key_masked || '');
+    setApiSecret(exchangeKeys?.has_api_secret ? '********' : '');
+    setAutoApprove(!!bot.auto_approve);
+    
+    // Load bot symbols from backend
+    if (botSymbols) {
+      setPairs(botSymbols.map((bs: any) => ({
+        symbol: bs.symbol,
+        leverage: bs.leverage_override || 10,
+        tvMultiplier: bs.target_risk_amount || 1.0,
+        directions: { long: true, short: true }, // Backend doesn't store this yet
+      })));
     }
-  }, [bot, botSymbols]);
+  }
+}, [bot, botSymbols, exchangeKeys]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -523,24 +536,31 @@ export default function BotDetail() {
                 <CommandInput placeholder="Pair suchen..." />
                 <CommandEmpty>Kein Pair gefunden.</CommandEmpty>
                 <CommandGroup className="max-h-64 overflow-auto">
-                  {availablePairs
-                    .filter(p => !pairs.find(pair => pair.symbol === p.symbol))
-                    .map((pair) => (
-                      <CommandItem
-                        key={pair.symbol}
-                        value={pair.symbol}
-                        onSelect={() => togglePairSelection(pair.symbol)}
-                        className={`cursor-pointer ${
-                          selectedNewPairs.includes(pair.symbol) 
-                            ? 'bg-primary/20 border border-primary' 
-                            : ''
-                        }`}
-                      >
-                        <span className="mr-2 text-lg">{pair.icon}</span>
-                        <span className="font-medium">{pair.symbol}</span>
-                        <span className="ml-2 text-xs text-muted-foreground">{pair.name}</span>
-                      </CommandItem>
-                    ))}
+{symbolsInfo
+  .filter(s => !pairs.find(pair => pair.symbol === s.symbol))
+  .map((s) => {
+    const iconSrc = s.icon_local_path || s.icon_url || '';
+    return (
+      <CommandItem
+        key={s.symbol}
+        value={s.symbol}
+        onSelect={() => togglePairSelection(s.symbol)}
+        className={`cursor-pointer ${
+          selectedNewPairs.includes(s.symbol) 
+            ? 'bg-primary/20 border border-primary' 
+            : ''
+        }`}
+      >
+        {iconSrc ? (
+          <img src={iconSrc} alt={`${s.symbol} icon`} className="mr-2 h-5 w-5 rounded-full object-contain" />
+        ) : (
+          <span className="mr-2 h-5 w-5" />
+        )}
+        <span className="font-medium">{s.symbol}</span>
+        <span className="ml-2 text-xs text-muted-foreground">{s.base_currency || s.symbol.replace('USDT','')}</span>
+      </CommandItem>
+    );
+  })}
                 </CommandGroup>
               </Command>
               <div className="flex justify-end gap-2 mt-4">
@@ -585,15 +605,18 @@ export default function BotDetail() {
           </div>
 
           <div className="divide-y divide-border">
-            {filteredPairs.map(pair => {
-              const pairInfo = availablePairs.find(p => p.symbol === pair.symbol);
-              const maxLev = getMaxLeverage(pair.symbol);
-              return (
-                <div key={pair.symbol} className="py-1 flex items-start gap-1.5">
-                  {/* Icon */}
-                  <div className="w-6 h-6 rounded-full bg-[#FF9500] flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="text-sm">{pairInfo?.icon || '●'}</span>
-                  </div>
+{filteredPairs.map(pair => {
+  const info = symbolsInfo.find(s => s.symbol === pair.symbol);
+  const maxLev = getMaxLeverage(pair.symbol);
+  const iconSrc = info?.icon_local_path || info?.icon_url || '';
+  return (
+    <div key={pair.symbol} className="py-1 flex items-start gap-1.5">
+      {/* Icon */}
+      <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 overflow-hidden">
+        {iconSrc ? (
+          <img src={iconSrc} alt={`${pair.symbol} icon`} className="h-6 w-6 object-contain" />
+        ) : null}
+      </div>
 
                   {/* Symbol + Long/Short Buttons */}
                   <div className="flex flex-col gap-0.5 min-w-0">
