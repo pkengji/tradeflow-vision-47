@@ -46,6 +46,7 @@ async function http<T = any>(path: string, opts: FetchOpts = {}): Promise<T> {
         : JSON.stringify(opts.body),
     signal: controller.signal,
     mode: 'cors',
+    credentials: 'include',
   }).catch((e) => {
     clearTimeout(timeout);
     throw new Error(`Network error: ${e}`);
