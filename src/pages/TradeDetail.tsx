@@ -255,13 +255,8 @@ export default function TradeDetail() {
                 <div>
                   <div className="text-muted-foreground mb-0.5">Funding Fees</div>
                   <div className="font-semibold">
-                    {position.status === 'closed' ? formatCurrency(position.funding_usdt || 0) : '—'}
+                    {formatCurrency(position.funding_usdt || 0)}
                   </div>
-                  {position.status === 'closed' && position.funding_usdt !== undefined && position.funding_usdt !== 0 && (
-                    <div className="text-[10px] text-muted-foreground mt-0.5">
-                      Nur für geschlossene Positionen verfügbar
-                    </div>
-                  )}
                 </div>
                 <div>
                   <div className="text-muted-foreground mb-0.5">Slippage Liquidität</div>

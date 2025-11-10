@@ -247,13 +247,16 @@ export default function Trades() {
 
   const hasMoreToLoad = positions.length < totalCount;
 
-  // Speichere scroll position beim Tab-Wechsel
+  // Wiederherstellung der scroll position beim Zurückkommen
   useEffect(() => {
-    const savedPosition = sessionStorage.getItem(`trades-scroll-${activeTab}`);
-    if (savedPosition && scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = parseInt(savedPosition, 10);
-    }
-  }, [activeTab]);
+    const timer = setTimeout(() => {
+      const savedPosition = sessionStorage.getItem(`trades-scroll-${activeTab}`);
+      if (savedPosition && scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = parseInt(savedPosition, 10);
+      }
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [activeTab, openTrades.length, closedTrades.length]);
 
   // Speichere scroll position
   const handleScroll = useCallback(() => {
@@ -297,7 +300,11 @@ export default function Trades() {
   const closedTradesGrouped = useMemo(() => groupTradesByDate(closedTrades, 'closed_at'), [closedTrades]);
 
   // ---- 4.4 HANDLER ----
-  const handleCardClick = (t: PositionListItem) => { 
+  const handleCardClick = (t: PositionListItem) => {
+    // Speichere scroll position vor Navigation
+    if (scrollContainerRef.current) {
+      sessionStorage.setItem(`trades-scroll-${activeTab}`, scrollContainerRef.current.scrollTop.toString());
+    }
     navigate(`/trade/${t.id}?from=${activeTab}`);
   };
 
