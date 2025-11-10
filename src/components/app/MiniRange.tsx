@@ -26,26 +26,99 @@ function labelLeft(xPct: number, align: "left" | "center" | "right") {
 }
 
 export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", side = "long" }: Props) {
-  // Simplified view: no SL/TP
+  // Simplified view: no SL/TP - show Buy/Sell marker with entry and mark
   if ((sl == null || tp == null) && entry != null) {
     const minPrice = mark != null ? Math.min(entry, mark) : entry;
     const maxPrice = mark != null ? Math.max(entry, mark) : entry;
     const hasProfit =
       mark != null && entry != null && ((side === "long" && mark > entry) || (side === "short" && mark < entry));
-    const barColor = mark != null ? (hasProfit ? "bg-success" : "bg-danger") : "bg-zinc-400";
+    const barColor = "bg-zinc-400 dark:bg-zinc-600";
+    const segmentColor = mark != null ? (hasProfit ? "bg-success" : "bg-danger") : "";
+    
+    const BAR_THICK_PX = 6;
+    const H_ENTRY = 18;
+    const H_MARK = 14;
+    const LABEL_GAP_PX = 3;
 
     return (
-      <div className="py-3 px-0 pb-5">
-        <div className="relative h-2">
-          <div className={`absolute inset-y-0 left-0 right-0 ${barColor} rounded`} />
-          <div className="absolute -bottom-5 left-0 text-[10px] text-muted-foreground">
-            {labelEntry} {minPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-          </div>
-          {mark != null && (
-            <div className="absolute -bottom-5 right-0 text-[10px] text-muted-foreground text-right">
-              {maxPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+      <div className="py-1 px-0 pb-5">
+        <div className="relative" style={{ height: BAR_THICK_PX + H_ENTRY + LABEL_GAP_PX + 18 }}>
+          <div className="absolute inset-x-0" style={{ height: BAR_THICK_PX, top: "50%", transform: "translateY(-50%)" }}>
+            {/* Base bar */}
+            <div className={`absolute inset-0 ${barColor} rounded`} />
+            
+            {/* Colored segment if mark exists */}
+            {mark != null && (
+              <div
+                className={`absolute ${segmentColor}`}
+                style={{
+                  top: 0,
+                  height: BAR_THICK_PX,
+                  left: 0,
+                  width: "100%",
+                }}
+              />
+            )}
+            
+            {/* Entry tick (down, left side) */}
+            <div className="absolute inset-0">
+              <div
+                className="absolute bg-zinc-500"
+                style={{
+                  left: 0,
+                  top: BAR_THICK_PX,
+                  width: 2,
+                  height: H_ENTRY,
+                }}
+              />
+              <div
+                className="absolute whitespace-nowrap text-[10px] leading-tight"
+                style={{
+                  left: 5,
+                  top: BAR_THICK_PX + H_ENTRY + LABEL_GAP_PX,
+                }}
+              >
+                <span className="text-zinc-400">{labelEntry}</span>
+                <span className="mx-[3px]" />
+                <span className="text-foreground tabular-nums">{minPrice.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
+              </div>
+              
+              {/* Mark tick (up, right side) */}
+              {mark != null && (
+                <>
+                  <div
+                    className="absolute bg-zinc-700 dark:bg-zinc-200"
+                    style={{
+                      right: 0,
+                      bottom: BAR_THICK_PX,
+                      width: 2,
+                      height: H_MARK,
+                    }}
+                  />
+                  <div
+                    className="absolute whitespace-nowrap text-[11px] font-medium"
+                    style={{
+                      right: 0,
+                      bottom: BAR_THICK_PX + H_MARK + LABEL_GAP_PX,
+                      transform: "translateX(0)",
+                    }}
+                  >
+                    {(() => {
+                      const pct = ((mark - entry) / entry) * 100;
+                      const hasProfit = (side === "long" && mark > entry) || (side === "short" && mark < entry);
+                      const color = hasProfit ? "#2DFB68" : "#EA3A10";
+                      return (
+                        <>
+                          <span style={{ color }}>{`${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`}</span>
+                          <span className="ml-1 text-zinc-500 dark:text-zinc-400">{maxPrice.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
     );

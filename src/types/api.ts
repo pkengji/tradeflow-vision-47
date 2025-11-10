@@ -32,26 +32,64 @@ export interface BotSymbolSetting {
 
 export interface Position {
   id: number;
-  botId: number;
-  botName?: string;
+  bot_id: number;
+  bot_name?: string;
   symbol: string;
   side: 'long' | 'short';
   qty: number;
-  leverage?: number;
-  currentPrice?: number;
-  entrySignalPrice: number;
-  entryFillPrice?: number;
-  tp?: number;
-  sl?: number;
   status: 'open' | 'closed' | 'error';
-  openedAt: string;
-  closedAt?: string;
-  pnl?: number;
-  pnlPct?: number;
-  tradingFees?: number;
-  fundingFees?: number;
-  slippagePct?: number;
-  timelagMs?: number;
+  
+  // Prices
+  entry_price: number; // VWAP
+  entry_price_vwap?: number;
+  entry_price_best?: number;
+  entry_price_trigger?: number;
+  exit_price?: number;
+  mark_price?: number;
+  current_price?: number;
+  sl?: number;
+  tp?: number;
+  
+  // PnL
+  pnl?: number; // realized PnL for closed positions
+  unrealized_pnl?: number; // for open positions
+  pnl_pct?: number;
+  
+  // Fees
+  fee_open_usdt?: number;
+  fee_close_usdt?: number;
+  funding_usdt?: number;
+  
+  // Slippage
+  slippage_liquidity_open?: number;
+  slippage_liquidity_close?: number;
+  slippage_timelag?: number;
+  
+  // Timelags
+  timelag_tv_to_bot?: number;
+  timelag_bot_processing?: number;
+  timelag_bot_to_exchange?: number;
+  timelag_close_tv_to_bot?: number;
+  timelag_close_bot_processing?: number;
+  timelag_close_bot_to_exchange?: number;
+  
+  // Timestamps
+  opened_at: string;
+  closed_at?: string;
+  first_exec_at?: string;
+  last_exec_at?: string;
+  
+  // Other fields
+  trade_uid?: string;
+  tv_signal_id?: number;
+  outbox_item_id?: number;
+  leverage?: number;
+  leverage_size?: number;
+  leverage_type?: string;
+  position_size_usdt?: number;
+  tv_qty?: number;
+  trigger_price?: number;
+  trade_id?: string;
 }
 
 export interface Order {

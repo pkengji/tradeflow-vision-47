@@ -242,9 +242,8 @@ async function getBots(): Promise<Bot[]> {
       api_key_masked: b.api_key_masked ?? null,
     }));
   } catch (error) {
-    console.warn('API Error, using mock data:', error);
-    const { MOCK_BOTS } = await import('./mockData');
-    return MOCK_BOTS;
+    console.error('API Error in getBots:', error);
+    throw error;
   }
 }
 

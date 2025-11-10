@@ -134,6 +134,7 @@ export default function TradeDetail() {
           <CardContent className="space-y-3">
             {!posLoading && position && (
               <>
+                {/* Main Info Row */}
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
                     <div className="text-muted-foreground mb-0.5">Symbol</div>
@@ -148,42 +149,68 @@ export default function TradeDetail() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-muted-foreground mb-0.5">Leverage</div>
-                    <div className="font-semibold">{position.leverage_size || '—'}x</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground mb-0.5">Entry Preis</div>
-                    <div className="font-semibold">{formatPrice(position.entry_price)}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground mb-0.5">Trigger Preis</div>
-                    <div className="font-semibold">{formatPrice(position.trigger_price)}</div>
+                    <div className="text-muted-foreground mb-0.5">PnL</div>
+                    <div className={`font-semibold ${(position.pnl || position.unrealized_pnl || 0) >= 0 ? 'text-success' : 'text-danger'}`}>
+                      {formatCurrency(position.pnl || position.unrealized_pnl || 0, true)}
+                      {position.pnl_pct && ` (${position.pnl_pct > 0 ? '+' : ''}${position.pnl_pct.toFixed(2)}%)`}
+                    </div>
                   </div>
                 </div>
 
+                {/* Dates and Prices */}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <div className="text-muted-foreground mb-0.5">Geöffnet am</div>
+                    <div className="font-semibold">{new Date(position.opened_at).toLocaleString('de-DE')}</div>
+                  </div>
+                  {position.closed_at && (
+                    <div>
+                      <div className="text-muted-foreground mb-0.5">Geschlossen am</div>
+                      <div className="font-semibold">{new Date(position.closed_at).toLocaleString('de-DE')}</div>
+                    </div>
+                  )}
+                  <div>
+                    <div className="text-muted-foreground mb-0.5">Entry Price (VWAP)</div>
+                    <div className="font-semibold">{formatPrice(position.entry_price_vwap || position.entry_price)}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground mb-0.5">Entry Price (Best)</div>
+                    <div className="font-semibold">{formatPrice(position.entry_price_best)}</div>
+                  </div>
+                  {position.exit_price && (
+                    <>
+                      <div>
+                        <div className="text-muted-foreground mb-0.5">Exit Price (VWAP)</div>
+                        <div className="font-semibold">{formatPrice(position.exit_price)}</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground mb-0.5">Exit Price (Best)</div>
+                        <div className="font-semibold">—</div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Size & Leverage */}
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
                     <div className="text-muted-foreground mb-0.5">QTY (Base)</div>
-                    <div className="font-semibold">{formatPrice(position.qty ?? position.tv_qty)}</div>
+                    <div className="font-semibold">{formatPrice(position.qty)}</div>
                   </div>
                   <div>
                     <div className="text-muted-foreground mb-0.5">Positionsgröße</div>
-                    <div className="font-semibold">{formatPrice(position.position_size_usdt)} USDT</div>
+                    <div className="font-semibold">{formatPrice((position.entry_price_vwap || position.entry_price) * position.qty)} USDT</div>
                   </div>
                   <div>
-                    <div className="text-muted-foreground mb-0.5">Trade ID</div>
-                    <div className="font-mono text-[10px]">{position.trade_id || '—'}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground mb-0.5">Leverage Type</div>
-                    <div className="font-semibold">{position.leverage_type || '—'}</div>
+                    <div className="text-muted-foreground mb-0.5">Leverage</div>
+                    <div className="font-semibold">{position.leverage || '—'}x</div>
                   </div>
                 </div>
 
                 <div className="pt-1">
                   <MiniRange
                     labelEntry={position.side === 'short' ? 'Sell' : 'Buy'}
-                    entry={position.entry_price ?? null}
+                    entry={position.entry_price_vwap || position.entry_price}
                     sl={position.sl ?? null}
                     tp={position.tp ?? null}
                     mark={position.mark_price ?? position.exit_price ?? null}
@@ -201,16 +228,27 @@ export default function TradeDetail() {
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">Transaktionskosten</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-1 gap-3 text-xs">
                 <div>
                   <div className="text-muted-foreground mb-0.5">Fees Total</div>
                   <div className="font-semibold">
                     {formatCurrency((position.fee_open_usdt || 0) + (position.fee_close_usdt || 0))}
                   </div>
                   <div className="text-[10px] text-muted-foreground mt-0.5">
-                    Open: {formatCurrency(position.fee_open_usdt)} / Close: {formatCurrency(position.fee_close_usdt)}
+                    Open: {formatCurrency(position.fee_open_usdt)} • Close: {formatCurrency(position.fee_close_usdt)}
                   </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground mb-0.5">Funding Fees</div>
+                  <div className="font-semibold">
+                    {position.status === 'closed' ? formatCurrency(position.funding_usdt || 0) : '—'}
+                  </div>
+                  {position.status === 'closed' && position.funding_usdt !== undefined && position.funding_usdt !== 0 && (
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      Nur für geschlossene Positionen verfügbar
+                    </div>
+                  )}
                 </div>
                 <div>
                   <div className="text-muted-foreground mb-0.5">Slippage Liquidität</div>
@@ -218,7 +256,7 @@ export default function TradeDetail() {
                     {formatCurrency((position.slippage_liquidity_open || 0) + (position.slippage_liquidity_close || 0))}
                   </div>
                   <div className="text-[10px] text-muted-foreground mt-0.5">
-                    Open: {formatCurrency(position.slippage_liquidity_open)} / Close: {formatCurrency(position.slippage_liquidity_close)}
+                    Open: {formatCurrency(position.slippage_liquidity_open)} • Close: {formatCurrency(position.slippage_liquidity_close)}
                   </div>
                 </div>
                 <div>
