@@ -53,7 +53,23 @@ function formatDateHeader(dateStr: string | null): string {
   if (!dateStr) return '—';
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('de-CH', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  
+  const compareDate = new Date(d);
+  compareDate.setHours(0, 0, 0, 0);
+  
+  const formatted = d.toLocaleDateString('de-CH', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  
+  if (compareDate.getTime() === today.getTime()) {
+    return `Heute, ${formatted}`;
+  } else if (compareDate.getTime() === yesterday.getTime()) {
+    return `Gestern, ${formatted}`;
+  }
+  return formatted;
 }
 
 function groupTradesByDate(trades: PositionListItem[], dateField: 'opened_at' | 'closed_at'): Map<string, PositionListItem[]> {
@@ -92,6 +108,8 @@ export default function Trades() {
   const [positions, setPositions] = useState<PositionListItem[]>([]);
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
+  const [displayLimit, setDisplayLimit] = useState<number>(50);
 
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,8 +122,11 @@ export default function Trades() {
     (async () => {
       try {
         setLoading(true); setError(null);
-        const res = await api.getPositions();
-        if (!cancel) setPositions(Array.isArray(res?.items) ? res.items : []);
+        const res = await api.getPositions({ limit: displayLimit });
+        if (!cancel) {
+          setPositions(Array.isArray(res?.items) ? res.items : []);
+          setTotalCount(res?.total ?? 0);
+        }
       } catch (e: any) {
         if (!cancel) setError(e?.message ?? 'Unbekannter Fehler');
       } finally {
@@ -113,7 +134,7 @@ export default function Trades() {
       }
     })();
     return () => { cancel = true; };
-  }, []);
+  }, [displayLimit]);
 
   useEffect(() => {
     let cancel = false;
@@ -215,6 +236,8 @@ export default function Trades() {
     });
   }, [filtered]);
 
+  const hasMoreToLoad = positions.length < totalCount;
+
   // Gruppiere Trades nach Datum
   const openTradesGrouped = useMemo(() => groupTradesByDate(openTrades, 'opened_at'), [openTrades]);
   const closedTradesGrouped = useMemo(() => groupTradesByDate(closedTrades, 'closed_at'), [closedTrades]);
@@ -304,7 +327,9 @@ export default function Trades() {
       {activeTab === 'open' ? (
         <section>
           <div className="flex items-center justify-between mb-2">
-            <div className="text-sm text-muted-foreground">{loading ? 'Lade…' : `${openTrades.length} Einträge`}</div>
+            <div className="text-sm text-muted-foreground">
+              {loading ? 'Lade…' : `${openTrades.length} von ${totalCount} Einträgen`}
+            </div>
             {error && <div className="text-sm text-red-500">{error}</div>}
           </div>
           <div className="space-y-4">
@@ -347,11 +372,24 @@ export default function Trades() {
                 </div>
               ))}
           </div>
+          {hasMoreToLoad && (
+            <div className="mt-4 text-center">
+              <Button 
+                variant="outline" 
+                onClick={() => setDisplayLimit(prev => prev + 50)}
+                disabled={loading}
+              >
+                {loading ? 'Lädt...' : 'Mehr laden (50)'}
+              </Button>
+            </div>
+          )}
         </section>
       ) : (
         <section>
           <div className="flex items-center justify-between mb-2">
-            <div className="text-sm text-muted-foreground">{loading ? 'Lade…' : `${closedTrades.length} Einträge`}</div>
+            <div className="text-sm text-muted-foreground">
+              {loading ? 'Lade…' : `${closedTrades.length} von ${totalCount} Einträgen`}
+            </div>
             {error && <div className="text-sm text-red-500">{error}</div>}
           </div>
           <div className="space-y-4">
@@ -394,6 +432,17 @@ export default function Trades() {
                 </div>
               ))}
           </div>
+          {hasMoreToLoad && (
+            <div className="mt-4 text-center">
+              <Button 
+                variant="outline" 
+                onClick={() => setDisplayLimit(prev => prev + 50)}
+                disabled={loading}
+              >
+                {loading ? 'Lädt...' : 'Mehr laden (50)'}
+              </Button>
+            </div>
+          )}
         </section>
       )}
       </div>

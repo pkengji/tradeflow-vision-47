@@ -26,10 +26,16 @@ function labelLeft(xPct: number, align: "left" | "center" | "right") {
 }
 
 export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", side = "long" }: Props) {
-  // Simplified view: no SL/TP - show Buy/Sell marker with entry and mark
+  // Wenn kein TP und SL: Entry unten, Exit/Mark oben
+  // Links = kleinerer Wert, Rechts = größerer Wert
   if ((sl == null || tp == null) && entry != null) {
     const minPrice = mark != null ? Math.min(entry, mark) : entry;
     const maxPrice = mark != null ? Math.max(entry, mark) : entry;
+    
+    // Entry ist IMMER unten, Mark ist IMMER oben
+    // Links = kleinerer Wert, Rechts = größerer Wert
+    const isEntryLeft = entry <= (mark ?? entry);
+    
     const hasProfit =
       mark != null && entry != null && ((side === "long" && mark > entry) || (side === "short" && mark < entry));
     const barColor = "bg-zinc-400 dark:bg-zinc-600";
@@ -54,18 +60,19 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
                 style={{
                   top: 0,
                   height: BAR_THICK_PX,
-                  left: 0,
+                  left: isEntryLeft ? 0 : undefined,
+                  right: !isEntryLeft ? 0 : undefined,
                   width: "100%",
                 }}
               />
             )}
             
-            {/* Entry tick (down, left side) */}
+            {/* Entry tick - IMMER UNTEN, Position links oder rechts je nach Wert */}
             <div className="absolute inset-0">
               <div
                 className="absolute bg-zinc-500"
                 style={{
-                  left: 0,
+                  [isEntryLeft ? 'left' : 'right']: 0,
                   top: BAR_THICK_PX,
                   width: 2,
                   height: H_ENTRY,
@@ -74,7 +81,7 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
               <div
                 className="absolute whitespace-nowrap text-[10px] leading-tight"
                 style={{
-                  left: 5,
+                  [isEntryLeft ? 'left' : 'right']: isEntryLeft ? 5 : 5,
                   top: BAR_THICK_PX + H_ENTRY + LABEL_GAP_PX,
                 }}
               >
@@ -83,13 +90,13 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
                 <span className="text-foreground tabular-nums">{minPrice.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
               </div>
               
-              {/* Mark tick (up, right side) */}
+              {/* Mark tick - IMMER OBEN, Position rechts oder links (gegenteil von Entry) */}
               {mark != null && (
                 <>
                   <div
                     className="absolute bg-zinc-700 dark:bg-zinc-200"
                     style={{
-                      right: 0,
+                      [!isEntryLeft ? 'left' : 'right']: 0,
                       bottom: BAR_THICK_PX,
                       width: 2,
                       height: H_MARK,
@@ -98,9 +105,8 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
                   <div
                     className="absolute whitespace-nowrap text-[11px] font-medium"
                     style={{
-                      right: 0,
+                      [!isEntryLeft ? 'left' : 'right']: 0,
                       bottom: BAR_THICK_PX + H_MARK + LABEL_GAP_PX,
-                      transform: "translateX(0)",
                     }}
                   >
                     {(() => {
@@ -124,17 +130,19 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
     );
   }
 
+  // Vollständige Ansicht mit SL/TP/Entry/Mark
   if (sl == null || entry == null || tp == null) {
     return null;
   }
 
   // --- layout constants
-  const BAR_THICK_PX = 6; // ~2x thicker bar
-  const LABEL_GAP_PX = 3; // distance between tick tip and label
+  const BAR_THICK_PX = 6;
+  const LABEL_GAP_PX = 3;
 
-  // Dynamic orientation: lowest left, highest right
-  const leftVal = Math.min(sl, tp);
-  const rightVal = Math.max(sl, tp);
+  // Bestimme Links und Rechts basierend auf Werten (kleinster links, größter rechts)
+  const allValues = [sl, tp, entry, mark].filter((v): v is number => v != null);
+  const leftVal = Math.min(...allValues);
+  const rightVal = Math.max(...allValues);
   const span = Math.max(1e-12, Math.abs(rightVal - leftVal));
   const toPct = (v: number) => ((v - leftVal) / span) * 100;
   const clamp01 = (x: number) => Math.max(0, Math.min(100, x));
@@ -144,47 +152,33 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
   const xEN = clamp01(toPct(entry));
   const xMK = mark == null ? null : clamp01(toPct(mark));
 
-  // label align so we don't overflow near edges
-  const alignFor = (x: number): "left" | "center" | "right" => {
-    if (x < 15) return "left";
-    if (x > 85) return "right";
-    return "center";
-  };
-
-  // SL/TP alignment based on which is leftmost/rightmost on the track
+  // Labels alignment
   const isSLLeft = xSL <= xTP;
   const alignSL: "left" | "right" = isSLLeft ? "left" : "right";
   const alignTP: "left" | "right" = isSLLeft ? "right" : "left";
-
-  // Entry/Mark prefer label to the right of the tick (left-aligned) unless near the right edge
   const alignEN: "left" | "right" = xEN > 85 ? "right" : "left";
   const alignMK: "left" | "right" = xMK == null ? "left" : xMK > 85 ? "right" : "left";
 
   const fmt = (v: number | null | undefined) =>
     v == null ? "—" : v.toLocaleString(undefined, { maximumFractionDigits: 6 });
 
-  // gain/loss logic based on side
   const pct = mark != null && entry ? ((mark - entry) / entry) * 100 : null;
   const hasProfit =
     mark != null && entry != null && ((side === "long" && mark > entry) || (side === "short" && mark < entry));
   const gainColor = hasProfit ? "#2DFB68" : "#EA3A10";
   const segmentColor = hasProfit ? "bg-success" : "bg-danger";
 
-  // tick heights (relative to bar thickness)
   const H_BAR = BAR_THICK_PX;
-  const H_SLTP = Math.round(H_BAR * 5); // 2×
-  const H_ENTRY = Math.round(H_BAR * 3); // 1.5×
-  const H_MARK = Math.round(H_BAR * 2.4); // 1.5×
+  const H_SLTP = Math.round(H_BAR * 5);
+  const H_ENTRY = Math.round(H_BAR * 3);
+  const H_MARK = Math.round(H_BAR * 2.4);
 
   return (
     <div className="py-1 px-0 pb-5">
       <div className="relative" style={{ height: H_BAR + H_SLTP + LABEL_GAP_PX + 18 }}>
-        {/* TRACK WRAPPER: everything inside respects gutters via inset-x style */}
         <div className="absolute inset-x-0" style={{ height: H_BAR, top: "50%", transform: "translateY(-50%)" }}>
-          {/* thick neutral bar */}
           <div className="absolute inset-0 bg-zinc-400 dark:bg-zinc-600 rounded" />
 
-          {/* colored segment (fills full bar height) */}
           {xMK != null && (
             <div
               className={`absolute ${segmentColor}`}
@@ -197,9 +191,8 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
             />
           )}
 
-          {/* TICKS live in a relative layer over the track */}
           <div className="absolute inset-0">
-            {/* SL tick (down) */}
+            {/* SL tick - UNTEN */}
             <Tick
               xPct={xSL}
               align={alignSL}
@@ -212,7 +205,7 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
               value={<span className="text-foreground tabular-nums">{fmt(sl)}</span>}
             />
 
-            {/* ENTRY tick (down) */}
+            {/* ENTRY tick - UNTEN, leicht erhöht */}
             <Tick
               xPct={xEN}
               align={alignEN}
@@ -225,7 +218,7 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
               value={<span className="text-foreground tabular-nums">{fmt(entry)}</span>}
             />
 
-            {/* TP tick (down) */}
+            {/* TP tick - UNTEN */}
             <Tick
               xPct={xTP}
               align={alignTP}
@@ -238,7 +231,7 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
               value={<span className="text-foreground tabular-nums">{fmt(tp)}</span>}
             />
 
-            {/* MARK tick (up) + label above with % then price */}
+            {/* MARK tick - OBEN */}
             {xMK != null && (
               <>
                 <Tick
