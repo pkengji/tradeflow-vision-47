@@ -94,10 +94,6 @@ def _fetch_all_linear_usdt_instruments(bybit: Optional[Any] = None) -> List[Dict
 # --- Upsert in DB ---
 
 def sync_symbols_linear_usdt(db: Session, bybit_client: Optional[Any] = None) -> int:
-    """
-    Holt alle linearen USDT-Perp-Symbole und upsertet sie in models.Symbol.
-    Gibt Anzahl neu/aktualisierter Einträge zurück.
-    """
     instruments = _fetch_all_linear_usdt_instruments(bybit_client)
     updated = 0
     now = _now_utc()
@@ -129,12 +125,12 @@ def sync_symbols_linear_usdt(db: Session, bybit_client: Optional[Any] = None) ->
                 refreshed_at=now,
             )
             db.add(row)
-            db.flush()
-        ensure_symbol_icon(db, row, max_age_days=0)  
+
+        ensure_symbol_icon(db, row, max_age_days=0)
         updated += 1
 
     db.commit()
-
+    print(f"[SYNC] Updated {updated} symbols")
     return updated
 
 # --- Query Helpers für API ---
@@ -146,9 +142,16 @@ def _base_from_symbol(sym: str) -> str:
 def _candidate_icon_urls(base: str) -> list[str]:
     b = base.lower()
     return [
-        f"https://cryptoicons.org/api/icon/{b}/64",               # schnell, häufig ausreichend
-        f"https://assets.coingecko.com/coins/images/1/large/{b}.png",  # heuristisch/fallback
+        # Coinpaprika: sehr gute Abdeckung, korrektes Format
+        f"https://static.coinpaprika.com/coin/{b}-{b}/logo.png",
+        # Coingecko: funktioniert für große Coins (279 = Ethereum, 1 = Bitcoin, etc.)
+        f"https://assets.coingecko.com/coins/images/1/large/{b}.png",
+        f"https://assets.coingecko.com/coins/images/279/large/{b}.png",
+        # Fallback: großes öffentliches GitHub-Iconset
+        f"https://raw.githubusercontent.com/ErikThiart/cryptocurrency-icons/master/64/color/{b}.png",
+        f"https://raw.githubusercontent.com/ErikThiart/cryptocurrency-icons/master/32/color/{b}.png",
     ]
+
 
 def _fetch_first_ok(urls: list[str]) -> tuple[bytes, str] | tuple[None, None]:
     for u in urls:
@@ -173,28 +176,31 @@ def ensure_symbol_icon(db: Session, sym: models.Symbol, max_age_days: int = 30) 
     local_rel = f"icons/{filename}"
     local_abs = os.path.join(ICONS_DIR, filename)
 
-    # Reuse, wenn frisch genug und Datei existiert
-    fresh_enough = sym.icon_last_synced_at and (datetime.now(timezone.utc) - sym.icon_last_synced_at) < timedelta(days=max_age_days)
-    # Falls noch kein Icon jemals vorhanden, sofort laden
+    fresh_enough = (
+        sym.icon_last_synced_at
+        and (datetime.now(timezone.utc) - sym.icon_last_synced_at) < timedelta(days=max_age_days)
+    )
+
+    # Wenn bereits lokal und frisch genug → reuse
     if sym.icon_local_path and os.path.exists(local_abs) and fresh_enough:
         return f"/static/{sym.icon_local_path}"
-    elif not sym.icon_local_path or not os.path.exists(local_abs):
-        # Erzwinge Download, wenn kein Icon lokal oder Pfad ungültig
-        pass  # lässt den Download unten im Code durchlaufen
 
-    # Download versuchen
+    # 🔥 Download forcieren, wenn kein lokales oder abgelaufenes Icon
     content, src = _fetch_first_ok(_candidate_icon_urls(base))
     if content:
+        os.makedirs(ICONS_DIR, exist_ok=True)
         with open(local_abs, "wb") as f:
             f.write(content)
         sym.icon_local_path = local_rel
         sym.icon_url = src
         sym.icon_last_synced_at = datetime.now(timezone.utc)
         db.add(sym)
+        # ⚠️ flush reicht hier, commit im aufrufenden Code
         db.flush()
+        print(f"[ICON] Saved {base} -> {local_rel}")
         return f"/static/{local_rel}"
 
-    # Fallback: keine Datei → None lassen
+    print(f"[ICON] Not found for {base}")
     return None
 
 
