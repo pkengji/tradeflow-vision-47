@@ -154,6 +154,7 @@ export type PositionListItem = {
   entry_price_vwap?: number | null;
   exit_price?: number | null;
   exit_price_best?: number | null;
+  exit_price_vwap?: number | null;
   mark_price?: number | null;
   sl?: number | null;
   tp?: number | null;
@@ -305,6 +306,7 @@ async function getPositions(params?: PositionsParams): Promise<{ items: Position
     entry_price_vwap: p.entry_price_vwap ?? null,
     exit_price: p.exit_price ?? null,
     exit_price_best: p.exit_price_best ?? null,
+    exit_price_vwap: p.exit_price_vwap ?? null,
     mark_price: p.mark_price ?? null,
     sl: p.sl_price ?? null,
     tp: p.tp_price ?? null,

@@ -1,6 +1,5 @@
-// src/pages/TradeDetail.tsx
-import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,14 +11,18 @@ import { Input } from '@/components/ui/input';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown, ChevronRight, ArrowLeft } from 'lucide-react';
 import MiniRange from '@/components/app/MiniRange';
-import { formatPrice, formatCurrency, formatMs } from '@/lib/formatters';
+import { formatPrice, formatCurrency, formatMs, formatPriceByTickSize } from '@/lib/formatters';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { getAllSymbols, getSymbolInfo, type SymbolInfo } from '@/lib/symbols';
 
 export default function TradeDetail() {
-  const { id } = useParams();
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const pid = Number(id);
   const qc = useQueryClient();
+  
+  const [symbolInfo, setSymbolInfo] = useState<SymbolInfo | null>(null);
 
   const { data: position, isLoading: posLoading } = useQuery({
     queryKey: ['position', pid],
@@ -27,15 +30,21 @@ export default function TradeDetail() {
     enabled: Number.isFinite(pid),
   });
 
+  // Load symbol info once on mount to populate cache
+  useEffect(() => {
+    getAllSymbols().catch(console.error);
+  }, []);
+
+  // Update symbol info when position changes
+  useEffect(() => {
+    if (position?.symbol) {
+      setSymbolInfo(getSymbolInfo(position.symbol));
+    }
+  }, [position?.symbol]);
+
   const { data: orders } = useQuery({
     queryKey: ['orders', pid],
     queryFn: () => api.getOrders(pid),
-    enabled: Number.isFinite(pid),
-  });
-
-  const { data: funding } = useQuery({
-    queryKey: ['funding', pid],
-    queryFn: () => api.getFunding(pid),
     enabled: Number.isFinite(pid),
   });
 
@@ -50,7 +59,6 @@ export default function TradeDetail() {
   // Collapsible states
   const [positionOpen, setPositionOpen] = useState(false);
   const [ordersOpen, setOrdersOpen] = useState(false);
-  const [fundingOpen, setFundingOpen] = useState(false);
 
   // --- Mutations
   const closeMutation = useMutation({
@@ -108,11 +116,16 @@ export default function TradeDetail() {
 
   const isLong = position?.side === 'long';
 
+  const handleBack = () => {
+    const fromTab = searchParams.get('from');
+    navigate(fromTab ? `/trades?tab=${fromTab}` : '/trades');
+  };
+
   const BackButton = (
     <Button 
       variant="ghost" 
       size="icon"
-      onClick={() => navigate('/trades')}
+      onClick={handleBack}
     >
       <ArrowLeft className="h-5 w-5" />
     </Button>
@@ -171,21 +184,21 @@ export default function TradeDetail() {
                   )}
                   <div>
                     <div className="text-muted-foreground mb-0.5">Entry Price (VWAP)</div>
-                    <div className="font-semibold">{formatPrice(position.entry_price_vwap || position.entry_price)}</div>
+                    <div className="font-semibold">{position.entry_price_vwap ? formatPriceByTickSize(position.entry_price_vwap, symbolInfo?.tick_size) : (position.entry_price ? formatPriceByTickSize(position.entry_price, symbolInfo?.tick_size) : '—')}</div>
                   </div>
                   <div>
                     <div className="text-muted-foreground mb-0.5">Entry Price (Best)</div>
-                    <div className="font-semibold">{formatPrice(position.entry_price_best)}</div>
+                    <div className="font-semibold">{position.entry_price_best ? formatPriceByTickSize(position.entry_price_best, symbolInfo?.tick_size) : '—'}</div>
                   </div>
                   {position.exit_price && (
                     <>
                       <div>
                         <div className="text-muted-foreground mb-0.5">Exit Price (VWAP)</div>
-                        <div className="font-semibold">{formatPrice(position.exit_price)}</div>
+                        <div className="font-semibold">{position.exit_price_vwap ? formatPriceByTickSize(position.exit_price_vwap, symbolInfo?.tick_size) : (position.exit_price ? formatPriceByTickSize(position.exit_price, symbolInfo?.tick_size) : '—')}</div>
                       </div>
                       <div>
                         <div className="text-muted-foreground mb-0.5">Exit Price (Best)</div>
-                        <div className="font-semibold">—</div>
+                        <div className="font-semibold">{position.exit_price_best ? formatPriceByTickSize(position.exit_price_best, symbolInfo?.tick_size) : '—'}</div>
                       </div>
                     </>
                   )}
@@ -349,24 +362,6 @@ export default function TradeDetail() {
               <CardContent className="pt-0">
                 <pre className="text-[10px] overflow-auto bg-muted/40 rounded p-2 max-h-48">
                   {JSON.stringify(orders, null, 2)}
-                </pre>
-              </CardContent>
-            </CollapsibleContent>
-          </Collapsible>
-        </Card>
-
-        <Card>
-          <Collapsible open={fundingOpen} onOpenChange={setFundingOpen}>
-            <CardHeader className="cursor-pointer pb-2" onClick={() => setFundingOpen(!fundingOpen)}>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm">Funding (Raw JSON)</CardTitle>
-                {fundingOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-              </div>
-            </CardHeader>
-            <CollapsibleContent>
-              <CardContent className="pt-0">
-                <pre className="text-[10px] overflow-auto bg-muted/40 rounded p-2 max-h-48">
-                  {JSON.stringify(funding, null, 2)}
                 </pre>
               </CardContent>
             </CollapsibleContent>

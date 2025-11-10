@@ -41,6 +41,30 @@ export function formatMs(ms: number | null | undefined): string {
 }
 
 /**
+ * Format price based on tick size (dynamic decimal places)
+ * @param value - The price to format
+ * @param tickSize - The tick size (e.g., 0.01, 0.0001)
+ */
+export function formatPriceByTickSize(value: number | null | undefined, tickSize?: number | string | null): string {
+  if (value == null) return '—';
+  
+  // Determine decimal places from tick size
+  let decimals = 2; // default
+  if (tickSize != null) {
+    const ts = typeof tickSize === 'string' ? parseFloat(tickSize) : tickSize;
+    if (!isNaN(ts) && ts > 0) {
+      const tsStr = ts.toString();
+      const decimalIndex = tsStr.indexOf('.');
+      if (decimalIndex >= 0) {
+        decimals = tsStr.length - decimalIndex - 1;
+      }
+    }
+  }
+  
+  return `$ ${value.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, "'")}`;
+}
+
+/**
  * Format date as DD.MM.YYYY
  */
 export function formatDate(date: Date | string | null | undefined): string {

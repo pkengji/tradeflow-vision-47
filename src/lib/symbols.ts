@@ -13,10 +13,13 @@ export type SymbolInfo = {
   icon_local_path?: string | null;
 };
 
+// Simple in-memory cache for symbol info
+let symbolCache: Map<string, SymbolInfo> | null = null;
+
 export async function getAllSymbols(): Promise<SymbolInfo[]> {
   const rows = await apiRequest<any[]>('/api/v1/symbols/all');
   if (!Array.isArray(rows)) return [];
-  return rows.map((r: any) => {
+  const infos = rows.map((r: any) => {
     if (typeof r === 'string') {
       return { symbol: r } as SymbolInfo;
     }
@@ -31,4 +34,19 @@ export async function getAllSymbols(): Promise<SymbolInfo[]> {
       icon_local_path: r.icon_local_path ?? r.iconLocalPath ?? null,
     } as SymbolInfo;
   });
+  
+  // Update cache
+  symbolCache = new Map();
+  for (const info of infos) {
+    symbolCache.set(info.symbol, info);
+  }
+  
+  return infos;
+}
+
+/**
+ * Get cached symbol info (call getAllSymbols first to populate cache)
+ */
+export function getSymbolInfo(symbol: string): SymbolInfo | null {
+  return symbolCache?.get(symbol) ?? null;
 }

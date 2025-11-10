@@ -1,8 +1,8 @@
 // ==============================
 // 1) IMPORTS
 // ==============================
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api, { type PositionListItem, type Bot } from '@/lib/api';
 import TradesFiltersBar, { type TradesFilters } from '@/components/app/TradesFiltersBar';
 import TradeCardCompact from '@/components/app/TradeCardCompact';
@@ -91,9 +91,15 @@ function groupTradesByDate(trades: PositionListItem[], dateField: 'opened_at' | 
 // ==============================
 export default function Trades() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   
   // ---- 4.1 STATE (UI & Daten) ----
-  const [activeTab, setActiveTab] = useState<TabKey>('open');
+  const [activeTab, setActiveTab] = useState<TabKey>(() => {
+    const tab = searchParams.get('tab');
+    return (tab === 'open' || tab === 'closed') ? tab : 'open';
+  });
   const [filters, setFilters] = useState<TradesFilters>({
     botIds: [],
     symbols: [],
@@ -130,7 +136,10 @@ export default function Trades() {
       } catch (e: any) {
         if (!cancel) setError(e?.message ?? 'Unbekannter Fehler');
       } finally {
-        if (!cancel) setLoading(false);
+        if (!cancel) {
+          setLoading(false);
+          setIsLoadingMore(false);
+        }
       }
     })();
     return () => { cancel = true; };
@@ -238,13 +247,58 @@ export default function Trades() {
 
   const hasMoreToLoad = positions.length < totalCount;
 
+  // Speichere scroll position beim Tab-Wechsel
+  useEffect(() => {
+    const savedPosition = sessionStorage.getItem(`trades-scroll-${activeTab}`);
+    if (savedPosition && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = parseInt(savedPosition, 10);
+    }
+  }, [activeTab]);
+
+  // Speichere scroll position
+  const handleScroll = useCallback(() => {
+    if (scrollContainerRef.current) {
+      sessionStorage.setItem(`trades-scroll-${activeTab}`, scrollContainerRef.current.scrollTop.toString());
+    }
+  }, [activeTab]);
+
+  // Infinite scroll
+  const handleScrollForLoading = useCallback(() => {
+    if (!scrollContainerRef.current || loading || isLoadingMore || !hasMoreToLoad) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    if (scrollHeight - scrollTop - clientHeight < 300) {
+      setIsLoadingMore(true);
+      setDisplayLimit(prev => prev + 50);
+    }
+  }, [loading, isLoadingMore, hasMoreToLoad]);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    
+    const handleScrollCombined = () => {
+      handleScroll();
+      handleScrollForLoading();
+    };
+    
+    container.addEventListener('scroll', handleScrollCombined);
+    return () => container.removeEventListener('scroll', handleScrollCombined);
+  }, [handleScroll, handleScrollForLoading]);
+
+  // Tab-Wechsel mit URL
+  const handleTabChange = (newTab: TabKey) => {
+    setActiveTab(newTab);
+    setSearchParams({ tab: newTab });
+  };
+
   // Gruppiere Trades nach Datum
   const openTradesGrouped = useMemo(() => groupTradesByDate(openTrades, 'opened_at'), [openTrades]);
   const closedTradesGrouped = useMemo(() => groupTradesByDate(closedTrades, 'closed_at'), [closedTrades]);
 
   // ---- 4.4 HANDLER ----
   const handleCardClick = (t: PositionListItem) => { 
-    navigate(`/trade/${t.id}`);
+    navigate(`/trade/${t.id}?from=${activeTab}`);
   };
 
   const activeFilterCount = useMemo(() => {
@@ -298,9 +352,9 @@ export default function Trades() {
         </div>
       )}
 
-      {/* Tabs integrated into header area */}
-      <div className="border-b">
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)}>
+      {/* Tabs integrated into header area - sticky */}
+      <div className="sticky top-0 z-10 bg-background border-b">
+        <Tabs value={activeTab} onValueChange={(v) => handleTabChange(v as TabKey)}>
           <TabsList className="grid w-full grid-cols-2 h-10 rounded-none border-0 bg-transparent p-0">
             <TabsTrigger value="open" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary">Offen</TabsTrigger>
             <TabsTrigger value="closed" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary">Geschlossen</TabsTrigger>
@@ -308,7 +362,8 @@ export default function Trades() {
         </Tabs>
       </div>
 
-      <div className="space-y-4 p-4 pb-24">
+      <div ref={scrollContainerRef} className="overflow-auto flex-1">
+        <div className="space-y-4 p-4 pb-24">
 
         {/* Filter - Desktop (always visible) */}
         <div className="hidden lg:block">
@@ -372,15 +427,9 @@ export default function Trades() {
                 </div>
               ))}
           </div>
-          {hasMoreToLoad && (
-            <div className="mt-4 text-center">
-              <Button 
-                variant="outline" 
-                onClick={() => setDisplayLimit(prev => prev + 50)}
-                disabled={loading}
-              >
-                {loading ? 'Lädt...' : 'Mehr laden (50)'}
-              </Button>
+          {isLoadingMore && (
+            <div className="mt-4 text-center text-sm text-muted-foreground">
+              Lädt weitere Trades...
             </div>
           )}
         </section>
@@ -432,19 +481,14 @@ export default function Trades() {
                 </div>
               ))}
           </div>
-          {hasMoreToLoad && (
-            <div className="mt-4 text-center">
-              <Button 
-                variant="outline" 
-                onClick={() => setDisplayLimit(prev => prev + 50)}
-                disabled={loading}
-              >
-                {loading ? 'Lädt...' : 'Mehr laden (50)'}
-              </Button>
+          {isLoadingMore && (
+            <div className="mt-4 text-center text-sm text-muted-foreground">
+              Lädt weitere Trades...
             </div>
           )}
         </section>
       )}
+        </div>
       </div>
     </DashboardLayout>
   );
