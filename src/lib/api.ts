@@ -147,18 +147,31 @@ export type PositionListItem = {
   side: 'long' | 'short' | null;
   status: string; // 'open' | 'closed'
   qty: number | null;
+  leverage?: number | null;
   entry_price: number | null;
   entry_price_trigger?: number | null;
   entry_price_best?: number | null;
   entry_price_vwap?: number | null;
-  exit_price?: number | null; // exit_price_vwap
+  exit_price?: number | null;
+  exit_price_best?: number | null;
   mark_price?: number | null;
-  sl?: number | null; // sl_price
-  tp?: number | null; // tp_price
-  pnl: number | null; // pnl_usdt oder unrealized_pnl_usdt
+  sl?: number | null;
+  tp?: number | null;
+  pnl: number | null;
+  unrealized_pnl?: number | null;
+  pnl_pct?: number | null;
   fee_open_usdt?: number | null;
   fee_close_usdt?: number | null;
   funding_usdt?: number | null;
+  slippage_liquidity_open?: number | null;
+  slippage_liquidity_close?: number | null;
+  slippage_timelag?: number | null;
+  timelag_tv_to_bot?: number | null;
+  timelag_bot_processing?: number | null;
+  timelag_bot_to_exchange?: number | null;
+  timelag_close_tv_to_bot?: number | null;
+  timelag_close_bot_processing?: number | null;
+  timelag_close_bot_to_exchange?: number | null;
   opened_at: string | null;
   closed_at: string | null;
   trade_uid?: string | null;
@@ -285,18 +298,31 @@ async function getPositions(params?: PositionsParams): Promise<{ items: Position
     side: p.side ?? null,
     status: p.status,
     qty: p.qty ?? null,
+    leverage: p.leverage ?? null,
     entry_price: p.entry_price ?? null,
     entry_price_trigger: p.entry_price_trigger ?? null,
     entry_price_best: p.entry_price_best ?? null,
     entry_price_vwap: p.entry_price_vwap ?? null,
     exit_price: p.exit_price ?? null,
+    exit_price_best: p.exit_price_best ?? null,
     mark_price: p.mark_price ?? null,
     sl: p.sl_price ?? null,
     tp: p.tp_price ?? null,
     pnl: p.pnl ?? null,
+    unrealized_pnl: p.unrealized_pnl ?? null,
+    pnl_pct: p.pnl_pct ?? null,
     fee_open_usdt: p.fee_open_usdt ?? null,
     fee_close_usdt: p.fee_close_usdt ?? null,
     funding_usdt: p.funding_usdt ?? null,
+    slippage_liquidity_open: p.slippage_liquidity_open ?? null,
+    slippage_liquidity_close: p.slippage_liquidity_close ?? null,
+    slippage_timelag: p.slippage_timelag ?? null,
+    timelag_tv_to_bot: p.timelag_tv_to_bot ?? null,
+    timelag_bot_processing: p.timelag_bot_processing ?? null,
+    timelag_bot_to_exchange: p.timelag_bot_to_exchange ?? null,
+    timelag_close_tv_to_bot: p.timelag_close_tv_to_bot ?? null,
+    timelag_close_bot_processing: p.timelag_close_bot_processing ?? null,
+    timelag_close_bot_to_exchange: p.timelag_close_bot_to_exchange ?? null,
     opened_at: p.opened_at ?? null,
     closed_at: p.closed_at ?? null,
     trade_uid: p.trade_uid ?? null,

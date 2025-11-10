@@ -10,6 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import MiniRange from '@/components/app/MiniRange';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import { SlidersHorizontal } from 'lucide-react';
 
 // ==============================
@@ -46,6 +47,27 @@ function combineDateTime(dateStr?: string, timeStr?: string): Date | null {
   const minute = hasTime ? min : 0;
   const dt = new Date(year, month, day, hour, minute, 0, 0);
   return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
+function formatDateHeader(dateStr: string | null): string {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('de-CH', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function groupTradesByDate(trades: PositionListItem[], dateField: 'opened_at' | 'closed_at'): Map<string, PositionListItem[]> {
+  const groups = new Map<string, PositionListItem[]>();
+  for (const trade of trades) {
+    const dateStr = trade[dateField];
+    if (!dateStr) continue;
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) continue;
+    const key = date.toISOString().split('T')[0]; // YYYY-MM-DD
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(trade);
+  }
+  return groups;
 }
 
 // ==============================
@@ -173,8 +195,29 @@ export default function Trades() {
     return list;
   }, [afterBasicFilters, filters, activeTab]);
 
-  const openTrades = useMemo(() => filtered.filter(t => t.status === 'open'), [filtered]);
-  const closedTrades = useMemo(() => filtered.filter(t => t.status === 'closed'), [filtered]);
+  const openTrades = useMemo(() => {
+    const trades = filtered.filter(t => t.status === 'open');
+    // Sortiere nach opened_at (neueste zuerst)
+    return trades.sort((a, b) => {
+      const dateA = a.opened_at ? new Date(a.opened_at).getTime() : 0;
+      const dateB = b.opened_at ? new Date(b.opened_at).getTime() : 0;
+      return dateB - dateA;
+    });
+  }, [filtered]);
+
+  const closedTrades = useMemo(() => {
+    const trades = filtered.filter(t => t.status === 'closed');
+    // Sortiere nach closed_at (neueste zuerst)
+    return trades.sort((a, b) => {
+      const dateA = a.closed_at ? new Date(a.closed_at).getTime() : 0;
+      const dateB = b.closed_at ? new Date(b.closed_at).getTime() : 0;
+      return dateB - dateA;
+    });
+  }, [filtered]);
+
+  // Gruppiere Trades nach Datum
+  const openTradesGrouped = useMemo(() => groupTradesByDate(openTrades, 'opened_at'), [openTrades]);
+  const closedTradesGrouped = useMemo(() => groupTradesByDate(closedTrades, 'closed_at'), [closedTrades]);
 
   // ---- 4.4 HANDLER ----
   const handleCardClick = (t: PositionListItem) => { 
@@ -264,33 +307,45 @@ export default function Trades() {
             <div className="text-sm text-muted-foreground">{loading ? 'Lade…' : `${openTrades.length} Einträge`}</div>
             {error && <div className="text-sm text-red-500">{error}</div>}
           </div>
-          <div className="divide-y divide-border">
+          <div className="space-y-4">
             {openTrades.length === 0 && !loading && (<div className="text-sm text-muted-foreground py-4">Keine offenen Trades.</div>)}
-            {openTrades.map((t) => (
-              <div
-                key={t.id}
-                onClick={() => handleCardClick(t)}
-                className="cursor-pointer hover:bg-muted/30 transition-colors py-2"
-              >
-                <TradeCardCompact
-                  symbol={t.symbol}
-                  side={t.side as 'long' | 'short'}
-                  pnl={safeNumber(t.pnl, 0)}
-                  botName={t.bot_name ?? undefined}
-                  deltaPct={undefined}
-                  onClick={() => {}}
-                  variant="plain"
-                />
-                <MiniRange
-                  labelEntry={t.side === 'short' ? 'Sell' : 'Buy'}
-                  entry={t.entry_price ?? null}
-                  sl={t.sl ?? null}
-                  tp={t.tp ?? null}
-                  mark={null}
-                  side={t.side as 'long' | 'short'}
-                />
-              </div>
-            ))}
+            {Array.from(openTradesGrouped.entries())
+              .sort(([dateA], [dateB]) => dateB.localeCompare(dateA)) // Neueste zuerst
+              .map(([dateKey, trades], groupIndex) => (
+                <div key={dateKey}>
+                  {groupIndex > 0 && <Separator className="my-4" />}
+                  <div className="text-xs text-muted-foreground font-medium mb-2 px-1">
+                    {formatDateHeader(dateKey)}
+                  </div>
+                  <div className="divide-y divide-border">
+                    {trades.map((t) => (
+                      <div
+                        key={t.id}
+                        onClick={() => handleCardClick(t)}
+                        className="cursor-pointer hover:bg-muted/30 transition-colors py-2"
+                      >
+                        <TradeCardCompact
+                          symbol={t.symbol}
+                          side={t.side as 'long' | 'short'}
+                          pnl={safeNumber(t.unrealized_pnl ?? t.pnl, 0)}
+                          botName={t.bot_name ?? undefined}
+                          deltaPct={t.pnl_pct ?? undefined}
+                          onClick={() => {}}
+                          variant="plain"
+                        />
+                        <MiniRange
+                          labelEntry={t.side === 'short' ? 'Sell' : 'Buy'}
+                          entry={t.entry_price_vwap ?? t.entry_price ?? null}
+                          sl={t.sl ?? null}
+                          tp={t.tp ?? null}
+                          mark={t.mark_price ?? null}
+                          side={t.side as 'long' | 'short'}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
           </div>
         </section>
       ) : (
@@ -299,33 +354,45 @@ export default function Trades() {
             <div className="text-sm text-muted-foreground">{loading ? 'Lade…' : `${closedTrades.length} Einträge`}</div>
             {error && <div className="text-sm text-red-500">{error}</div>}
           </div>
-          <div className="divide-y divide-border">
+          <div className="space-y-4">
             {closedTrades.length === 0 && !loading && (<div className="text-sm text-muted-foreground py-4">Keine geschlossenen Trades.</div>)}
-            {closedTrades.map((t) => (
-              <div
-                key={t.id}
-                onClick={() => handleCardClick(t)}
-                className="cursor-pointer hover:bg-muted/30 transition-colors py-2"
-              >
-                <TradeCardCompact
-                  symbol={t.symbol}
-                  side={t.side as 'long' | 'short'}
-                  pnl={safeNumber(t.pnl, 0)}
-                  botName={t.bot_name ?? undefined}
-                  deltaPct={undefined}
-                  onClick={() => {}}
-                  variant="plain"
-                />
-                <MiniRange
-                  labelEntry={t.side === 'short' ? 'Sell' : 'Buy'}
-                  entry={t.entry_price ?? null}
-                  sl={t.sl ?? null}
-                  tp={t.tp ?? null}
-                  mark={t.exit_price ?? null}
-                  side={t.side as 'long' | 'short'}
-                />
-              </div>
-            ))}
+            {Array.from(closedTradesGrouped.entries())
+              .sort(([dateA], [dateB]) => dateB.localeCompare(dateA)) // Neueste zuerst
+              .map(([dateKey, trades], groupIndex) => (
+                <div key={dateKey}>
+                  {groupIndex > 0 && <Separator className="my-4" />}
+                  <div className="text-xs text-muted-foreground font-medium mb-2 px-1">
+                    {formatDateHeader(dateKey)}
+                  </div>
+                  <div className="divide-y divide-border">
+                    {trades.map((t) => (
+                      <div
+                        key={t.id}
+                        onClick={() => handleCardClick(t)}
+                        className="cursor-pointer hover:bg-muted/30 transition-colors py-2"
+                      >
+                        <TradeCardCompact
+                          symbol={t.symbol}
+                          side={t.side as 'long' | 'short'}
+                          pnl={safeNumber(t.pnl, 0)}
+                          botName={t.bot_name ?? undefined}
+                          deltaPct={t.pnl_pct ?? undefined}
+                          onClick={() => {}}
+                          variant="plain"
+                        />
+                        <MiniRange
+                          labelEntry={t.side === 'short' ? 'Sell' : 'Buy'}
+                          entry={t.entry_price_vwap ?? t.entry_price ?? null}
+                          sl={t.sl ?? null}
+                          tp={t.tp ?? null}
+                          mark={t.exit_price ?? null}
+                          side={t.side as 'long' | 'short'}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
           </div>
         </section>
       )}
