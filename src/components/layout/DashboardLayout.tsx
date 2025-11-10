@@ -33,7 +33,7 @@ export function DashboardLayout({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Auto-detect page title if not provided
-  const currentPageTitle = pageTitle || navigation.find(item => item.href === location.pathname)?.name || 'TradingBot';
+  const currentPageTitle = pageTitle || navigation.find(item => item.href === location.pathname)?.name || '';
 
   const handleLogout = () => {
     logout();
@@ -107,10 +107,7 @@ export function DashboardLayout({
             </SheetTrigger>
             <SheetContent side="left" className="w-64 p-0">
               <div className="flex flex-col h-full">
-                <div className="p-6 border-b">
-                  <h2 className="text-xl font-bold">TradingBot</h2>
-                </div>
-                <nav className="flex-1 p-4">
+                <nav className="flex-1 p-4 pt-6">
                   <NavLinks onNavigate={() => setMobileMenuOpen(false)} />
                 </nav>
               </div>
@@ -119,7 +116,6 @@ export function DashboardLayout({
 
           <div className="flex items-center gap-2">
             <CandlestickChart className="h-6 w-6" />
-            <h1 className="text-lg font-bold">TradingBot</h1>
           </div>
 
           <div className="ml-auto flex items-center gap-4">
