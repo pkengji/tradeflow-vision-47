@@ -9,8 +9,9 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { useState, useMemo, useEffect } from 'react';
-import { Plus, Search, Trash2, Save, Copy, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { Plus, Search, Trash2, Save, Copy, Eye, EyeOff, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -226,6 +227,17 @@ useMemo(() => {
     },
   });
 
+  const syncMutation = useMutation({
+    mutationFn: () => api.syncBotBybit(botId!),
+    onSuccess: () => {
+      toast.success('Historie wird geladen');
+      qc.invalidateQueries({ queryKey: ['bot', botId] });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Fehler beim Laden der Historie');
+    },
+  });
+
   const applyGlobal = () => {
     if (globalLeverage !== '' || globalMultiplier !== '') {
       setPairs(prev => prev.map(p => {
@@ -306,22 +318,12 @@ useMemo(() => {
   };
 
   return (
-    <div className="space-y-4 p-4 pb-24">
-      {/* Back Button */}
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => navigate('/bots')}
-        className="mb-2"
-      >
-        <ArrowLeft className="h-4 w-4 mr-2" />
-        Zurück
-      </Button>
-
-      {/* Header Card */}
-      <Card>
-        <CardContent className="pt-4 space-y-4">
-          <div>
+    <DashboardLayout pageTitle={name || 'Bot Details'} showBackButton={true}>
+      <div className="space-y-4 p-4 pb-24 max-w-6xl mx-auto">
+        {/* Header Card */}
+        <Card>
+          <CardContent className="pt-4 space-y-4">
+            <div>
             <Label>Bot Name</Label>
             <Input 
               value={name} 
@@ -745,6 +747,10 @@ useMemo(() => {
                   Bot erneut starten
                 </DropdownMenuItem>
               )}
+              <DropdownMenuItem onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Historie laden
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => {
                   if (confirm('Bot wirklich löschen?')) deleteMutation.mutate();
@@ -767,6 +773,7 @@ useMemo(() => {
           </Button>
         )}
       </div>
-    </div>
+      </div>
+    </DashboardLayout>
   );
 }

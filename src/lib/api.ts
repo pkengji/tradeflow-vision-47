@@ -363,6 +363,10 @@ async function createBot(data: Partial<Bot>): Promise<Bot> {
   return http<Bot>('/api/v1/bots', { method: 'POST', body: data });
 }
 
+async function syncBotBybit(botId: number): Promise<void> {
+  return http<void>(`/api/v1/bots/${botId}/sync-bybit`, { method: 'POST' });
+}
+
 async function updateBot(id: number, data: Partial<Bot>): Promise<Bot> {
   return http<Bot>(`/api/v1/bots/${id}`, { method: 'PATCH', body: data });
 }
@@ -430,6 +434,7 @@ export const api = {
   // Bots
   getBots,
   createBot,
+  syncBotBybit,
   updateBot,
   pauseBot,
   resumeBot,
