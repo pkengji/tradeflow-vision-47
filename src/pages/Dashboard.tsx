@@ -21,19 +21,21 @@ type Summary = {
   portfolio_filtered: number;        // nach Filtern
   winrate_filtered: number;          // 0..1, nach Filtern
   fees_pct_filtered: number;         // gesamt in %
+  funding_pct_filtered: number;      // funding fees in %
   slippage_liq_pct_filtered: number;
   slippage_time_pct_filtered: number;
   fees_pct_filtered_total: number;   // Summe aller Transaktionskosten
   timelag_tv_to_bot_ms_filtered: number;
   timelag_bot_to_ex_ms_filtered: number;
   fees_pct_today: number;
+  funding_pct_today: number;         // funding fees heute in %
   slippage_liq_pct_today: number;
   slippage_time_pct_today: number;
   fees_pct_today_total: number;
   timelag_tv_to_bot_ms_today: number;
   timelag_bot_to_ex_ms_today: number;
-  mtd: { pnl: number; winrate: number; fees_pct: number; slippage_liq_pct: number; slippage_time_pct: number; fees_pct_total: number; timelag_tv_to_bot_ms: number; timelag_bot_to_ex_ms: number };
-  last30d: { pnl: number; winrate: number; fees_pct: number; slippage_liq_pct: number; slippage_time_pct: number; fees_pct_total: number; timelag_tv_to_bot_ms: number; timelag_bot_to_ex_ms: number };
+  mtd: { pnl: number; winrate: number; fees_pct: number; funding_pct: number; slippage_liq_pct: number; slippage_time_pct: number; fees_pct_total: number; timelag_tv_to_bot_ms: number; timelag_bot_to_ex_ms: number };
+  last30d: { pnl: number; winrate: number; fees_pct: number; funding_pct: number; slippage_liq_pct: number; slippage_time_pct: number; fees_pct_total: number; timelag_tv_to_bot_ms: number; timelag_bot_to_ex_ms: number };
 };
 
 type DailyPnl = { date: string; pnl: number; equity: number };
@@ -124,19 +126,21 @@ export default function Dashboard() {
           portfolio_filtered: 9876.54,
           winrate_filtered: 0.58,
           fees_pct_filtered: 0.8,
+          funding_pct_filtered: 0.2,
           slippage_liq_pct_filtered: 0.5,
           slippage_time_pct_filtered: 0.3,
-          fees_pct_filtered_total: 1.6,
+          fees_pct_filtered_total: 1.8,
           timelag_tv_to_bot_ms_filtered: 180,
           timelag_bot_to_ex_ms_filtered: 90,
           fees_pct_today: 0.9,
+          funding_pct_today: 0.3,
           slippage_liq_pct_today: 0.6,
           slippage_time_pct_today: 0.4,
-          fees_pct_today_total: 1.9,
+          fees_pct_today_total: 2.2,
           timelag_tv_to_bot_ms_today: 200,
           timelag_bot_to_ex_ms_today: 100,
-          mtd: { pnl: 850.12, winrate: 0.61, fees_pct: 0.8, slippage_liq_pct: 0.5, slippage_time_pct: 0.3, fees_pct_total: 1.6, timelag_tv_to_bot_ms: 190, timelag_bot_to_ex_ms: 95 },
-          last30d: { pnl: 1230.5, winrate: 0.59, fees_pct: 0.9, slippage_liq_pct: 0.6, slippage_time_pct: 0.4, fees_pct_total: 1.9, timelag_tv_to_bot_ms: 210, timelag_bot_to_ex_ms: 105 },
+          mtd: { pnl: 850.12, winrate: 0.61, fees_pct: 0.8, funding_pct: 0.25, slippage_liq_pct: 0.5, slippage_time_pct: 0.3, fees_pct_total: 1.85, timelag_tv_to_bot_ms: 190, timelag_bot_to_ex_ms: 95 },
+          last30d: { pnl: 1230.5, winrate: 0.59, fees_pct: 0.9, funding_pct: 0.28, slippage_liq_pct: 0.6, slippage_time_pct: 0.4, fees_pct_total: 2.18, timelag_tv_to_bot_ms: 210, timelag_bot_to_ex_ms: 105 },
         });
       }
 
@@ -261,6 +265,7 @@ export default function Dashboard() {
                 />
                 <div className="pl-4 space-y-0">
                   <MetricRow label="Fees" value={pct(summary.fees_pct_filtered)} small />
+                  <MetricRow label="Funding Fees" value={pct(summary.funding_pct_filtered)} small />
                   <MetricRow label="Slippage (Liquidität)" value={pct(summary.slippage_liq_pct_filtered)} small />
                   <MetricRow label="Slippage (Timelag)" value={pct(summary.slippage_time_pct_filtered)} small />
                 </div>
@@ -307,6 +312,7 @@ export default function Dashboard() {
                 />
                 <div className="pl-4 space-y-0">
                   <MetricRow label="Fees" value={pct(summary.fees_pct_today)} small />
+                  <MetricRow label="Funding Fees" value={pct(summary.funding_pct_today)} small />
                   <MetricRow label="Slippage (Liquidität)" value={pct(summary.slippage_liq_pct_today)} small />
                   <MetricRow label="Slippage (Timelag)" value={pct(summary.slippage_time_pct_today)} small />
                 </div>
@@ -347,6 +353,7 @@ export default function Dashboard() {
                 />
                 <div className="pl-4 space-y-0">
                   <MetricRow label="Fees" value={pct(summary.mtd.fees_pct)} small />
+                  <MetricRow label="Funding Fees" value={pct(summary.mtd.funding_pct)} small />
                   <MetricRow label="Slippage (Liquidität)" value={pct(summary.mtd.slippage_liq_pct)} small />
                   <MetricRow label="Slippage (Timelag)" value={pct(summary.mtd.slippage_time_pct)} small />
                 </div>
@@ -387,6 +394,7 @@ export default function Dashboard() {
                 />
                 <div className="pl-4 space-y-0">
                   <MetricRow label="Fees" value={pct(summary.last30d.fees_pct)} small />
+                  <MetricRow label="Funding Fees" value={pct(summary.last30d.funding_pct)} small />
                   <MetricRow label="Slippage (Liquidität)" value={pct(summary.last30d.slippage_liq_pct)} small />
                   <MetricRow label="Slippage (Timelag)" value={pct(summary.last30d.slippage_time_pct)} small />
                 </div>
