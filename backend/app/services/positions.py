@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta
 
 from app import models
 from app.services.pnl import compute_pnl   # <- deine Funktion
+from app.services.metrics import _slippage_entry_exit_usdt, get_timelags_ms
 
 
 
@@ -35,7 +36,26 @@ def handle_position_open(
         last_exec_at=opened_at or now,
         funding_usdt=0.0,            # bewusst 0 für offene
     )
+
+    es, _, _ = _slippage_entry_exit_usdt(pos)
+    pos.slippage_entry_usdt = es
+    
     db.add(pos); db.commit(); db.refresh(pos)
+
+    # --- Orders mit gleicher trade_uid verknüpfen (falls vorhanden) ---
+    if pos.trade_uid:
+        orders = (
+            db.query(models.Order)
+              .filter(models.Order.bot_id == pos.bot_id)
+              .filter(models.Order.symbol == pos.symbol)
+              .filter(models.Order.order_link_id.contains(pos.trade_uid))
+              .all()
+        )
+        for o in orders:
+            if o.position_id is None:
+                o.position_id = pos.id
+                db.add(o)
+
     # direkt fee_open aktualisieren (Entry-Seite, unconsumed)
     update_fee_open_for_position(db, pos.id)
     return pos
@@ -149,6 +169,30 @@ def _finalize_position(
         pos.realized_pnl_net_usdt = pnl_usdt
     pos.pnl_usdt = pnl_usdt
     pos.fee_close_usdt = fee_close_usdt
+    # --- Slippage ---
+    es, xs, tl = _slippage_entry_exit_usdt(pos)
+    pos.slippage_entry_usdt = es
+    pos.slippage_exit_usdt  = xs
+    pos.slippage_timelag_usdt = tl
+    # --- Timelag (falls TV-Signal vorhanden) ---
+    tl1, tl2, tl3 = get_timelags_ms(pos)
+    pos.timelag_tv_bot_ms   = tl1
+    pos.timelag_bot_proc_ms = tl2
+    pos.timelag_bot_exch_ms = tl3
+
+    if pos.trade_uid:
+        orders = (
+            db.query(models.Order)
+            .filter(models.Order.bot_id == pos.bot_id)
+            .filter(models.Order.symbol == pos.symbol)
+            .filter(models.Order.order_link_id.contains(pos.trade_uid))
+
+            .all()
+        )
+        for o in orders:
+            o.position_id = pos.id
+
+
     pos.closed_at = closed_at or datetime.now(timezone.utc)
 
     # optional: generisches Feld, falls Frontend nur exit_price kennt

@@ -83,6 +83,7 @@ def _slippage_entry_exit_usdt(pos: Position) -> Tuple[float, float, float]:
     Berechnet Entry-/Exit-Slippage in USDT (positiv = Kosten, negativ = Vorteil).
     - Entry: (entry_vwap - entry_best) * qty; für Shorts wird das Vorzeichen gedreht.
     - Exit : (exit_vwap  - exit_best)  * qty; für Shorts wird das Vorzeichen gedreht.
+    - Timelag-Slippage (USDT) = theoretisches Ergebnis - tatsächliches Ergebnis - alle Kosten
     Gibt (entry_slip, exit_slip, total) zurück.
     """
     entry_slip = 0.0
@@ -112,12 +113,26 @@ def _slippage_entry_exit_usdt(pos: Position) -> Tuple[float, float, float]:
             # Short: tieferer Exit als best = schlechter Exit = Kosten (+)
             exit_slip = -diff_exit * qty
 
-    return entry_slip, exit_slip, (entry_slip + exit_slip)
+    # --- Timelag-Slippage ---
+    risk = getattr(pos, "risk_amount_usdt", 0) or 0
+    rrr  = getattr(pos, "risk_reward", 0) or 0
+    pnl  = getattr(pos, "pnl_usdt", 0) or 0
+    fees = (getattr(pos, "fee_open_usdt", 0) or 0) + (getattr(pos, "fee_close_usdt", 0) or 0)
+    funding = getattr(pos, "funding_usdt", 0) or 0
+
+    if risk is None or rrr is None or risk == 0 or rrr == 0:
+        slippage_timelag = None
+    else:
+        theoretical = risk * rrr if pnl > 0 else -risk
+        slippage_timelag = theoretical - pnl - entry_slip - exit_slip - fees - funding
+
+    return entry_slip, exit_slip, slippage_timelag
 
 
 # -------------------- Aggregierte Summary (overall / today / mtd / d30) --------------------
 
 def compute_summary(
+        
     db: Session,
     *,
     tz: str = "Europe/Zurich",

@@ -142,14 +142,12 @@ def _base_from_symbol(sym: str) -> str:
 def _candidate_icon_urls(base: str) -> list[str]:
     b = base.lower()
     return [
+        f"https://static.bybit.com/icon/{base}.png",                             # Bybit
+        f"https://cryptoicons-api.vercel.app/api/icon/{base.lower()}",           # Binance alt
+        f"https://raw.githubusercontent.com/binance-chain/tokens-info/master/assets/{base}_logo.png", # Binance alt repo
+        f"https://cryptoicons.org/api/icon/{base.lower()}/64"                      # Fallback
         # Coinpaprika: sehr gute Abdeckung, korrektes Format
         f"https://static.coinpaprika.com/coin/{b}-{b}/logo.png",
-        # Coingecko: funktioniert für große Coins (279 = Ethereum, 1 = Bitcoin, etc.)
-        f"https://assets.coingecko.com/coins/images/1/large/{b}.png",
-        f"https://assets.coingecko.com/coins/images/279/large/{b}.png",
-        # Fallback: großes öffentliches GitHub-Iconset
-        f"https://raw.githubusercontent.com/ErikThiart/cryptocurrency-icons/master/64/color/{b}.png",
-        f"https://raw.githubusercontent.com/ErikThiart/cryptocurrency-icons/master/32/color/{b}.png",
     ]
 
 
@@ -175,11 +173,13 @@ def ensure_symbol_icon(db: Session, sym: models.Symbol, max_age_days: int = 30) 
     filename = f"{base.lower()}.png"
     local_rel = f"icons/{filename}"
     local_abs = os.path.join(ICONS_DIR, filename)
-
-    fresh_enough = (
-        sym.icon_last_synced_at
-        and (datetime.now(timezone.utc) - sym.icon_last_synced_at) < timedelta(days=max_age_days)
-    )
+    
+    fresh_enough = False
+    if sym.icon_last_synced_at:
+        last = sym.icon_last_synced_at
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        fresh_enough = (datetime.now(timezone.utc) - last) < timedelta(days=max_age_days)
 
     # Wenn bereits lokal und frisch genug → reuse
     if sym.icon_local_path and os.path.exists(local_abs) and fresh_enough:

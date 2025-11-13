@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..bybit_v5_data import BybitV5Data
 from ..services.positions import reconcile_symbol
+from ..services.metrics import _slippage_entry_exit_usdt
 
 
 # ============================================================
@@ -461,6 +462,12 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
                 first_exec_at=opened_at,
                 last_exec_at=closed_at,
             )
+
+            es, xs, tl = _slippage_entry_exit_usdt(pos)
+            pos.slippage_entry_usdt = es
+            pos.slippage_exit_usdt = xs
+            pos.slippage_timelag_usdt = tl
+
             db.add(pos); created += 1
 
             # Executions konsumieren
@@ -564,6 +571,12 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
                             first_exec_at=opened_at_r,
                             last_exec_at=closed_at_r,
                         )
+
+                        es, xs, tl = _slippage_entry_exit_usdt(pos)
+                        pos.slippage_entry_usdt = es
+                        pos.slippage_exit_usdt = xs
+                        pos.slippage_timelag_usdt = tl
+                        
                         db.add(pos); created += 1
 
                     # consume & reset
@@ -639,6 +652,12 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
                             first_exec_at=opened_at_r,
                             last_exec_at=last_ts,
                         )
+
+                        es, xs, tl = _slippage_entry_exit_usdt(pos)
+                        pos.slippage_entry_usdt = es
+                        pos.slippage_exit_usdt = xs
+                        pos.slippage_timelag_usdt = tl
+
                         db.add(pos); created += 1
 
                     for z in entry_fills:
@@ -707,6 +726,12 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
                 first_exec_at=opened_at,
                 last_exec_at=last_ts,
             )
+
+            es, xs, tl = _slippage_entry_exit_usdt(pos)
+            pos.slippage_entry_usdt = es
+            pos.slippage_exit_usdt = xs
+            pos.slippage_timelag_usdt = tl
+            
             db.add(pos); created += 1
 
             # WICHTIG: remaining NICHT konsumieren (kein is_consumed=1),

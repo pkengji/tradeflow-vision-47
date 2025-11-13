@@ -16,6 +16,7 @@ from collections import defaultdict
 from datetime import datetime, timezone, date, timedelta
 from app.services.positions import handle_position_close, reconcile_symbol
 from app.services.portfolio_sync import sync_cashflows as pf_sync_cashflows, compute_portfolio_value as pf_compute_portfolio_value
+from app.services.metrics import _slippage_entry_exit_usdt
 
 from .database import Base, engine, SessionLocal
 from . import models, schemas
@@ -714,14 +715,35 @@ def dashboard_summary(
     def safe_rate(wins: int, total: int) -> float:
         return (wins / total) if total > 0 else 0.0
 
-    tx_breakdown = {"fees": 0.0, "funding": 0.0, "slip_liq": 0.0, "slip_time": 0.0}
+    avg_tv_bot = []
+    avg_bot_ex = []
+    sum_slip_entry, sum_slip_exit, sum_slip_time = 0.0, 0.0, 0.0
+
+    for p in positions:
+        if p.closed_at is None:
+            continue
+        ...
+        sum_slip_entry += float(p.slippage_entry_usdt or 0)
+        sum_slip_exit  += float(p.slippage_exit_usdt or 0)
+        sum_slip_time  += float(p.slippage_timelag_usdt or 0)
+        if p.timelag_tv_bot_ms:
+            avg_tv_bot.append(p.timelag_tv_bot_ms)
+        if p.timelag_bot_exch_ms:
+            avg_bot_ex.append(p.timelag_bot_exch_ms)
+
+    tx_breakdown = {
+        "fees": sum(float(p.fee_open_usdt or 0) + float(p.fee_close_usdt or 0) for p in positions),
+        "funding": sum(float(p.funding_usdt or 0) for p in positions),
+        "slip_liq": sum_slip_entry + sum_slip_exit,
+        "slip_time": sum_slip_time,
+    }
 
     summary = {
         "portfolio_total_equity": sum(equity_series.values()),
         "kpis": {
-            "today": {"realized_pnl": realized_today, "win_rate": safe_rate(wins_today, total_today), "tx_costs_pct": 0.0, "tx_breakdown": tx_breakdown, "timelag_ms": {"tv_bot_avg": 0, "bot_ex_avg": 0}},
-            "month": {"realized_pnl": month_realized, "win_rate": safe_rate(month_wins, month_total), "tx_costs_pct": 0.0, "tx_breakdown": tx_breakdown, "timelag_ms": {"tv_bot_avg": 0, "bot_ex_avg": 0}},
-            "last_30d": {"realized_pnl": last30_realized, "win_rate": safe_rate(last30_wins, last30_total), "tx_costs_pct": 0.0, "tx_breakdown": tx_breakdown, "timelag_ms": {"tv_bot_avg": 0, "bot_ex_avg": 0}},
+            "today": {"realized_pnl": realized_today, "win_rate": safe_rate(wins_today, total_today), "tx_costs_pct": 0.0, "tx_breakdown": tx_breakdown, "timelag_ms": {"tv_bot_avg": (sum(avg_tv_bot) / len(avg_tv_bot)) if avg_tv_bot else 0,"bot_ex_avg": (sum(avg_bot_ex) / len(avg_bot_ex)) if avg_bot_ex else 0,}},
+            "month": {"realized_pnl": month_realized, "win_rate": safe_rate(month_wins, month_total), "tx_costs_pct": 0.0, "tx_breakdown": tx_breakdown, "timelag_ms": {"tv_bot_avg": (sum(avg_tv_bot) / len(avg_tv_bot)) if avg_tv_bot else 0,"bot_ex_avg": (sum(avg_bot_ex) / len(avg_bot_ex)) if avg_bot_ex else 0,}},
+            "last_30d": {"realized_pnl": last30_realized, "win_rate": safe_rate(last30_wins, last30_total), "tx_costs_pct": 0.0, "tx_breakdown": tx_breakdown, "timelag_ms": {"tv_bot_avg": (sum(avg_tv_bot) / len(avg_tv_bot)) if avg_tv_bot else 0,"bot_ex_avg": (sum(avg_bot_ex) / len(avg_bot_ex)) if avg_bot_ex else 0,}},
             "current": {"open_trades": open_count, "filtered_portfolio_equity": sum(equity_series.values()), "win_rate": safe_rate(wins_today, total_today)},
         },
         "equity_timeseries": [{"ts": d.isoformat(), "day_pnl": equity_series[d]} for d in sorted(equity_series.keys())],
@@ -1291,3 +1313,37 @@ def debug_rebuild(bot_id: int = Query(...),
                   db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
     created = rebuild_positions_orderlink(db, bot_id=bot_id)
     return {"ok": True, "positions_created": created}
+
+
+@app.post("/api/v1/debug/backfill-slippage")
+def backfill_slippage(db: Session = Depends(get_db)):
+    """
+    Berechnet und speichert Slippage-Werte (Entry, Exit, Timelag)
+    für alle geschlossenen Positionen, bei denen diese Felder noch NULL sind.
+    """
+    updated = 0
+    positions = (
+        db.query(Position)
+          .filter(Position.status == "closed")
+          .filter(
+              (Position.slippage_entry_usdt.is_(None)) |
+              (Position.slippage_exit_usdt.is_(None)) |
+              (Position.slippage_timelag_usdt.is_(None))
+          )
+          .all()
+    )
+
+    for pos in positions:
+        es, xs, tl = _slippage_entry_exit_usdt(pos)
+        pos.slippage_entry_usdt = es
+        pos.slippage_exit_usdt = xs
+        pos.slippage_timelag_usdt = tl
+        db.add(pos)
+        updated += 1
+
+    db.commit()
+    return {
+        "ok": True,
+        "updated_positions": updated,
+        "message": "Slippage-Werte erfolgreich nachgetragen."
+    }

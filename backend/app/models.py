@@ -130,11 +130,21 @@ class Position(Base):
     opened_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     closed_at = Column(DateTime(timezone=True), nullable=True)
 
+    # ---------- Slippage & Timelag ----------
+    slippage_entry_usdt = Column(Float, nullable=True)
+    slippage_exit_usdt  = Column(Float, nullable=True)
+    slippage_timelag_usdt = Column(Float, nullable=True)
+
+    timelag_tv_bot_ms   = Column(Float, nullable=True)
+    timelag_bot_proc_ms = Column(Float, nullable=True)
+    timelag_bot_exch_ms = Column(Float, nullable=True)
+
     # Beziehungen
     bot = relationship("Bot", back_populates="positions", lazy="joined")
     user = relationship("User", back_populates="positions", lazy="joined")
-    tv_signal = relationship("TvSignal", back_populates="positions", lazy="joined")       # ADDED
-    outbox_item = relationship("OutboxItem", back_populates="positions", lazy="joined")   # ADDED
+    tv_signal = relationship("TvSignal", back_populates="positions", lazy="joined")   
+    orders = relationship("Order", back_populates="position", lazy="select")  
+    outbox_item = relationship("OutboxItem", back_populates="positions", lazy="joined") 
 
 
 # =========================
@@ -231,11 +241,13 @@ class Order(Base):
 
     status = Column(String, nullable=True)
     exchange_order_id = Column(String, unique=True, index=True)
+    position_id = Column(Integer, ForeignKey("positions.id"), nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     filled_at = Column(DateTime, nullable=True)
 
     bot = relationship("Bot")
+    position = relationship("Position", back_populates="orders")
 
 
 class Symbol(Base):
