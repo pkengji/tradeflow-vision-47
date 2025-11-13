@@ -11,31 +11,36 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/lib/formatters';
 
-// Typen
+// Typen basierend auf Backend API-Struktur
+type KPIPeriod = {
+  realized_pnl: number;
+  win_rate: number;
+  tx_costs_pct: number;
+  tx_breakdown: {
+    fees: number;
+    funding: number;
+    slip_liq: number;
+    slip_time: number;
+  };
+  timelag_ms: {
+    tv_bot_avg: number;
+    bot_ex_avg: number;
+  };
+};
+
 type Summary = {
-  portfolio_total: number;           // ungefiltert (exkl. unrealized P&L)
-  pnl_today: number;                 // realized heute
-  winrate_today: number;             // 0..1
-  open_trades_count: number;
-  pnl_filtered: number;              // realized P&L nach Filtern
-  portfolio_filtered: number;        // nach Filtern
-  winrate_filtered: number;          // 0..1, nach Filtern
-  fees_pct_filtered: number;         // gesamt in %
-  funding_pct_filtered: number;      // funding fees in %
-  slippage_liq_pct_filtered: number;
-  slippage_time_pct_filtered: number;
-  fees_pct_filtered_total: number;   // Summe aller Transaktionskosten
-  timelag_tv_to_bot_ms_filtered: number;
-  timelag_bot_to_ex_ms_filtered: number;
-  fees_pct_today: number;
-  funding_pct_today: number;         // funding fees heute in %
-  slippage_liq_pct_today: number;
-  slippage_time_pct_today: number;
-  fees_pct_today_total: number;
-  timelag_tv_to_bot_ms_today: number;
-  timelag_bot_to_ex_ms_today: number;
-  mtd: { pnl: number; winrate: number; fees_pct: number; funding_pct: number; slippage_liq_pct: number; slippage_time_pct: number; fees_pct_total: number; timelag_tv_to_bot_ms: number; timelag_bot_to_ex_ms: number };
-  last30d: { pnl: number; winrate: number; fees_pct: number; funding_pct: number; slippage_liq_pct: number; slippage_time_pct: number; fees_pct_total: number; timelag_tv_to_bot_ms: number; timelag_bot_to_ex_ms: number };
+  portfolio_total_equity: number;
+  kpis: {
+    today: KPIPeriod;
+    month: KPIPeriod;
+    last_30d: KPIPeriod;
+    current: {
+      open_trades: number;
+      filtered_portfolio_equity: number;
+      win_rate: number;
+    };
+  };
+  equity_timeseries: Array<{ ts: string; day_pnl: number }>;
 };
 
 type DailyPnl = { date: string; pnl: number; equity: number };
@@ -115,33 +120,8 @@ export default function Dashboard() {
           mtd: tvSignalsMTD.length,
           last30d: tvSignalsLast30D.length
         });
-      } catch {
-        // Stub, falls Endpoint noch nicht fertig ist
-        setSummary({
-          portfolio_total: 12345.67,
-          pnl_today: 120.55,
-          winrate_today: 0.62,
-          open_trades_count: 3,
-          pnl_filtered: 456.78,
-          portfolio_filtered: 9876.54,
-          winrate_filtered: 0.58,
-          fees_pct_filtered: 0.8,
-          funding_pct_filtered: 0.2,
-          slippage_liq_pct_filtered: 0.5,
-          slippage_time_pct_filtered: 0.3,
-          fees_pct_filtered_total: 1.8,
-          timelag_tv_to_bot_ms_filtered: 180,
-          timelag_bot_to_ex_ms_filtered: 90,
-          fees_pct_today: 0.9,
-          funding_pct_today: 0.3,
-          slippage_liq_pct_today: 0.6,
-          slippage_time_pct_today: 0.4,
-          fees_pct_today_total: 2.2,
-          timelag_tv_to_bot_ms_today: 200,
-          timelag_bot_to_ex_ms_today: 100,
-          mtd: { pnl: 850.12, winrate: 0.61, fees_pct: 0.8, funding_pct: 0.25, slippage_liq_pct: 0.5, slippage_time_pct: 0.3, fees_pct_total: 1.85, timelag_tv_to_bot_ms: 190, timelag_bot_to_ex_ms: 95 },
-          last30d: { pnl: 1230.5, winrate: 0.59, fees_pct: 0.9, funding_pct: 0.28, slippage_liq_pct: 0.6, slippage_time_pct: 0.4, fees_pct_total: 2.18, timelag_tv_to_bot_ms: 210, timelag_bot_to_ex_ms: 105 },
-        });
+      } catch (err) {
+        console.error('Dashboard summary error:', err);
       }
 
       try {
@@ -235,7 +215,7 @@ export default function Dashboard() {
               <div className="text-center">
                 <div className="text-[var(--font-size-subsection-title)] text-muted-foreground mb-1">Portfolio total</div>
                 <div className="text-[var(--font-size-value-large)] font-bold text-foreground">
-                  {formatCurrency(summary.portfolio_total)}
+                  {formatCurrency(summary.portfolio_total_equity)}
                 </div>
               </div>
             </CardContent>
@@ -251,9 +231,9 @@ export default function Dashboard() {
             <CardContent className="space-y-0 py-2 pb-3">
               {/* Main Metrics - Simple List */}
               <div className="space-y-0">
-                <MetricRow label="Realized P&L" value={formatCurrency(summary.pnl_filtered)} />
-                <MetricRow label="Portfoliowert" value={formatCurrency(summary.portfolio_filtered)} />
-                <MetricRow label="Win Rate" value={pct(summary.winrate_filtered)} />
+                <MetricRow label="Realized P&L" value={formatCurrency(summary.kpis.current.filtered_portfolio_equity)} />
+                <MetricRow label="Portfoliowert" value={formatCurrency(summary.kpis.current.filtered_portfolio_equity)} />
+                <MetricRow label="Win Rate" value={pct(summary.kpis.current.win_rate)} />
                 <MetricRow label="Anzahl Signale" value={String(signalsCount.total)} />
               </div>
 
@@ -261,13 +241,13 @@ export default function Dashboard() {
               <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Transaktionskosten" 
-                  value={pct(summary.fees_pct_filtered_total)} 
+                  value={pct(summary.kpis.current.win_rate)} 
                 />
                 <div className="pl-4 space-y-0">
-                  <MetricRow label="Fees" value={pct(summary.fees_pct_filtered)} small />
-                  <MetricRow label="Funding Fees" value={pct(summary.funding_pct_filtered)} small />
-                  <MetricRow label="Slippage (Liquidität)" value={pct(summary.slippage_liq_pct_filtered)} small />
-                  <MetricRow label="Slippage (Timelag)" value={pct(summary.slippage_time_pct_filtered)} small />
+                  <MetricRow label="Fees" value="-" small />
+                  <MetricRow label="Funding Fees" value="-" small />
+                  <MetricRow label="Slippage (Liquidität)" value="-" small />
+                  <MetricRow label="Slippage (Timelag)" value="-" small />
                 </div>
               </div>
 
@@ -275,12 +255,12 @@ export default function Dashboard() {
               <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Timelag" 
-                  value={ms(summary.timelag_tv_to_bot_ms_filtered + summary.timelag_bot_to_ex_ms_filtered)} 
+                  value="-" 
                 />
                 <div className="pl-4 space-y-0">
-                  <MetricRow label="Entry" value={ms(summary.timelag_tv_to_bot_ms_filtered)} small />
-                  <MetricRow label="Processing time" value={ms(0)} small />
-                  <MetricRow label="Exit" value={ms(summary.timelag_bot_to_ex_ms_filtered)} small />
+                  <MetricRow label="Entry" value="-" small />
+                  <MetricRow label="Processing time" value="-" small />
+                  <MetricRow label="Exit" value="-" small />
                 </div>
               </div>
             </CardContent>
@@ -296,37 +276,37 @@ export default function Dashboard() {
             <CardContent className="space-y-0 py-2 pb-3">
               <div className="space-y-0">
                 <Link to="/trades?status=closed">
-                  <MetricRow label="P&L realized heute" value={formatCurrency(summary.pnl_today)} hoverable />
+                  <MetricRow label="P&L realized heute" value={formatCurrency(summary.kpis.today.realized_pnl)} hoverable />
                 </Link>
-                <MetricRow label="Win Rate heute" value={pct(summary.winrate_today)} />
+                <MetricRow label="Win Rate heute" value={pct(summary.kpis.today.win_rate)} />
                 <MetricRow label="Anzahl Signale" value={String(signalsCount.today)} />
                 <Link to="/trades?status=open">
-                  <MetricRow label="Offene Trades aktuell" value={summary.open_trades_count} hoverable />
+                  <MetricRow label="Offene Trades aktuell" value={summary.kpis.current.open_trades} hoverable />
                 </Link>
               </div>
 
               <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Transaktionskosten" 
-                  value={pct(summary.fees_pct_today_total)} 
+                  value={pct(summary.kpis.today.tx_costs_pct)} 
                 />
                 <div className="pl-4 space-y-0">
-                  <MetricRow label="Fees" value={pct(summary.fees_pct_today)} small />
-                  <MetricRow label="Funding Fees" value={pct(summary.funding_pct_today)} small />
-                  <MetricRow label="Slippage (Liquidität)" value={pct(summary.slippage_liq_pct_today)} small />
-                  <MetricRow label="Slippage (Timelag)" value={pct(summary.slippage_time_pct_today)} small />
+                  <MetricRow label="Fees" value={formatCurrency(summary.kpis.today.tx_breakdown.fees)} small />
+                  <MetricRow label="Funding Fees" value={formatCurrency(summary.kpis.today.tx_breakdown.funding)} small />
+                  <MetricRow label="Slippage (Liquidität)" value={formatCurrency(summary.kpis.today.tx_breakdown.slip_liq)} small />
+                  <MetricRow label="Slippage (Timelag)" value={formatCurrency(summary.kpis.today.tx_breakdown.slip_time)} small />
                 </div>
               </div>
 
               <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Timelag" 
-                  value={ms(summary.timelag_tv_to_bot_ms_today + summary.timelag_bot_to_ex_ms_today)} 
+                  value={ms(summary.kpis.today.timelag_ms.tv_bot_avg + summary.kpis.today.timelag_ms.bot_ex_avg)} 
                 />
                 <div className="pl-4 space-y-0">
-                  <MetricRow label="Entry" value={ms(summary.timelag_tv_to_bot_ms_today)} small />
+                  <MetricRow label="Entry" value={ms(summary.kpis.today.timelag_ms.tv_bot_avg)} small />
                   <MetricRow label="Processing time" value={ms(0)} small />
-                  <MetricRow label="Exit" value={ms(summary.timelag_bot_to_ex_ms_today)} small />
+                  <MetricRow label="Exit" value={ms(summary.kpis.today.timelag_ms.bot_ex_avg)} small />
                 </div>
               </div>
             </CardContent>
@@ -341,33 +321,33 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent className="space-y-0 py-2 pb-3">
               <div className="space-y-0">
-                <MetricRow label="Realized P&L" value={formatCurrency(summary.mtd.pnl)} />
-                <MetricRow label="Win Rate" value={pct(summary.mtd.winrate)} />
+                <MetricRow label="Realized P&L" value={formatCurrency(summary.kpis.month.realized_pnl)} />
+                <MetricRow label="Win Rate" value={pct(summary.kpis.month.win_rate)} />
                 <MetricRow label="Anzahl Signale" value={String(signalsCount.mtd)} />
               </div>
 
               <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Transaktionskosten" 
-                  value={pct(summary.mtd.fees_pct_total)} 
+                  value={pct(summary.kpis.month.tx_costs_pct)} 
                 />
                 <div className="pl-4 space-y-0">
-                  <MetricRow label="Fees" value={pct(summary.mtd.fees_pct)} small />
-                  <MetricRow label="Funding Fees" value={pct(summary.mtd.funding_pct)} small />
-                  <MetricRow label="Slippage (Liquidität)" value={pct(summary.mtd.slippage_liq_pct)} small />
-                  <MetricRow label="Slippage (Timelag)" value={pct(summary.mtd.slippage_time_pct)} small />
+                  <MetricRow label="Fees" value={formatCurrency(summary.kpis.month.tx_breakdown.fees)} small />
+                  <MetricRow label="Funding Fees" value={formatCurrency(summary.kpis.month.tx_breakdown.funding)} small />
+                  <MetricRow label="Slippage (Liquidität)" value={formatCurrency(summary.kpis.month.tx_breakdown.slip_liq)} small />
+                  <MetricRow label="Slippage (Timelag)" value={formatCurrency(summary.kpis.month.tx_breakdown.slip_time)} small />
                 </div>
               </div>
 
               <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Timelag" 
-                  value={ms(summary.mtd.timelag_tv_to_bot_ms + summary.mtd.timelag_bot_to_ex_ms)} 
+                  value={ms(summary.kpis.month.timelag_ms.tv_bot_avg + summary.kpis.month.timelag_ms.bot_ex_avg)} 
                 />
                 <div className="pl-4 space-y-0">
-                  <MetricRow label="Entry" value={ms(summary.mtd.timelag_tv_to_bot_ms)} small />
+                  <MetricRow label="Entry" value={ms(summary.kpis.month.timelag_ms.tv_bot_avg)} small />
                   <MetricRow label="Processing time" value={ms(0)} small />
-                  <MetricRow label="Exit" value={ms(summary.mtd.timelag_bot_to_ex_ms)} small />
+                  <MetricRow label="Exit" value={ms(summary.kpis.month.timelag_ms.bot_ex_avg)} small />
                 </div>
               </div>
             </CardContent>
@@ -382,33 +362,33 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent className="space-y-0 py-2 pb-3">
               <div className="space-y-0">
-                <MetricRow label="Realized P&L" value={formatCurrency(summary.last30d.pnl)} />
-                <MetricRow label="Win Rate" value={pct(summary.last30d.winrate)} />
+                <MetricRow label="Realized P&L" value={formatCurrency(summary.kpis.last_30d.realized_pnl)} />
+                <MetricRow label="Win Rate" value={pct(summary.kpis.last_30d.win_rate)} />
                 <MetricRow label="Anzahl Signale" value={String(signalsCount.last30d)} />
               </div>
 
               <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Transaktionskosten" 
-                  value={pct(summary.last30d.fees_pct_total)} 
+                  value={pct(summary.kpis.last_30d.tx_costs_pct)} 
                 />
                 <div className="pl-4 space-y-0">
-                  <MetricRow label="Fees" value={pct(summary.last30d.fees_pct)} small />
-                  <MetricRow label="Funding Fees" value={pct(summary.last30d.funding_pct)} small />
-                  <MetricRow label="Slippage (Liquidität)" value={pct(summary.last30d.slippage_liq_pct)} small />
-                  <MetricRow label="Slippage (Timelag)" value={pct(summary.last30d.slippage_time_pct)} small />
+                  <MetricRow label="Fees" value={formatCurrency(summary.kpis.last_30d.tx_breakdown.fees)} small />
+                  <MetricRow label="Funding Fees" value={formatCurrency(summary.kpis.last_30d.tx_breakdown.funding)} small />
+                  <MetricRow label="Slippage (Liquidität)" value={formatCurrency(summary.kpis.last_30d.tx_breakdown.slip_liq)} small />
+                  <MetricRow label="Slippage (Timelag)" value={formatCurrency(summary.kpis.last_30d.tx_breakdown.slip_time)} small />
                 </div>
               </div>
 
               <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Timelag" 
-                  value={ms(summary.last30d.timelag_tv_to_bot_ms + summary.last30d.timelag_bot_to_ex_ms)} 
+                  value={ms(summary.kpis.last_30d.timelag_ms.tv_bot_avg + summary.kpis.last_30d.timelag_ms.bot_ex_avg)} 
                 />
                 <div className="pl-4 space-y-0">
-                  <MetricRow label="Entry" value={ms(summary.last30d.timelag_tv_to_bot_ms)} small />
+                  <MetricRow label="Entry" value={ms(summary.kpis.last_30d.timelag_ms.tv_bot_avg)} small />
                   <MetricRow label="Processing time" value={ms(0)} small />
-                  <MetricRow label="Exit" value={ms(summary.last30d.timelag_bot_to_ex_ms)} small />
+                  <MetricRow label="Exit" value={ms(summary.kpis.last_30d.timelag_ms.bot_ex_avg)} small />
                 </div>
               </div>
             </CardContent>
