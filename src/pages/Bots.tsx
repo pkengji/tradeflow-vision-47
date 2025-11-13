@@ -100,7 +100,7 @@ export default function Bots() {
         )}
 
         {/* Fixed Button unten */}
-        <div className="fixed bottom-16 left-0 right-0 bg-card border-t p-3 z-50">
+        <div className="fixed bottom-16 lg:bottom-0 left-0 lg:left-64 right-0 bg-card border-t p-3 z-50">
           <Button asChild size="default" className="w-full">
             <Link to="/bots/new">
               <Plus className="mr-2 h-5 w-5" />

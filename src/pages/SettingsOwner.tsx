@@ -121,7 +121,7 @@ export default function SettingsOwner() {
         </Card>
       </div>
 
-      <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 bg-card border-t p-4 z-50">
+      <div className="fixed bottom-16 lg:bottom-0 left-0 lg:left-64 right-0 bg-card border-t p-4 z-50">
         <Button onClick={handleAddUser} disabled={addUserMutation.isPending} className="w-full">
           {addUserMutation.isPending ? 'Füge hinzu...' : 'User hinzufügen'}
         </Button>

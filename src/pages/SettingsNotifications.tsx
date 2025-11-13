@@ -124,7 +124,7 @@ export default function SettingsNotifications() {
         </div>
       </div>
 
-      <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 bg-card border-t p-4 z-50">
+      <div className="fixed bottom-16 lg:bottom-0 left-0 lg:left-64 right-0 bg-card border-t p-4 z-50">
         <Button onClick={handleSave} className="w-full" disabled={saveMutation.isPending}>
           {saveMutation.isPending ? 'Speichern...' : 'Speichern'}
         </Button>

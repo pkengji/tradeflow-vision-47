@@ -720,7 +720,7 @@ useMemo(() => {
       </Card>
 
       {/* Action Buttons */}
-      <div className="fixed bottom-16 left-0 right-0 bg-card border-t p-3 flex gap-3 z-50">
+      <div className="fixed bottom-16 lg:bottom-0 left-0 lg:left-64 right-0 bg-card border-t p-3 flex gap-3 z-50">
         <Button
           onClick={() => saveMutation.mutate()}
           disabled={saveMutation.isPending}

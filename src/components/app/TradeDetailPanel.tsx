@@ -325,7 +325,7 @@ export default function TradeDetailPanel({ positionId }: Props) {
 
       {/* Sticky Action Bar */}
       {isOpen && (
-        <div className="fixed bottom-16 left-0 right-0 bg-card/95 backdrop-blur-sm border-t border-border p-3 z-[100] shadow-lg">
+        <div className="fixed bottom-16 lg:bottom-0 left-0 lg:left-64 right-0 bg-card/95 backdrop-blur-sm border-t border-border p-3 z-[100] shadow-lg">
           <div className="max-w-lg mx-auto">
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
