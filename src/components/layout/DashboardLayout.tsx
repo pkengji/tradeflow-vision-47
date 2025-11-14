@@ -99,21 +99,6 @@ export function DashboardLayout({
       {/* Header - Desktop */}
       <header className="hidden lg:block sticky top-0 z-40 border-b bg-background">
         <div className="flex h-14 items-center px-4 gap-4">
-          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <Menu className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-64 p-0">
-              <div className="flex flex-col h-full">
-                <nav className="flex-1 p-4 pt-6">
-                  <NavLinks onNavigate={() => setMobileMenuOpen(false)} />
-                </nav>
-              </div>
-            </SheetContent>
-          </Sheet>
-
           <div className="flex items-center gap-2">
             <CandlestickChart className="h-6 w-6" />
           </div>
