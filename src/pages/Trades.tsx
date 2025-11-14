@@ -372,18 +372,41 @@ export default function Trades() {
       <div ref={scrollContainerRef} className="overflow-auto flex-1">
         <div className="space-y-4 p-4 pb-24">
 
-        {/* Filter - Desktop (always visible) */}
-        <div className="hidden lg:block">
-          <TradesFiltersBar
-            value={filters}
-            onChange={setFilters}
-            availableBots={bots}
-            availableSymbols={symbols}
-            showDateRange={activeTab === 'closed'}
-            showTimeRange={activeTab === 'closed'}
-            showSignalKind={false}
-          />
+        {/* Filter Button - Desktop */}
+        <div className="hidden lg:flex justify-end gap-2">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => setShowFilters(!showFilters)}
+            className="relative"
+          >
+            <SlidersHorizontal className="h-4 w-4 mr-2" />
+            Filter
+            {activeFilterCount > 0 && (
+              <span className="ml-2 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-medium">
+                {activeFilterCount}
+              </span>
+            )}
+          </Button>
         </div>
+
+        {/* Filter - Desktop (collapsible) */}
+        {showFilters && (
+          <div className="hidden lg:block border rounded-lg p-4 bg-muted/30">
+            <TradesFiltersBar
+              value={filters}
+              onChange={setFilters}
+              availableBots={bots}
+              availableSymbols={symbols}
+              showDateRange={activeTab === 'closed'}
+              showTimeRange={activeTab === 'closed'}
+              showSignalKind={false}
+            />
+            <div className="flex justify-end mt-4">
+              <Button size="sm" onClick={() => setShowFilters(false)}>Fertig</Button>
+            </div>
+          </div>
+        )}
 
       {/* Liste: Offene oder Geschlossene */}
       {activeTab === 'open' ? (
