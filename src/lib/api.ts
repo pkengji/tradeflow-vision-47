@@ -79,6 +79,7 @@ type BotRow = {
   uuid: string;
   description?: string | null;
   exchange?: string | null;
+  account_kind?: string | null;
   strategy?: string | null;
   timeframe?: string | null;
   status: string; // 'active' | 'paused' | 'deleted'
@@ -123,6 +124,7 @@ export type Bot = {
   uuid: string;
   description?: string | null;
   exchange?: string | null;
+  account_kind?: string | null;
   strategy?: string | null;
   timeframe?: string | null;
   status: string; // 'active' | 'paused' | 'deleted'
@@ -239,6 +241,7 @@ async function getBots(): Promise<Bot[]> {
     uuid: b.uuid,
     description: b.description ?? null,
     exchange: b.exchange ?? null,
+    account_kind: b.account_kind ?? null,
     strategy: b.strategy ?? null,
     timeframe: b.timeframe ?? null,
     status: b.status,
