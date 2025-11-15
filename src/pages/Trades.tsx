@@ -1,8 +1,9 @@
 // ==============================
 // 1) IMPORTS
 // ==============================
-import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import api, { type PositionListItem, type Bot } from '@/lib/api';
 import TradesFiltersBar, { type TradesFilters } from '@/components/app/TradesFiltersBar';
 import TradeCardCompact from '@/components/app/TradeCardCompact';
@@ -19,7 +20,7 @@ import { SlidersHorizontal } from 'lucide-react';
 type TabKey = 'open' | 'closed';
 
 // ==============================
-// 3) HELPERS (klein & testbar)
+// 3) HELPERS
 // ==============================
 function safeNumber(n: number | null | undefined, fallback = 0): number {
   return typeof n === 'number' && Number.isFinite(n) ? n : fallback;
@@ -79,7 +80,7 @@ function groupTradesByDate(trades: PositionListItem[], dateField: 'opened_at' | 
     if (!dateStr) continue;
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) continue;
-    const key = date.toISOString().split('T')[0]; // YYYY-MM-DD
+    const key = date.toISOString().split('T')[0];
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(trade);
   }
@@ -91,19 +92,14 @@ function groupTradesByDate(trades: PositionListItem[], dateField: 'opened_at' | 
 // ==============================
 export default function Trades() {
   const navigate = useNavigate();
-  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const loadMoreObserverRef = useRef<IntersectionObserver | null>(null);
-  const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   
-  // ---- 4.1 STATE (UI & Daten) ----
   const [activeTab, setActiveTab] = useState<TabKey>(() => {
     const tab = searchParams.get('tab');
     return (tab === 'open' || tab === 'closed') ? tab : 'open';
   });
+  
   const [filters, setFilters] = useState<TradesFilters>({
     botIds: [],
     symbols: [],
@@ -115,81 +111,11 @@ export default function Trades() {
     timeMode: 'opened',
   });
 
-  const [positions, setPositions] = useState<PositionListItem[]>([]);
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
-  const [totalCount, setTotalCount] = useState<number>(0);
-  const [displayLimit, setDisplayLimit] = useState<number>(50);
-
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-
   const [showFilters, setShowFilters] = useState(false);
 
-  // ---- 4.2 EFFECTS: Daten laden ----
-  useEffect(() => {
-    let cancel = false;
-    (async () => {
-      try {
-        setLoading(true); setError(null);
-        const res = await api.getPositions({ limit: displayLimit });
-        if (!cancel) {
-          setPositions(Array.isArray(res?.items) ? res.items : []);
-          setTotalCount(res?.total ?? 0);
-          setHasMore((res?.items?.length || 0) >= 50);
-        }
-      } catch (e: any) {
-        if (!cancel) setError(e?.message ?? 'Unbekannter Fehler');
-      } finally {
-        if (!cancel) {
-          setLoading(false);
-          setIsLoadingMore(false);
-        }
-      }
-    })();
-    return () => { cancel = true; };
-  }, [displayLimit]);
-
-  // Restore scroll position on mount
-  useEffect(() => {
-    const savedScrollY = sessionStorage.getItem('trades-scroll-position');
-    const savedTab = sessionStorage.getItem('trades-tab');
-    
-    if (savedTab && (savedTab === 'open' || savedTab === 'closed')) {
-      setActiveTab(savedTab as TabKey);
-    }
-    
-    if (savedScrollY) {
-      setTimeout(() => {
-        window.scrollTo(0, parseInt(savedScrollY, 10));
-        sessionStorage.removeItem('trades-scroll-position');
-      }, 100);
-    }
-  }, []);
-
-  // Infinite scroll with Intersection Observer
-  useEffect(() => {
-    if (!loadMoreTriggerRef.current || isLoadingMore || !hasMore) return;
-
-    loadMoreObserverRef.current = new IntersectionObserver(
-      (entries) => {
-        const target = entries[0];
-        if (target.isIntersecting && !isLoadingMore && hasMore) {
-          setDisplayLimit(prev => prev + 50);
-        }
-      },
-      { threshold: 0.1 }
-    );
-
-    loadMoreObserverRef.current.observe(loadMoreTriggerRef.current);
-
-    return () => {
-      if (loadMoreObserverRef.current) {
-        loadMoreObserverRef.current.disconnect();
-      }
-    };
-  }, [isLoadingMore, hasMore, displayLimit]);
-
+  // ---- Fetch Bots & Symbols ----
   useEffect(() => {
     let cancel = false;
     (async () => {
@@ -212,330 +138,291 @@ export default function Trades() {
     return () => { cancel = true; };
   }, []);
 
-  // ---- 4.3 SELECTORS/DERIVATES ----
-  const byTab = useMemo(() => positions.filter(p => (activeTab === 'open' ? p.status === 'open' : p.status === 'closed')), [positions, activeTab]);
+  // ---- Infinite Query ----
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    error,
+  } = useInfiniteQuery({
+    queryKey: ['positions', activeTab],
+    queryFn: async ({ pageParam = 0 }) => {
+      const res = await api.getPositions({
+        status: activeTab === 'open' ? 'open' : 'closed',
+        skip: pageParam,
+        limit: 100,
+      });
+      return res;
+    },
+    getNextPageParam: (lastPage, allPages) => {
+      const totalFetched = allPages.reduce((acc, page) => acc + page.items.length, 0);
+      if (totalFetched < lastPage.total) {
+        return totalFetched;
+      }
+      return undefined;
+    },
+    initialPageParam: 0,
+  });
 
+  // ---- Dedupe & flatten all pages ----
+  const allPositions = useMemo(() => {
+    if (!data?.pages) return [];
+    const seen = new Set<number>();
+    const result: PositionListItem[] = [];
+    for (const page of data.pages) {
+      for (const item of page.items) {
+        if (!seen.has(item.id)) {
+          seen.add(item.id);
+          result.push(item);
+        }
+      }
+    }
+    return result;
+  }, [data]);
+
+  // ---- Filters ----
   const afterBasicFilters = useMemo(() => {
-    return byTab.filter(p => {
+    return allPositions.filter(p => {
       if (filters.side && filters.side !== 'all' && p.side !== filters.side) return false;
-      if (filters.symbols && filters.symbols.length > 0 && !filters.symbols.includes(p.symbol)) return false;
+      if (filters.botIds?.length && !filters.botIds.includes(p.bot_id ?? 0)) return false;
+      if (filters.symbols?.length && !filters.symbols.includes(p.symbol ?? '')) return false;
       return true;
     });
-  }, [byTab, filters]);
+  }, [allPositions, filters]);
 
-  const filtered = useMemo(() => {
-    let list = afterBasicFilters;
+  const afterDateFilters = useMemo(() => {
+    const startDt = combineDateTime(filters.dateFrom?.toISOString().split('T')[0], filters.timeFrom);
+    const endDt = combineDateTime(filters.dateTo?.toISOString().split('T')[0], filters.timeTo);
+    if (!startDt && !endDt) return afterBasicFilters;
+    const fieldKey = filters.timeMode === 'opened' ? 'opened_at' : 'closed_at';
+    return afterBasicFilters.filter(p => {
+      const val = p[fieldKey];
+      if (!val) return false;
+      const d = toDateOrNull(val);
+      if (!d) return false;
+      if (startDt && d < startDt) return false;
+      if (endDt && d > endDt) return false;
+      return true;
+    });
+  }, [afterBasicFilters, filters]);
 
-    // Datumsfilter
-    if (filters.dateFrom || filters.dateTo) {
-      list = list.filter((p) => {
-        const date = toDateOrNull(activeTab === 'closed' ? p.closed_at : p.opened_at);
-        if (!date) return false;
-        if (filters.dateFrom && date < filters.dateFrom) return false;
-        if (filters.dateTo && date > filters.dateTo) return false;
-        return true;
-      });
-    }
-
-    // Tageszeitfilter
-    if (filters.timeFrom || filters.timeTo) {
-      list = list.filter((p) => {
-        const dateStr = filters.timeMode === 'closed' ? p.closed_at : p.opened_at;
-        const date = toDateOrNull(dateStr);
-        if (!date) return false;
-        const hours = date.getHours();
-        const minutes = date.getMinutes();
-        const timeInMinutes = hours * 60 + minutes;
-
-        let fromMinutes = 0;
-        let toMinutes = 24 * 60;
-
-        if (filters.timeFrom) {
-          const [h, m] = filters.timeFrom.split(':').map(Number);
-          fromMinutes = h * 60 + m;
-        }
-        if (filters.timeTo) {
-          const [h, m] = filters.timeTo.split(':').map(Number);
-          toMinutes = h * 60 + m;
-        }
-
-        // Handle overnight ranges (e.g., 22:00 - 03:00)
-        if (fromMinutes > toMinutes) {
-          return timeInMinutes >= fromMinutes || timeInMinutes <= toMinutes;
-        }
-        return timeInMinutes >= fromMinutes && timeInMinutes <= toMinutes;
-      });
-    }
-
-    return list;
-  }, [afterBasicFilters, filters, activeTab]);
-
-  const openTrades = useMemo(() => {
-    const trades = filtered.filter(t => t.status === 'open');
-    // Sortiere nach opened_at (neueste zuerst)
-    return trades.sort((a, b) => {
-      const dateA = a.opened_at ? new Date(a.opened_at).getTime() : 0;
-      const dateB = b.opened_at ? new Date(b.opened_at).getTime() : 0;
+  const sortedByTime = useMemo(() => {
+    const arr = [...afterDateFilters];
+    const fieldKey = activeTab === 'open' ? 'opened_at' : 'closed_at';
+    arr.sort((a, b) => {
+      const dateA = toDateOrNull(a[fieldKey])?.getTime() ?? 0;
+      const dateB = toDateOrNull(b[fieldKey])?.getTime() ?? 0;
       return dateB - dateA;
     });
-  }, [filtered]);
+    return arr;
+  }, [afterDateFilters, activeTab]);
 
-  const closedTrades = useMemo(() => {
-    const trades = filtered.filter(t => t.status === 'closed');
-    // Sortiere nach closed_at (neueste zuerst)
-    return trades.sort((a, b) => {
-      const dateA = a.closed_at ? new Date(a.closed_at).getTime() : 0;
-      const dateB = b.closed_at ? new Date(b.closed_at).getTime() : 0;
-      return dateB - dateA;
-    });
-  }, [filtered]);
+  const groupedByDate = useMemo(() => {
+    const fieldKey = activeTab === 'open' ? 'opened_at' : 'closed_at';
+    return groupTradesByDate(sortedByTime, fieldKey);
+  }, [sortedByTime, activeTab]);
 
-  const hasMoreToLoad = positions.length < totalCount;
+  // ---- Scroll Position Restore ----
+  useEffect(() => {
+    const savedScrollY = sessionStorage.getItem('trades-scroll-position');
+    const savedTab = sessionStorage.getItem('trades-tab');
+    
+    if (savedTab && (savedTab === 'open' || savedTab === 'closed')) {
+      setActiveTab(savedTab as TabKey);
+    }
+    
+    if (savedScrollY) {
+      setTimeout(() => {
+        window.scrollTo(0, parseInt(savedScrollY, 10));
+        sessionStorage.removeItem('trades-scroll-position');
+      }, 100);
+    }
+  }, []);
 
-  // Save scroll position before navigating
-  const saveScrollPosition = useCallback(() => {
-    const scrollY = window.scrollY;
-    sessionStorage.setItem('trades-scroll-position', String(scrollY));
+  // ---- IntersectionObserver for sentinel ----
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { threshold: 0.1 }
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  // ---- Handlers ----
+  const saveScrollPosition = () => {
+    sessionStorage.setItem('trades-scroll-position', String(window.scrollY));
     sessionStorage.setItem('trades-tab', activeTab);
-  }, [activeTab]);
-
-  // ---- 4.4 HANDLER ----
-  const handleCardClick = (t: PositionListItem) => {
-    saveScrollPosition();
-    navigate(`/trade/${t.id}`);
   };
 
-  const handleTabChange = (newTab: TabKey) => {
+  const handleCardClick = (id: number) => {
+    saveScrollPosition();
+    navigate(`/trade/${id}`);
+  };
+
+  const handleTabChange = (value: string) => {
+    const newTab = (value === 'open' || value === 'closed') ? value : 'open';
     setActiveTab(newTab);
     setSearchParams({ tab: newTab });
   };
 
-  // Gruppiere Trades nach Datum
-  const openTradesGrouped = useMemo(() => groupTradesByDate(openTrades, 'opened_at'), [openTrades]);
-  const closedTradesGrouped = useMemo(() => groupTradesByDate(closedTrades, 'closed_at'), [closedTrades]);
-
   const activeFilterCount = useMemo(() => {
     let count = 0;
-    if (filters.botIds.length > 0) count++;
-    if (filters.symbols.length > 0) count++;
     if (filters.side && filters.side !== 'all') count++;
+    if (filters.botIds?.length) count++;
+    if (filters.symbols?.length) count++;
     if (filters.dateFrom || filters.dateTo) count++;
     if (filters.timeFrom || filters.timeTo) count++;
     return count;
   }, [filters]);
 
-  const FilterButton = (
-    <Button 
-      variant="ghost" 
-      size="icon"
-      onClick={() => setShowFilters(!showFilters)}
-      className="relative"
-    >
-      <SlidersHorizontal className="h-5 w-5" />
-      {activeFilterCount > 0 && (
-        <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-medium">
-          {activeFilterCount}
-        </span>
-      )}
-    </Button>
-  );
-
-  // ---- 4.5 RENDER ----
   return (
-    <DashboardLayout pageTitle="Trades" mobileHeaderRight={FilterButton}>
-      {/* Filter-Modal - Mobile */}
-      {showFilters && (
-        <div className="fixed inset-0 bg-background/80 z-50 lg:hidden" onClick={() => setShowFilters(false)}>
-          <div className="fixed inset-x-0 top-14 bottom-16 bg-background flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="overflow-auto">
+    <DashboardLayout
+      pageTitle="Trades"
+      mobileHeaderRight={
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowFilters(!showFilters)}
+        >
+          <SlidersHorizontal className="w-4 h-4" />
+        </Button>
+      }
+    >
+      <div className="flex gap-6 h-full overflow-hidden">
+        {/* Mobile Filters */}
+        {showFilters && (
+          <div className="fixed inset-0 z-50 bg-background md:hidden overflow-auto">
+            <div className="p-4">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-semibold">Filter</h2>
+                <Button variant="ghost" size="sm" onClick={() => setShowFilters(false)}>
+                  Schließen
+                </Button>
+              </div>
               <TradesFiltersBar
                 value={filters}
                 onChange={setFilters}
                 availableBots={bots}
                 availableSymbols={symbols}
-                showDateRange={activeTab === 'closed'}
-                showTimeRange={activeTab === 'closed'}
-                showSignalKind={false}
               />
-            </div>
-            <div className="border-t p-3">
-              <Button className="w-full" onClick={() => setShowFilters(false)}>Fertig</Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tabs integrated into header area - sticky */}
-      <div className="sticky top-0 z-10 bg-background border-b">
-        <Tabs value={activeTab} onValueChange={(v) => handleTabChange(v as TabKey)}>
-          <TabsList className="grid w-full grid-cols-2 h-10 rounded-none border-0 bg-transparent p-0">
-            <TabsTrigger value="open" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary">Offen</TabsTrigger>
-            <TabsTrigger value="closed" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary">Geschlossen</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </div>
-
-      <div ref={scrollContainerRef} className="overflow-auto flex-1">
-        <div className="space-y-4 p-4 pb-24">
-
-        {/* Filter Button - Desktop */}
-        <div className="hidden lg:flex justify-end gap-2">
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => setShowFilters(!showFilters)}
-            className="relative"
-          >
-            <SlidersHorizontal className="h-4 w-4 mr-2" />
-            Filter
-            {activeFilterCount > 0 && (
-              <span className="ml-2 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-medium">
-                {activeFilterCount}
-              </span>
-            )}
-          </Button>
-        </div>
-
-        {/* Filter - Desktop (collapsible) */}
-        {showFilters && (
-          <div className="hidden lg:block border rounded-lg p-4 bg-muted/30">
-            <TradesFiltersBar
-              value={filters}
-              onChange={setFilters}
-              availableBots={bots}
-              availableSymbols={symbols}
-              showDateRange={activeTab === 'closed'}
-              showTimeRange={activeTab === 'closed'}
-              showSignalKind={false}
-            />
-            <div className="flex justify-end mt-4">
-              <Button size="sm" onClick={() => setShowFilters(false)}>Fertig</Button>
             </div>
           </div>
         )}
 
-      {/* Liste: Offene oder Geschlossene */}
-      {activeTab === 'open' ? (
-        <section>
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-sm text-muted-foreground">
-              {loading ? 'Lade…' : `${openTrades.length} von ${totalCount} Einträgen`}
+        {/* Desktop Filters */}
+        <aside className="hidden md:block w-[260px] shrink-0">
+          <TradesFiltersBar
+            value={filters}
+            onChange={setFilters}
+            availableBots={bots}
+            availableSymbols={symbols}
+          />
+        </aside>
+
+        {/* Main Content */}
+        <div className="flex-1 overflow-auto">
+          <Tabs value={activeTab} onValueChange={handleTabChange}>
+            <div className="sticky top-0 z-10 bg-background border-b pb-3 mb-4">
+              <TabsList className="w-full">
+                <TabsTrigger value="open" className="flex-1">
+                  Offen ({afterBasicFilters.filter(p => p.status === 'open').length})
+                </TabsTrigger>
+                <TabsTrigger value="closed" className="flex-1">
+                  Geschlossen ({afterBasicFilters.filter(p => p.status === 'closed').length})
+                </TabsTrigger>
+              </TabsList>
             </div>
-            {error && <div className="text-sm text-red-500">{error}</div>}
-          </div>
-          <div className="space-y-4">
-            {openTrades.length === 0 && !loading && (<div className="text-sm text-muted-foreground py-4">Keine offenen Trades.</div>)}
-            {Array.from(openTradesGrouped.entries())
-              .sort(([dateA], [dateB]) => dateB.localeCompare(dateA)) // Neueste zuerst
-              .map(([dateKey, trades], groupIndex) => (
-                <div key={dateKey}>
-                  {groupIndex > 0 && <Separator className="my-4" />}
-                  <div className="text-xs text-muted-foreground font-medium mb-2 px-1">
+
+            <TabsContent value="open" className="mt-0">
+              {isLoading && <div className="text-muted-foreground p-4">Lädt...</div>}
+              {error && <div className="text-destructive p-4">Fehler: {String(error)}</div>}
+              {!isLoading && !error && groupedByDate.size === 0 && (
+                <div className="text-muted-foreground p-4">Keine offenen Trades</div>
+              )}
+              {Array.from(groupedByDate.entries()).map(([dateKey, trades]) => (
+                <div key={dateKey} className="mb-6">
+                  <h3 className="text-sm font-medium text-muted-foreground mb-2">
                     {formatDateHeader(dateKey)}
-                  </div>
-                  <div className="divide-y divide-border">
-                    {trades.map((t) => (
-                      <div
-                        key={t.id}
-                        onClick={() => handleCardClick(t)}
-                        className="cursor-pointer hover:bg-muted/30 transition-colors py-2"
-                      >
+                  </h3>
+                  <div className="space-y-2">
+                    {trades.map((trade) => (
+                      <div key={trade.id}>
                         <TradeCardCompact
-                          symbol={t.symbol}
-                          side={t.side as 'long' | 'short'}
-                          pnl={safeNumber(t.unrealized_pnl ?? t.pnl, 0)}
-                          botName={t.bot_name ?? undefined}
-                          deltaPct={t.pnl_pct ?? undefined}
-                          onClick={() => {}}
-                          variant="plain"
+                          symbol={trade.symbol ?? ''}
+                          botName={trade.bot_name ?? undefined}
+                          side={trade.side as 'long' | 'short'}
+                          pnl={safeNumber(trade.unrealized_pnl)}
+                          deltaPct={safeNumber(trade.pnl_pct)}
+                          onClick={() => handleCardClick(trade.id)}
                         />
                         <MiniRange
-                          labelEntry={t.side === 'short' ? 'Sell' : 'Buy'}
-                          entry={t.entry_price_vwap ?? t.entry_price ?? null}
-                          sl={t.sl ?? null}
-                          tp={t.tp ?? null}
-                          mark={t.mark_price ?? null}
-                          side={t.side as 'long' | 'short'}
+                          entry={safeNumber(trade.entry_price)}
+                          mark={safeNumber(trade.mark_price)}
+                          tp={safeNumber(trade.tp)}
+                          sl={safeNumber(trade.sl)}
+                          side={trade.side as 'long' | 'short'}
                         />
                       </div>
                     ))}
                   </div>
+                  <Separator className="mt-4" />
                 </div>
               ))}
-          </div>
-          {isLoadingMore && (
-            <div className="mt-4 text-center text-sm text-muted-foreground">
-              Lädt weitere Trades...
-            </div>
-          )}
-          {/* Infinite Scroll Trigger */}
-          {hasMore && (
-            <div ref={loadMoreTriggerRef} className="py-4 text-center">
-              {isLoadingMore && <div className="text-muted-foreground">Lädt mehr...</div>}
-            </div>
-          )}
-        </section>
-      ) : (
-        <section>
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-sm text-muted-foreground">
-              {loading ? 'Lade…' : `${closedTrades.length} von ${totalCount} Einträgen`}
-            </div>
-            {error && <div className="text-sm text-red-500">{error}</div>}
-          </div>
-          <div className="space-y-4">
-            {closedTrades.length === 0 && !loading && (<div className="text-sm text-muted-foreground py-4">Keine geschlossenen Trades.</div>)}
-            {Array.from(closedTradesGrouped.entries())
-              .sort(([dateA], [dateB]) => dateB.localeCompare(dateA)) // Neueste zuerst
-              .map(([dateKey, trades], groupIndex) => (
-                <div key={dateKey}>
-                  {groupIndex > 0 && <Separator className="my-4" />}
-                  <div className="text-xs text-muted-foreground font-medium mb-2 px-1">
+              <div ref={sentinelRef} className="h-10" />
+              {isFetchingNextPage && (
+                <div className="text-muted-foreground text-center py-4">Lädt mehr...</div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="closed" className="mt-0">
+              {isLoading && <div className="text-muted-foreground p-4">Lädt...</div>}
+              {error && <div className="text-destructive p-4">Fehler: {String(error)}</div>}
+              {!isLoading && !error && groupedByDate.size === 0 && (
+                <div className="text-muted-foreground p-4">Keine geschlossenen Trades</div>
+              )}
+              {Array.from(groupedByDate.entries()).map(([dateKey, trades]) => (
+                <div key={dateKey} className="mb-6">
+                  <h3 className="text-sm font-medium text-muted-foreground mb-2">
                     {formatDateHeader(dateKey)}
-                  </div>
-                  <div className="divide-y divide-border">
-                    {trades.map((t) => (
-                      <div
-                        key={t.id}
-                        onClick={() => handleCardClick(t)}
-                        className="cursor-pointer hover:bg-muted/30 transition-colors py-2"
-                      >
+                  </h3>
+                  <div className="space-y-2">
+                    {trades.map((trade) => (
+                      <div key={trade.id}>
                         <TradeCardCompact
-                          symbol={t.symbol}
-                          side={t.side as 'long' | 'short'}
-                          pnl={safeNumber(t.pnl, 0)}
-                          botName={t.bot_name ?? undefined}
-                          deltaPct={t.pnl_pct ?? undefined}
-                          onClick={() => {}}
-                          variant="plain"
+                          symbol={trade.symbol ?? ''}
+                          botName={trade.bot_name ?? undefined}
+                          side={trade.side as 'long' | 'short'}
+                          pnl={safeNumber(trade.pnl)}
+                          deltaPct={safeNumber(trade.pnl_pct)}
+                          onClick={() => handleCardClick(trade.id)}
                         />
                         <MiniRange
-                          labelEntry={t.side === 'short' ? 'Sell' : 'Buy'}
-                          entry={t.entry_price_vwap ?? t.entry_price ?? null}
-                          sl={t.sl ?? null}
-                          tp={t.tp ?? null}
-                          mark={t.exit_price ?? null}
-                          side={t.side as 'long' | 'short'}
+                          entry={safeNumber(trade.entry_price)}
+                          mark={safeNumber(trade.exit_price)}
+                          tp={safeNumber(trade.tp)}
+                          sl={safeNumber(trade.sl)}
+                          side={trade.side as 'long' | 'short'}
                         />
                       </div>
                     ))}
                   </div>
+                  <Separator className="mt-4" />
                 </div>
               ))}
-          </div>
-          {isLoadingMore && (
-            <div className="mt-4 text-center text-sm text-muted-foreground">
-              Lädt weitere Trades...
-            </div>
-          )}
-          {/* Infinite Scroll Trigger */}
-          {hasMore && (
-            <div ref={loadMoreTriggerRef} className="py-4 text-center">
-              {isLoadingMore && <div className="text-muted-foreground">Lädt mehr...</div>}
-            </div>
-          )}
-        </section>
-      )}
+              <div ref={sentinelRef} className="h-10" />
+              {isFetchingNextPage && (
+                <div className="text-muted-foreground text-center py-4">Lädt mehr...</div>
+              )}
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </DashboardLayout>
