@@ -126,7 +126,8 @@ export default function Trades() {
   const [error, setError] = useState<string | null>(null);
 
   const [showFilters, setShowFilters] = useState(false);
-  const [shouldRestoreScroll, setShouldRestoreScroll] = useState(false);
+  const [isRestoringScroll, setIsRestoringScroll] = useState(false);
+  const [targetPage, setTargetPage] = useState(1);
 
   // ---- 4.2 EFFECTS: Restore saved state on mount ----
   useEffect(() => {
@@ -138,15 +139,12 @@ export default function Trades() {
       setActiveTab(savedTab as TabKey);
     }
     
-    if (savedPage) {
+    if (savedScrollY && savedPage) {
       const pageNum = parseInt(savedPage, 10);
       if (pageNum > 1) {
-        setPage(pageNum);
+        setIsRestoringScroll(true);
+        setTargetPage(pageNum);
       }
-    }
-    
-    if (savedScrollY) {
-      setShouldRestoreScroll(true);
     }
   }, []);
 
@@ -155,7 +153,7 @@ export default function Trades() {
     let cancel = false;
     (async () => {
       try {
-        if (page === 1) {
+        if (page === 1 && !isRestoringScroll) {
           setLoading(true);
         } else {
           setIsLoadingMore(true);
@@ -171,6 +169,23 @@ export default function Trades() {
           }
           setTotalCount(res?.total ?? 0);
           setHasMore((res?.items?.length || 0) >= pageSize);
+          
+          // If restoring scroll, load next page until we reach target
+          if (isRestoringScroll && page < targetPage) {
+            setPage(prev => prev + 1);
+          } else if (isRestoringScroll && page === targetPage) {
+            // Now restore scroll position
+            const savedScrollY = sessionStorage.getItem('trades-scroll-position');
+            if (savedScrollY) {
+              setTimeout(() => {
+                window.scrollTo(0, parseInt(savedScrollY, 10));
+                sessionStorage.removeItem('trades-scroll-position');
+                sessionStorage.removeItem('trades-tab');
+                sessionStorage.removeItem('trades-page');
+                setIsRestoringScroll(false);
+              }, 100);
+            }
+          }
         }
       } catch (e: any) {
         if (!cancel) setError(e?.message ?? 'Unbekannter Fehler');
@@ -182,32 +197,16 @@ export default function Trades() {
       }
     })();
     return () => { cancel = true; };
-  }, [page]);
-
-  // Restore scroll position after data is loaded
-  useEffect(() => {
-    if (shouldRestoreScroll && !loading && !isLoadingMore && positions.length > 0) {
-      const savedScrollY = sessionStorage.getItem('trades-scroll-position');
-      if (savedScrollY) {
-        requestAnimationFrame(() => {
-          window.scrollTo(0, parseInt(savedScrollY, 10));
-          sessionStorage.removeItem('trades-scroll-position');
-          sessionStorage.removeItem('trades-tab');
-          sessionStorage.removeItem('trades-page');
-          setShouldRestoreScroll(false);
-        });
-      }
-    }
-  }, [shouldRestoreScroll, loading, isLoadingMore, positions.length]);
+  }, [page, isRestoringScroll, targetPage]);
 
   // Infinite scroll with Intersection Observer
   useEffect(() => {
-    if (!loadMoreTriggerRef.current || isLoadingMore || !hasMore) return;
+    if (!loadMoreTriggerRef.current || isLoadingMore || !hasMore || isRestoringScroll) return;
 
     loadMoreObserverRef.current = new IntersectionObserver(
       (entries) => {
         const target = entries[0];
-        if (target.isIntersecting && !isLoadingMore && hasMore) {
+        if (target.isIntersecting && !isLoadingMore && hasMore && !isRestoringScroll) {
           setPage(prev => prev + 1);
         }
       },
@@ -221,7 +220,7 @@ export default function Trades() {
         loadMoreObserverRef.current.disconnect();
       }
     };
-  }, [isLoadingMore, hasMore]);
+  }, [isLoadingMore, hasMore, isRestoringScroll]);
 
   useEffect(() => {
     let cancel = false;
