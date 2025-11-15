@@ -324,24 +324,10 @@ async function setBotAutoApprove(bot_id: number, auto_approve: boolean) {
   });
 }
 
-type PositionsParams = { 
-  status?: string; 
-  bot_id?: number; 
-  symbol?: string; 
-  side?: string; 
-  skip?: number; 
-  limit?: number;
-  cursor?: string;
-};
+type PositionsParams = { status?: string; bot_id?: number; symbol?: string; side?: string; skip?: number; limit?: number };
 
-type PositionsResponse = {
-  items: PositionListItem[];
-  total: number;
-  next_cursor?: string | null;
-};
-
-async function getPositions(params?: PositionsParams): Promise<PositionsResponse> {
-  const res = await http<{ items: any[]; total: number; page: number; page_size: number; next_cursor?: string | null }>('/api/v1/positions', { query: params });
+async function getPositions(params?: PositionsParams): Promise<{ items: PositionListItem[]; total: number }> {
+  const res = await http<{ items: any[]; total: number; page: number; page_size: number }>('/api/v1/positions', { query: params });
   const items = (res.items ?? []).map((p: any): PositionListItem => ({
     id: p.id,
     bot_id: p.bot_id,
@@ -384,7 +370,7 @@ async function getPositions(params?: PositionsParams): Promise<PositionsResponse
     first_exec_at: p.first_exec_at ?? null,
     last_exec_at: p.last_exec_at ?? null,
   }));
-  return { items, total: res.total ?? 0, next_cursor: res.next_cursor };
+  return { items, total: res.total ?? 0 };
 }
 
 async function getPosition(id: number): Promise<any> {
