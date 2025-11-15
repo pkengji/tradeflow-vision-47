@@ -249,18 +249,15 @@ export type DashboardKPIPeriod = {
   realized_pnl: number;
   win_rate: number;
   tx_costs_pct: number;
-  tx_breakdown_usdt: {
+  tx_breakdown: {
     fees: number;
     funding: number;
-    slip_liquidity: number;
+    slip_liq: number;
     slip_time: number;
   };
   timelag_ms: {
-    ingress_ms_avg: number;
-    engine_ms_avg: number;
-    tv_to_send_ms_avg: number;
-    tv_to_fill_ms_avg: number;
-    samples: number;
+    tv_bot_avg: number;
+    bot_ex_avg: number;
   };
 };
 

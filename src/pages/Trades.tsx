@@ -119,7 +119,8 @@ export default function Trades() {
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
   const [totalCount, setTotalCount] = useState<number>(0);
-  const [displayLimit, setDisplayLimit] = useState<number>(50);
+  const [page, setPage] = useState<number>(1);
+  const pageSize = 50;
 
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -131,12 +132,22 @@ export default function Trades() {
     let cancel = false;
     (async () => {
       try {
-        setLoading(true); setError(null);
-        const res = await api.getPositions({ limit: displayLimit });
+        if (page === 1) {
+          setLoading(true);
+        } else {
+          setIsLoadingMore(true);
+        }
+        setError(null);
+        const skip = (page - 1) * pageSize;
+        const res = await api.getPositions({ skip, limit: pageSize });
         if (!cancel) {
-          setPositions(Array.isArray(res?.items) ? res.items : []);
+          if (page === 1) {
+            setPositions(Array.isArray(res?.items) ? res.items : []);
+          } else {
+            setPositions(prev => [...prev, ...(Array.isArray(res?.items) ? res.items : [])]);
+          }
           setTotalCount(res?.total ?? 0);
-          setHasMore((res?.items?.length || 0) >= 50);
+          setHasMore((res?.items?.length || 0) >= pageSize);
         }
       } catch (e: any) {
         if (!cancel) setError(e?.message ?? 'Unbekannter Fehler');
@@ -148,7 +159,7 @@ export default function Trades() {
       }
     })();
     return () => { cancel = true; };
-  }, [displayLimit]);
+  }, [page]);
 
   // Restore scroll position on mount
   useEffect(() => {
@@ -175,7 +186,7 @@ export default function Trades() {
       (entries) => {
         const target = entries[0];
         if (target.isIntersecting && !isLoadingMore && hasMore) {
-          setDisplayLimit(prev => prev + 50);
+          setPage(prev => prev + 1);
         }
       },
       { threshold: 0.1 }
@@ -188,7 +199,7 @@ export default function Trades() {
         loadMoreObserverRef.current.disconnect();
       }
     };
-  }, [isLoadingMore, hasMore, displayLimit]);
+  }, [isLoadingMore, hasMore]);
 
   useEffect(() => {
     let cancel = false;

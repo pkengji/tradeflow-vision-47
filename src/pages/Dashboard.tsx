@@ -92,10 +92,9 @@ export default function Dashboard() {
 
   const renderKPISection = (title: string, kpi: DashboardKPIPeriod | null) => {
     if (!kpi) return null;
-    const totalFees = (kpi.tx_breakdown_usdt?.fees || 0) + (kpi.tx_breakdown_usdt?.funding || 0) + 
-                     (kpi.tx_breakdown_usdt?.slip_liquidity || 0) + (kpi.tx_breakdown_usdt?.slip_time || 0);
-    const totalTimelag = (kpi.timelag_ms?.ingress_ms_avg || 0) + (kpi.timelag_ms?.engine_ms_avg || 0) + 
-                        (kpi.timelag_ms?.tv_to_send_ms_avg || 0) + (kpi.timelag_ms?.tv_to_fill_ms_avg || 0);
+    const totalFees = (kpi.tx_breakdown?.fees || 0) + (kpi.tx_breakdown?.funding || 0) + 
+                     (kpi.tx_breakdown?.slip_liq || 0) + (kpi.tx_breakdown?.slip_time || 0);
+    const totalTimelag = (kpi.timelag_ms?.tv_bot_avg || 0) + (kpi.timelag_ms?.bot_ex_avg || 0);
 
     return (
       <Card>
@@ -106,7 +105,6 @@ export default function Dashboard() {
           <MetricRow label="TX Costs" value={`${kpi.tx_costs_pct.toFixed(2)}%`} />
           <MetricRow label="Total Fees" value={formatCurrency(totalFees)} />
           <MetricRow label="Total Timelag" value={`${Math.round(totalTimelag)} ms`} />
-          {kpi.timelag_ms?.samples > 0 && <MetricRow label="Samples" value={kpi.timelag_ms.samples} />}
         </CardContent>
       </Card>
     );
