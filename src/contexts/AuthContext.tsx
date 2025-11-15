@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
-import { api } from '@/lib/api';
+import api from '@/lib/api';
 
 export type Role = 'admin' | 'trader';
 export interface User {
