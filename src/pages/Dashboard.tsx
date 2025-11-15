@@ -15,67 +15,27 @@ import { ChevronDown } from 'lucide-react';
 
 // Typen - Backend API Format
 type Summary = {
-  portfolio_total_equity: number;
-  kpis: {
-    today: {
-      realized_pnl: number;
-      win_rate: number;
-      tx_costs_pct: number;
-      tx_breakdown_usdt: {
-        fees: number;
-        funding: number;
-        slip_liquidity: number;
-        slip_time: number;
-      };
-      timelag_ms: {
-        ingress_ms_avg: number | null;
-        engine_ms_avg: number | null;
-        tv_to_send_ms_avg: number | null;
-        tv_to_fill_ms_avg: number | null;
-        samples: number;
-      };
-    };
-    month: {
-      realized_pnl: number;
-      win_rate: number;
-      tx_costs_pct: number;
-      tx_breakdown_usdt: {
-        fees: number;
-        funding: number;
-        slip_liquidity: number;
-        slip_time: number;
-      };
-      timelag_ms: {
-        ingress_ms_avg: number | null;
-        engine_ms_avg: number | null;
-        tv_to_send_ms_avg: number | null;
-        tv_to_fill_ms_avg: number | null;
-        samples: number;
-      };
-    };
-    last_30d: {
-      realized_pnl: number;
-      win_rate: number;
-      tx_costs_pct: number;
-      tx_breakdown_usdt: {
-        fees: number;
-        funding: number;
-        slip_liquidity: number;
-        slip_time: number;
-      };
-      timelag_ms: {
-        ingress_ms_avg: number | null;
-        engine_ms_avg: number | null;
-        tv_to_send_ms_avg: number | null;
-        tv_to_fill_ms_avg: number | null;
-        samples: number;
-      };
-    };
-    current: {
-      open_trades: number;
-      win_rate: number;
-    };
-  };
+  portfolio_total: number;           // ungefiltert (exkl. unrealized P&L)
+  pnl_today: number;                 // realized heute
+  winrate_today: number;             // 0..1
+  open_trades_count: number;
+  pnl_filtered: number;              // realized P&L nach Filtern
+  portfolio_filtered: number;        // nach Filtern
+  winrate_filtered: number;          // 0..1, nach Filtern
+  fees_pct_filtered: number;         // gesamt in %
+  slippage_liq_pct_filtered: number;
+  slippage_time_pct_filtered: number;
+  fees_pct_filtered_total: number;   // Summe aller Transaktionskosten
+  timelag_tv_to_bot_ms_filtered: number;
+  timelag_bot_to_ex_ms_filtered: number;
+  fees_pct_today: number;
+  slippage_liq_pct_today: number;
+  slippage_time_pct_today: number;
+  fees_pct_today_total: number;
+  timelag_tv_to_bot_ms_today: number;
+  timelag_bot_to_ex_ms_today: number;
+  mtd: { pnl: number; winrate: number; fees_pct: number; slippage_liq_pct: number; slippage_time_pct: number; fees_pct_total: number; timelag_tv_to_bot_ms: number; timelag_bot_to_ex_ms: number };
+  last30d: { pnl: number; winrate: number; fees_pct: number; slippage_liq_pct: number; slippage_time_pct: number; fees_pct_total: number; timelag_tv_to_bot_ms: number; timelag_bot_to_ex_ms: number };
 };
 
 type DailyPnl = { date: string; pnl: number; equity: number };

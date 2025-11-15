@@ -666,6 +666,15 @@ def dashboard_summary(
     open_rng = parse_hour_range(open_hour)
     close_rng = parse_hour_range(close_hour)
 
+    # Get all positions for this user
+    q_all = (
+        db.query(models.Position)
+        .join(models.Bot, models.Position.bot_id == models.Bot.id)
+        .filter(models.Bot.user_id == user_id)
+    )
+    all_positions = q_all.all()
+
+    # Get filtered positions
     q = (
         db.query(models.Position)
         .join(models.Bot, models.Position.bot_id == models.Bot.id)
@@ -676,77 +685,124 @@ def dashboard_summary(
     if symbol_list:
         q = q.filter(models.Position.symbol.in_(symbol_list))
 
-    positions = q.all()
+    filtered_positions = q.all()
 
     today_utc = datetime.now(timezone.utc).date()
-
-    realized_today = 0.0; wins_today = 0; total_today = 0
-    month_realized = 0.0; month_wins = 0; month_total = 0
-    last30_realized = 0.0; last30_wins = 0; last30_total = 0
-    open_count = 0
-    equity_series = defaultdict(float)
-
-    for p in positions:
-        is_open = (p.closed_at is None)
-        if is_open:
-            open_count += 1
-            continue
-
-        closed_at = p.closed_at
-        pnl = float(getattr(p, "realized_pnl_net_usdt", None) or getattr(p, "pnl_usdt", 0.0) or 0.0)
-
-        if not in_day_range(closed_at, dfrom, dto):  continue
-        if not in_hour_range(closed_at, open_rng):   continue
-        if not in_hour_range(closed_at, close_rng):  continue
-
-        d = closed_at.date()
-        equity_series[d] += pnl
-
-        if d == today_utc:
-            total_today += 1; realized_today += pnl
-            if pnl > 0: wins_today += 1
-        if d.year == today_utc.year and d.month == today_utc.month:
-            month_total += 1; month_realized += pnl
-            if pnl > 0: month_wins += 1
-        if (today_utc - d).days <= 30:
-            last30_total += 1; last30_realized += pnl
-            if pnl > 0: last30_wins += 1
+    first_of_month = today_utc.replace(day=1)
+    thirty_days_ago = today_utc - timedelta(days=30)
 
     def safe_rate(wins: int, total: int) -> float:
         return (wins / total) if total > 0 else 0.0
 
-    avg_tv_bot = []
-    avg_bot_ex = []
-    sum_slip_entry, sum_slip_exit, sum_slip_time = 0.0, 0.0, 0.0
+    def calc_metrics(positions, date_filter=None):
+        pnl = 0.0
+        wins = 0
+        total = 0
+        fees = 0.0
+        funding = 0.0
+        slip_liq = 0.0
+        slip_time = 0.0
+        tv_bot_ms = []
+        bot_ex_ms = []
 
-    for p in positions:
-        if p.closed_at is None:
-            continue
-        ...
-        sum_slip_entry += float(p.slippage_entry_usdt or 0)
-        sum_slip_exit  += float(p.slippage_exit_usdt or 0)
-        sum_slip_time  += float(p.slippage_timelag_usdt or 0)
-        if p.timelag_tv_bot_ms:
-            avg_tv_bot.append(p.timelag_tv_bot_ms)
-        if p.timelag_bot_exch_ms:
-            avg_bot_ex.append(p.timelag_bot_exch_ms)
+        for p in positions:
+            if p.closed_at is None:
+                continue
+            
+            # Apply date filter if specified
+            if date_filter:
+                d = p.closed_at.date()
+                if date_filter == 'today' and d != today_utc:
+                    continue
+                elif date_filter == 'mtd' and d < first_of_month:
+                    continue
+                elif date_filter == 'last30d' and d < thirty_days_ago:
+                    continue
 
-    tx_breakdown = {
-        "fees": sum(float(p.fee_open_usdt or 0) + float(p.fee_close_usdt or 0) for p in positions),
-        "funding": sum(float(p.funding_usdt or 0) for p in positions),
-        "slip_liq": sum_slip_entry + sum_slip_exit,
-        "slip_time": sum_slip_time,
-    }
+            if not in_day_range(p.closed_at, dfrom, dto):
+                continue
+            if not in_hour_range(p.opened_at, open_rng):
+                continue
+            if not in_hour_range(p.closed_at, close_rng):
+                continue
+
+            realized = float(getattr(p, "realized_pnl_net_usdt", None) or getattr(p, "pnl_usdt", 0.0) or 0.0)
+            pnl += realized
+            total += 1
+            if realized > 0:
+                wins += 1
+
+            fees += float(p.fee_open_usdt or 0) + float(p.fee_close_usdt or 0)
+            funding += float(p.funding_usdt or 0)
+            slip_liq += float(p.slippage_entry_usdt or 0) + float(p.slippage_exit_usdt or 0)
+            slip_time += float(p.slippage_timelag_usdt or 0)
+
+            if p.timelag_tv_bot_ms:
+                tv_bot_ms.append(p.timelag_tv_bot_ms)
+            if p.timelag_bot_exch_ms:
+                bot_ex_ms.append(p.timelag_bot_exch_ms)
+
+        # Calculate percentages
+        total_cost = fees + abs(funding) + abs(slip_liq) + abs(slip_time)
+        fees_pct = (fees / abs(pnl) if pnl != 0 else 0)
+        slip_liq_pct = (slip_liq / abs(pnl) if pnl != 0 else 0)
+        slip_time_pct = (slip_time / abs(pnl) if pnl != 0 else 0)
+        total_pct = (total_cost / abs(pnl) if pnl != 0 else 0)
+
+        return {
+            'pnl': pnl,
+            'winrate': safe_rate(wins, total),
+            'fees_pct': fees_pct,
+            'slippage_liq_pct': slip_liq_pct,
+            'slippage_time_pct': slip_time_pct,
+            'fees_pct_total': total_pct,
+            'timelag_tv_to_bot_ms': (sum(tv_bot_ms) / len(tv_bot_ms)) if tv_bot_ms else 0,
+            'timelag_bot_to_ex_ms': (sum(bot_ex_ms) / len(bot_ex_ms)) if bot_ex_ms else 0,
+        }
+
+    # Calculate metrics for different time periods
+    today_metrics = calc_metrics(filtered_positions, 'today')
+    mtd_metrics = calc_metrics(filtered_positions, 'mtd')
+    last30d_metrics = calc_metrics(filtered_positions, 'last30d')
+    filtered_metrics = calc_metrics(filtered_positions)
+
+    # Count open trades
+    open_count = sum(1 for p in filtered_positions if p.closed_at is None)
+
+    # Calculate total portfolio (unfiltered)
+    portfolio_total = 0.0
+    for p in all_positions:
+        if p.closed_at is not None:
+            portfolio_total += float(getattr(p, "realized_pnl_net_usdt", None) or getattr(p, "pnl_usdt", 0.0) or 0.0)
+
+    # Calculate filtered portfolio
+    portfolio_filtered = 0.0
+    for p in filtered_positions:
+        if p.closed_at is not None:
+            portfolio_filtered += float(getattr(p, "realized_pnl_net_usdt", None) or getattr(p, "pnl_usdt", 0.0) or 0.0)
 
     summary = {
-        "portfolio_total_equity": sum(equity_series.values()),
-        "kpis": {
-            "today": {"realized_pnl": realized_today, "win_rate": safe_rate(wins_today, total_today), "tx_costs_pct": 0.0, "tx_breakdown": tx_breakdown, "timelag_ms": {"tv_bot_avg": (sum(avg_tv_bot) / len(avg_tv_bot)) if avg_tv_bot else 0,"bot_ex_avg": (sum(avg_bot_ex) / len(avg_bot_ex)) if avg_bot_ex else 0,}},
-            "month": {"realized_pnl": month_realized, "win_rate": safe_rate(month_wins, month_total), "tx_costs_pct": 0.0, "tx_breakdown": tx_breakdown, "timelag_ms": {"tv_bot_avg": (sum(avg_tv_bot) / len(avg_tv_bot)) if avg_tv_bot else 0,"bot_ex_avg": (sum(avg_bot_ex) / len(avg_bot_ex)) if avg_bot_ex else 0,}},
-            "last_30d": {"realized_pnl": last30_realized, "win_rate": safe_rate(last30_wins, last30_total), "tx_costs_pct": 0.0, "tx_breakdown": tx_breakdown, "timelag_ms": {"tv_bot_avg": (sum(avg_tv_bot) / len(avg_tv_bot)) if avg_tv_bot else 0,"bot_ex_avg": (sum(avg_bot_ex) / len(avg_bot_ex)) if avg_bot_ex else 0,}},
-            "current": {"open_trades": open_count, "filtered_portfolio_equity": sum(equity_series.values()), "win_rate": safe_rate(wins_today, total_today)},
-        },
-        "equity_timeseries": [{"ts": d.isoformat(), "day_pnl": equity_series[d]} for d in sorted(equity_series.keys())],
+        "portfolio_total": portfolio_total,
+        "pnl_today": today_metrics['pnl'],
+        "winrate_today": today_metrics['winrate'],
+        "open_trades_count": open_count,
+        "pnl_filtered": filtered_metrics['pnl'],
+        "portfolio_filtered": portfolio_filtered,
+        "winrate_filtered": filtered_metrics['winrate'],
+        "fees_pct_filtered": filtered_metrics['fees_pct'],
+        "slippage_liq_pct_filtered": filtered_metrics['slippage_liq_pct'],
+        "slippage_time_pct_filtered": filtered_metrics['slippage_time_pct'],
+        "fees_pct_filtered_total": filtered_metrics['fees_pct_total'],
+        "timelag_tv_to_bot_ms_filtered": filtered_metrics['timelag_tv_to_bot_ms'],
+        "timelag_bot_to_ex_ms_filtered": filtered_metrics['timelag_bot_to_ex_ms'],
+        "fees_pct_today": today_metrics['fees_pct'],
+        "slippage_liq_pct_today": today_metrics['slippage_liq_pct'],
+        "slippage_time_pct_today": today_metrics['slippage_time_pct'],
+        "fees_pct_today_total": today_metrics['fees_pct_total'],
+        "timelag_tv_to_bot_ms_today": today_metrics['timelag_tv_to_bot_ms'],
+        "timelag_bot_to_ex_ms_today": today_metrics['timelag_bot_to_ex_ms'],
+        "mtd": mtd_metrics,
+        "last30d": last30d_metrics,
     }
     return summary
 
