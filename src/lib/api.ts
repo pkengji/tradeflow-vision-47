@@ -230,6 +230,40 @@ export type TradesResponse = {
   page_size: number;
 };
 
+// Dashboard Summary Types
+export type DashboardSummary = {
+  portfolio_total_equity: number;
+  kpis: {
+    today: DashboardKPIPeriod;
+    month: DashboardKPIPeriod;
+    last_30d: DashboardKPIPeriod;
+    current: {
+      open_trades: number;
+      win_rate: number;
+    };
+  };
+  equity_timeseries: Array<{ ts: string; day_pnl: number }>;
+};
+
+export type DashboardKPIPeriod = {
+  realized_pnl: number;
+  win_rate: number;
+  tx_costs_pct: number;
+  tx_breakdown_usdt: {
+    fees: number;
+    funding: number;
+    slip_liquidity: number;
+    slip_time: number;
+  };
+  timelag_ms: {
+    ingress_ms_avg: number;
+    engine_ms_avg: number;
+    tv_to_send_ms_avg: number;
+    tv_to_fill_ms_avg: number;
+    samples: number;
+  };
+};
+
 // ---------- API-Funktionen ----------
 
 async function getBots(): Promise<Bot[]> {
@@ -449,6 +483,19 @@ async function updateNotificationSettings(settings: any): Promise<any> {
   return Promise.resolve({ ok: true });
 }
 
+// Dashboard
+async function getDashboardSummary(params?: {
+  bot_ids?: string;
+  symbols?: string;
+  direction?: string;
+  date_from?: string;
+  date_to?: string;
+  open_hour?: string;
+  close_hour?: string;
+}): Promise<DashboardSummary> {
+  return http('/api/v1/dashboard/summary', { query: params });
+}
+
 // User management (admin)
 async function createUser(data: { username: string; email: string; password: string; role?: string }): Promise<any> {
   return http('/api/v1/users', { method: 'POST', body: data });
@@ -489,6 +536,9 @@ export const api = {
   // Symbols / PnL
   getSymbols,
   getDailyPnl,
+
+  // Dashboard
+  getDashboardSummary,
 
   // Outbox
   getOutbox,
