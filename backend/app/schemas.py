@@ -192,11 +192,3 @@ class PortfolioValueOut(BaseModel):
     withdrawals: float
     realized_pnl: float
     portfolio_value: float
-
-
-# ---------- Push Benachrichtigungen ----------
-
-class PushSubscribeIn(BaseModel):
-    endpoint: str
-    auth: str
-    p256dh: str

@@ -1,15 +1,14 @@
 import os
 from sqlalchemy import select
 
-from fastapi import FastAPI, Depends, HTTPException, Request, Response, Query, APIRouter, Body
+from fastapi import FastAPI, Depends, HTTPException, Request, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security.api_key import APIKeyHeader
 from sqlalchemy.orm import Session
 from typing import Optional, List, Dict, Any
 import secrets
-from .models import Bot, Position, PushSubscription
-from .auth import authenticate_user
+from .models import Bot, Position
 from sqlalchemy import or_, select, func
 from .services.bybit_sync import sync_backfill_since, sync_recent_closures, quick_sync_symbol, sync_full_history,rebuild_positions_orderlink, sync_symbol_recent, sync_recent_all_bots, reconcile_symbol
 from .services.symbols import sync_symbols_linear_usdt, list_pairs_payload, ensure_symbol_icon
@@ -18,7 +17,6 @@ from datetime import datetime, timezone, date, timedelta
 from app.services.positions import handle_position_close, reconcile_symbol
 from app.services.portfolio_sync import sync_cashflows as pf_sync_cashflows, compute_portfolio_value as pf_compute_portfolio_value
 from app.services.metrics import _slippage_entry_exit_usdt
-from app.services.summary import SummaryFilters, compute_dashboard_summary
 
 from .database import Base, engine, SessionLocal
 from . import models, schemas
@@ -29,7 +27,6 @@ from .schemas import (
 )
 from . import crud
 from starlette.staticfiles import StaticFiles
-import requests
 
 app = FastAPI(title="TradingBot Backend (User Scope Patch)", version="0.3.0")
 
@@ -613,55 +610,145 @@ def get_daily_pnl(
     return points
 
 
-
-def _parse_day(s: Optional[str]) -> Optional[date]:
-    if not s:
-        return None
-    y, m, d = [int(x) for x in s.split("-")]
-    return date(y, m, d)
-
-def _parse_hour_range(s: Optional[str]) -> Optional[tuple[tuple[int, int], tuple[int, int]]]:
-    # "22:00-03:00" -> ((22,0),(3,0))
-    if not s:
-        return None
-    try:
-        a, b = s.split("-")
-        ah, am = [int(x) for x in a.split(":")]
-        bh, bm = [int(x) for x in b.split(":")]
-        return ((ah, am), (bh, bm))
-    except Exception:
-        return None
-
 @app.get("/api/v1/dashboard/summary")
 def dashboard_summary(
-    bot_ids: Optional[str] = Query(None, description="Comma-separated bot ids"),
-    symbols: Optional[str] = Query(None, description="Comma-separated symbols"),
-    direction: Optional[str] = Query(None, description='"long" | "short" | "both"'),
-    # Globale Zeitfilter NUR für Portfolio/Timeseries:
-    date_from: Optional[str] = Query(None, description='YYYY-MM-DD (UTC)'),
-    date_to: Optional[str] = Query(None, description='YYYY-MM-DD (UTC)'),
-    # Intraday-Filter (Tageszeit-Fenster) für geöffnete/geschlossene Trades:
-    open_hour: Optional[str] = Query(None, description='e.g. "22:00-03:00"'),
-    close_hour: Optional[str] = Query(None, description='e.g. "18:00-19:00"'),
+    bot_ids: Optional[str] = None,
+    symbols: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    open_hour: Optional[str] = None,
+    close_hour: Optional[str] = None,
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
-    # Parse lists
-    bot_id_list = [int(x) for x in (bot_ids or "").split(",") if x.strip().isdigit()] or None
-    symbol_list = [s.strip() for s in (symbols or "").split(",") if s.strip()] or None
+    def parse_day(s: Optional[str]) -> Optional[date]:
+        if not s:
+            return None
+        y, m, d = [int(x) for x in s.split("-")]
+        return date(y, m, d)
 
-    f = SummaryFilters(
-        bot_ids = bot_id_list,
-        symbols = symbol_list,
-        direction = (direction or None),
-        open_hour_range = _parse_hour_range(open_hour),
-        close_hour_range = _parse_hour_range(close_hour),
-        date_from = _parse_day(date_from),
-        date_to = _parse_day(date_to),
+    def in_day_range(dt: Optional[datetime], dfrom: Optional[date], dto: Optional[date]) -> bool:
+        if not dt:
+            return False
+        d = dt.date()
+        ok_from = (dfrom is None) or (d >= dfrom)
+        ok_to = (dto is None) or (d <= dto)
+        return ok_from and ok_to
+
+    def parse_hour_range(rng: Optional[str]) -> Optional[tuple[tuple[int, int], tuple[int, int]]]:
+        if not rng:
+            return None
+        a, b = rng.split("-")
+        ah, am = [int(x) for x in a.split(":")]
+        bh, bm = [int(x) for x in b.split(":")]
+        return ((ah, am), (bh, bm))
+
+    def in_hour_range(dt: Optional[datetime], rng: Optional[tuple[tuple[int, int], tuple[int, int]]]) -> bool:
+        if not rng or not dt:
+            return True
+        (ah, am), (bh, bm) = rng
+        t = (dt.hour, dt.minute)
+        tmin = (ah, am); tmax = (bh, bm)
+        if tmin <= tmax:
+            return (t >= tmin) and (t <= tmax)
+        else:
+            return (t >= tmin) or (t <= tmax)
+
+    bot_id_list: List[int] = []
+    if bot_ids:
+        bot_id_list = [int(x) for x in bot_ids.split(",") if x.strip().isdigit()]
+    symbol_list: List[str] = []
+    if symbols:
+        symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
+
+    dfrom = parse_day(date_from)
+    dto = parse_day(date_to)
+    open_rng = parse_hour_range(open_hour)
+    close_rng = parse_hour_range(close_hour)
+
+    q = (
+        db.query(models.Position)
+        .join(models.Bot, models.Position.bot_id == models.Bot.id)
+        .filter(models.Bot.user_id == user_id)
     )
+    if bot_id_list:
+        q = q.filter(models.Position.bot_id.in_(bot_id_list))
+    if symbol_list:
+        q = q.filter(models.Position.symbol.in_(symbol_list))
 
-    return compute_dashboard_summary(db, user_id, f)
+    positions = q.all()
 
+    today_utc = datetime.now(timezone.utc).date()
+
+    realized_today = 0.0; wins_today = 0; total_today = 0
+    month_realized = 0.0; month_wins = 0; month_total = 0
+    last30_realized = 0.0; last30_wins = 0; last30_total = 0
+    open_count = 0
+    equity_series = defaultdict(float)
+
+    for p in positions:
+        is_open = (p.closed_at is None)
+        if is_open:
+            open_count += 1
+            continue
+
+        closed_at = p.closed_at
+        pnl = float(getattr(p, "realized_pnl_net_usdt", None) or getattr(p, "pnl_usdt", 0.0) or 0.0)
+
+        if not in_day_range(closed_at, dfrom, dto):  continue
+        if not in_hour_range(closed_at, open_rng):   continue
+        if not in_hour_range(closed_at, close_rng):  continue
+
+        d = closed_at.date()
+        equity_series[d] += pnl
+
+        if d == today_utc:
+            total_today += 1; realized_today += pnl
+            if pnl > 0: wins_today += 1
+        if d.year == today_utc.year and d.month == today_utc.month:
+            month_total += 1; month_realized += pnl
+            if pnl > 0: month_wins += 1
+        if (today_utc - d).days <= 30:
+            last30_total += 1; last30_realized += pnl
+            if pnl > 0: last30_wins += 1
+
+    def safe_rate(wins: int, total: int) -> float:
+        return (wins / total) if total > 0 else 0.0
+
+    avg_tv_bot = []
+    avg_bot_ex = []
+    sum_slip_entry, sum_slip_exit, sum_slip_time = 0.0, 0.0, 0.0
+
+    for p in positions:
+        if p.closed_at is None:
+            continue
+        ...
+        sum_slip_entry += float(p.slippage_entry_usdt or 0)
+        sum_slip_exit  += float(p.slippage_exit_usdt or 0)
+        sum_slip_time  += float(p.slippage_timelag_usdt or 0)
+        if p.timelag_tv_bot_ms:
+            avg_tv_bot.append(p.timelag_tv_bot_ms)
+        if p.timelag_bot_exch_ms:
+            avg_bot_ex.append(p.timelag_bot_exch_ms)
+
+    tx_breakdown = {
+        "fees": sum(float(p.fee_open_usdt or 0) + float(p.fee_close_usdt or 0) for p in positions),
+        "funding": sum(float(p.funding_usdt or 0) for p in positions),
+        "slip_liq": sum_slip_entry + sum_slip_exit,
+        "slip_time": sum_slip_time,
+    }
+
+    summary = {
+        "portfolio_total_equity": sum(equity_series.values()),
+        "kpis": {
+            "today": {"realized_pnl": realized_today, "win_rate": safe_rate(wins_today, total_today), "tx_costs_pct": 0.0, "tx_breakdown": tx_breakdown, "timelag_ms": {"tv_bot_avg": (sum(avg_tv_bot) / len(avg_tv_bot)) if avg_tv_bot else 0,"bot_ex_avg": (sum(avg_bot_ex) / len(avg_bot_ex)) if avg_bot_ex else 0,}},
+            "month": {"realized_pnl": month_realized, "win_rate": safe_rate(month_wins, month_total), "tx_costs_pct": 0.0, "tx_breakdown": tx_breakdown, "timelag_ms": {"tv_bot_avg": (sum(avg_tv_bot) / len(avg_tv_bot)) if avg_tv_bot else 0,"bot_ex_avg": (sum(avg_bot_ex) / len(avg_bot_ex)) if avg_bot_ex else 0,}},
+            "last_30d": {"realized_pnl": last30_realized, "win_rate": safe_rate(last30_wins, last30_total), "tx_costs_pct": 0.0, "tx_breakdown": tx_breakdown, "timelag_ms": {"tv_bot_avg": (sum(avg_tv_bot) / len(avg_tv_bot)) if avg_tv_bot else 0,"bot_ex_avg": (sum(avg_bot_ex) / len(avg_bot_ex)) if avg_bot_ex else 0,}},
+            "current": {"open_trades": open_count, "filtered_portfolio_equity": sum(equity_series.values()), "win_rate": safe_rate(wins_today, total_today)},
+        },
+        "equity_timeseries": [{"ts": d.isoformat(), "day_pnl": equity_series[d]} for d in sorted(equity_series.keys())],
+    }
+    return summary
 
 
 # -------------- Symbols / Pairs -----------------------
@@ -962,7 +1049,6 @@ def ingest_tv_signal(sig: TvSignalIn, user_id: int = Depends(get_current_user_id
         tv_risk_amount=sig.tv_risk_amount,
         rrr=sig.rrr,
         tv_ts=tv_dt,
-        status="received",
         bot_received_at=datetime.now(timezone.utc),
         raw_json=sig.model_dump_json(),
     )
@@ -975,45 +1061,32 @@ def ingest_tv_signal(sig: TvSignalIn, user_id: int = Depends(get_current_user_id
     db.commit()
     db.refresh(tv_row)  # id verfügbar
 
+    ob = OutboxItem(
+        user_id=user_id,
+        bot_id=bot.id,
+        symbol=sig.symbol,
+        trade_uid=trade_uid,                                 # ADDED
+        payload_entry=json.dumps(entry_payload),
+        payload_sl_limit=json.dumps(sl_limit_payload),
+        status=("sent" if bot.auto_approve else "pending_approval")
+    )
+    db.add(ob); db.commit(); db.refresh(ob)
 
-    try:
-        ob = OutboxItem(
-            user_id=user_id,
-            bot_id=bot.id,
-            symbol=sig.symbol,
-            trade_uid=trade_uid,
-            payload_entry=json.dumps(entry_payload),
-            payload_sl_limit=json.dumps(sl_limit_payload),
-            status=("sent" if bot.auto_approve else "waiting_for_approval"),
-        )
-        db.add(ob); db.commit(); db.refresh(ob)
-
-        # → OutboxItem wurde aus dem TV-Signal erzeugt:
-        tv_row.status = "processed"
-        tv_row.processed_at = datetime.now(timezone.utc)
+    # bei auto_approve sofort senden
+    if bot.auto_approve:
+        _send_outbox(ob, bot, user_id, db)
+        tv_row.bot_sent_at = datetime.now(timezone.utc)  # ADDED
         db.commit()
 
-        # bei auto_approve sofort senden
-        if bot.auto_approve:
-            _send_outbox(ob, bot, user_id, db)  # setzt outbox.status/sent_at intern
-            db.commit()
-
-        return {
-            "ok": True,
-            "trade_uid": trade_uid,
-            "tv_signal_id": tv_row.id,
-            "outbox_id": ob.id,
-            "status": ob.status,
-        }
-
-    except Exception as e:
-        # Eingehendes TV-Signal war fehlerhaft (oder Payload/DB-Fehler)
-        tv_row.status = "failed"
-        # error_message vorausgesetzt im Modell:
-        tv_row.error_message = str(e)[:5000]
+    # bevor der Request an Bybit rausgeht:
+    tv_row = db.execute(
+        select(TvSignal).where(TvSignal.trade_uid == ob.trade_uid, TvSignal.bot_id == ob.bot_id)
+    ).scalar_one_or_none()
+    if tv_row and tv_row.bot_sent_at is None:
+        tv_row.bot_sent_at = datetime.now(timezone.utc)
         db.commit()
-        # 400, damit klar ist: TV-Input/Verarbeitung invalid (nicht Bybit)
-        raise HTTPException(status_code=400, detail="Invalid TradingView signal")
+
+    return {"ok": True, "trade_uid": trade_uid, "tv_signal_id": tv_row.id, "outbox_id": ob.id, "status": ob.status}
 
 
 @app.post("/api/v1/outbox/{outbox_id}/approve")
@@ -1029,7 +1102,7 @@ def approve_outbox(
     bot = db.get(Bot, ob.bot_id)
     if not bot or bot.user_id != user_id:
         raise HTTPException(404, "bot not found")
-    if ob.status not in ("waiting_for_approval", "pending_approval"):
+    if ob.status != "pending_approval":
         return {"ok": True, "status": ob.status}
     _send_outbox(ob, bot, user_id, db)
     return {"ok": True, "status": ob.status}
@@ -1044,94 +1117,14 @@ def _send_outbox(ob, bot, user, db: Session):
     rest = BybitRest(os.getenv("BYBIT_REST_URL", "https://api.bybit.com"))
     api_key = bot.api_key or ""
     api_secret = bot.api_secret
-
-    # 1) Markiere als gesendet (Zeitpunkt für Timelag: sent_at)
-    ob.status = "sent"
-    ob.sent_at = _dt.utcnow()
-    db.commit()
-
-
     try:
-        entry = json.loads(ob.payload_entry)        #vorher noch: ;rest.place_order(api_key, api_secret, entry)
-        resp1 = rest.place_order(api_key, api_secret, entry) 
-
-        sll  = json.loads(ob.payload_sl_limit)          #vorher noch: ; rest.place_order(api_key, api_secret, sll)
-        resp2 = rest.place_order(api_key, api_secret, sll)
-            
-        # 2) Beide Requests akzeptiert → completed
-        ob.status = "completed"
-        ob.error = None
-        db.commit()
-        return {"entry": resp1, "sll": resp2}
-
-    except requests.HTTPError as ex:
-        # Differenziere: retCode-Fehler (Bybit) → rejected, sonst HTTP 5xx → failed
-        msg = str(ex)
-        ret_msg = None
-        ret_code = None
-
-        try:
-            # Wenn Bybit JSON geliefert hat, retCode/retMsg herausziehen
-            resp = ex.response
-            if resp is not None and resp.headers.get("Content-Type", "").startswith("application/json"):
-                data = resp.json()
-                ret_code = data.get("retCode")
-                ret_msg = data.get("retMsg")
-        except Exception:
-            pass
-
-        if ret_code is not None and str(ret_code) not in ("0", 0):
-            ob.status = "rejected"
-            ob.error = f"{ret_code}: {ret_msg}"[:2000] if ret_msg else msg[:2000]
-        else:
-            # z. B. 500er ohne retCode oder Gateway-Probleme
-            ob.status = "failed"
-            ob.error = msg[:2000]
-
-        db.commit()
-        return None
-    
-    except (requests.Timeout, requests.ConnectionError) as ex:
-        ob.status = "failed"
-        ob.error = f"transport: {ex}"[:2000]
-        db.commit()
-        return None
-
+        entry = json.loads(ob.payload_entry); rest.place_order(api_key, api_secret, entry)
+        sll  = json.loads(ob.payload_sl_limit); rest.place_order(api_key, api_secret, sll)
+        from datetime import datetime as _dt
+        ob.status = "sent"; ob.sent_at = _dt.utcnow(); db.commit()
     except Exception as ex:
-        ob.status = "error"
-        ob.error = str(ex)[:2000]
-        db.commit()
-        return None
+        ob.status = "error"; ob.error = str(ex); db.commit()
 
-
-OUTBOX_TIMEOUT_SECONDS = int(os.getenv("OUTBOX_TIMEOUT_SECONDS", "60"))
-
-def _apply_outbox_timeouts(db: Session) -> int:
-    """Markiert 'sent' Outbox-Items nach >= TIMEOUT als 'failed'."""
-    now = datetime.now(timezone.utc)
-    q = (db.query(OutboxItem)
-           .filter(OutboxItem.status == "sent")
-           .filter(OutboxItem.sent_at.isnot(None)))
-    updated = 0
-    for ob in q.all():
-        if (now - ob.sent_at) >= timedelta(seconds=OUTBOX_TIMEOUT_SECONDS):
-            ob.status = "failed"
-            ob.error = ((ob.error or "") + f" [timeout ≥ {OUTBOX_TIMEOUT_SECONDS}s]").strip()
-            db.commit()
-            # optional: Push an User
-            try:
-                from app.services.notifications import notify_trade_failed
-                notify_trade_failed(db, ob.user_id, ob.id, "Exchange timeout")
-            except Exception:
-                pass
-            updated += 1
-    return updated
-
-@app.post("/api/v1/outbox/tick")
-def api_outbox_tick(db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
-    # optional: auth/role-check, falls nur Admin o. cron das triggern darf
-    failed = _apply_outbox_timeouts(db)
-    return {"ok": True, "failed_timeouts": failed}
 
 # ============================================================
 # WS / Tasks (unverändert) ...
@@ -1354,67 +1347,3 @@ def backfill_slippage(db: Session = Depends(get_db)):
         "updated_positions": updated,
         "message": "Slippage-Werte erfolgreich nachgetragen."
     }
-
-
-# =========================
-# Push Benachrichtigungen
-# =========================
-
-push_router = APIRouter()
-
-@push_router.get("/public_key", response_model=str)
-def get_vapid_public_key():
-    # Frontend liest damit den Public Key für subscription.applicationServerKey
-    return os.getenv("VAPID_PUBLIC_KEY", "")
-
-
-# --- Push subscribe ---
-@push_router.post("/api/v1/push/subscribe", status_code=201)
-def push_subscribe(body: schemas.PushSubscribeIn, db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
-    # upsert nach endpoint
-    existing = db.query(models.PushSubscription).filter_by(endpoint=body.endpoint).first()
-    if existing:
-        existing.user_id = user_id
-        existing.auth = body.auth
-        existing.p256dh = body.p256dh
-        db.commit()
-        return {"ok": True, "updated": True}
-    sub = models.PushSubscription(user_id=user_id, endpoint=body.endpoint, auth=body.auth, p256dh=body.p256dh)
-    db.add(sub); db.commit()
-    return {"ok": True, "created": True}
-
-
-@push_router.post("/subscribe")
-def save_push_subscription(
-    subscription: dict = Body(...),
-    db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id)
-):
-    ep = subscription.get("endpoint")
-    keys = subscription.get("keys", {})
-    p256 = keys.get("p256dh")
-    auth = keys.get("auth")
-
-    if not ep or not p256 or not auth:
-        return {"ok": False, "error": "Invalid subscription"}
-
-    # existiert bereits?
-    existing = db.query(PushSubscription).filter(
-        PushSubscription.endpoint == ep,
-        PushSubscription.user_id == user_id
-    ).first()
-
-    if not existing:
-        sub = PushSubscription(
-            user_id=user_id,
-            endpoint=ep,
-            p256dh=p256,
-            auth=auth,
-        )
-        db.add(sub)
-        db.commit()
-
-    return {"ok": True}
-
-app.include_router(push_router, prefix="/api/v1/push")
-

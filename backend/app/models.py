@@ -1,6 +1,6 @@
 import enum
 
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Enum, Text, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text, UniqueConstraint
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from datetime import datetime, timezone
 from .database import Base
@@ -36,8 +36,8 @@ class Bot(Base):
     auto_approve = Column(Boolean, default=False)
     position_mode = Column(String, default="one_way")
     margin_mode = Column(String, default="isolated")
-    default_leverage = Column(Float, default=50.0)
-    tv_risk_multiplier_default = Column(Float, default=10.0)
+    default_leverage = Column(Float, default=10.0)
+    tv_risk_multiplier_default = Column(Float, default=1.0)
 
     is_active = Column(Boolean, default=True)
     is_deleted = Column(Boolean, default=False)
@@ -58,7 +58,6 @@ class Bot(Base):
     
     # ADDED: optional Kennzeichnung Main vs Sub (für Cashflow-Auswertung)
     account_kind = Column(String, nullable=True)  # "main" | "sub" (Dropdown im UI)  # ADDED
-    exchange = Column(String, default="Bybit", nullable=True)  # man müsste die Logik noch erweitern
     last_sync_at = Column(DateTime(timezone=True), nullable=True)
     positions = relationship("Position", back_populates="bot")
 
@@ -270,6 +269,10 @@ class Symbol(Base):
 # OUTBOX ITEMS (NO DELETE; ADDED trade_uid + backref)
 # =========================
 
+from sqlalchemy import Column, Integer, String, Text, DateTime, Enum, ForeignKey
+from sqlalchemy.orm import relationship
+from datetime import datetime
+
 class OutboxStatusEnum(str, enum.Enum):
     pending_approval = "pending_approval"
     sent = "sent"
@@ -289,8 +292,6 @@ class OutboxItem(Base):
     payload_sl_limit = Column(Text, nullable=False)
 
     status = Column(String(32), nullable=False, default="pending_approval")
-    # Hinweis: gültige Werte laut deiner Vorgabe:
-    # pending_approval, waiting_for_approval, sent, completed, rejected, failed, error
     error = Column(Text, nullable=True)
     sent_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
@@ -327,15 +328,11 @@ class TvSignal(Base):
     leverage_type = Column(String, nullable=True)
     leverage_size = Column(Float, nullable=True)
 
-    tv_ts = Column(DateTime(timezone=True), nullable=True)      # TV Timestamp
-    status = Column(Text, nullable=False, default="received")
-    error_message = Column(Text, nullable=True)
-
-    bot_received_at = Column(DateTime, nullable=False, default=datetime.utcnow)  # Bot hat Signal empfangenU
-    processed_at = Column(DateTime, nullable=True)                           # Bot hat Order gesendet (zumindest in Outbox)
+    tv_ts = Column(DateTime(timezone=True), nullable=True)            # TV Timestamp
+    bot_received_at = Column(DateTime(timezone=True), nullable=True)  # Bot hat Signal empfangen
+    bot_sent_at = Column(DateTime(timezone=True), nullable=True)      # Bot hat Order gesendet
 
     raw_json = Column(Text, nullable=True)  # komplette TV-JSON
-
 
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -383,31 +380,3 @@ class Cashflow(Base):  # ADDED
         # Dedupe: dieselbe externe TX nicht doppelt (user-scope)
         UniqueConstraint("user_id", "direction", "tx_id", name="uq_cashflow_user_dir_txid"),
     )
-
-
-# =========================
-# Push Benachrichtigungen
-# =========================
-
-class PushSubscription(Base):
-    __tablename__ = "push_subscriptions"
-
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    endpoint = Column(String, nullable=False)
-    p256dh = Column(String, nullable=False)
-    auth = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    user = relationship("User")
-
-class UserNotificationSettings(Base):
-    __tablename__ = "user_notification_settings"
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
-    trade_opened = Column(Boolean, default=True)
-    trade_won = Column(Boolean, default=True)
-    trade_lost = Column(Boolean, default=True)
-    sltp_changed = Column(Boolean, default=True)
-    trade_failed = Column(Boolean, default=True)
-    system_alerts = Column(Boolean, default=True)

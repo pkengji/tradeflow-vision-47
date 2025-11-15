@@ -28,8 +28,3 @@ tzdata>=2024.1
 pydantic[email]==2.9.2
 requests
 httpx>=0.24
-
-# --- Push ---
-pywebpush==1.14.0
-py-vapid==1.8.2
-cryptography>=41.0.3

@@ -125,7 +125,7 @@ class BybitRest:
             "X-BAPI-TIMESTAMP": ts,
             "X-BAPI-RECV-WINDOW": recv_window,
         }
-        
+
         resp = requests.post(url, headers=headers, data=body, timeout=15)
         resp.raise_for_status()
         data = resp.json()
