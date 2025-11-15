@@ -74,6 +74,7 @@ const { data: exchangeKeys } = useQuery({
   const [userSecret, setUserSecret] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
+  const [accountKind, setAccountKind] = useState<'main' | 'sub'>('sub');
   const [autoApprove, setAutoApprove] = useState(false);
   const [pairs, setPairs] = useState<BotPair[]>([]);
   const [globalLeverage, setGlobalLeverage] = useState<number | 'max' | ''>('');
@@ -145,6 +146,7 @@ useMemo(() => {
     setName(bot.name || '');
     setUuid(bot.uuid || '');
     setAutoApprove(!!bot.auto_approve);
+    setAccountKind((bot.account_kind as 'main' | 'sub') || 'sub');
     
     // Load bot symbols from backend
     if (botSymbols) {
@@ -164,6 +166,7 @@ useMemo(() => {
         name,
         description: '',
         exchange: 'bybit',
+        account_kind: accountKind,
         strategy: '',
         timeframe: '',
         auto_approve: autoApprove,
@@ -318,11 +321,14 @@ useMemo(() => {
   };
 
   return (
-    <DashboardLayout pageTitle={name || 'Bot Details'} showBackButton={true}>
+    <DashboardLayout pageTitle={name || 'Bot'} showBackButton={true}>
       <div className="space-y-4 p-4 pb-24 max-w-6xl mx-auto">
         {/* Header Card */}
         <Card>
-          <CardContent className="pt-4 space-y-4">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">{name || 'Bot Details'}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <div>
             <Label>Bot Name</Label>
             <Input 
@@ -411,6 +417,18 @@ useMemo(() => {
                 {showApiSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </Button>
             </div>
+          </div>
+
+          <div>
+            <Label>Account Kind</Label>
+            <select
+              value={accountKind}
+              onChange={(e) => setAccountKind(e.target.value as 'main' | 'sub')}
+              className="w-full h-10 px-3 mt-1 rounded-md border border-input bg-background text-sm"
+            >
+              <option value="sub">Sub</option>
+              <option value="main">Main</option>
+            </select>
           </div>
 
           <div className="flex items-center justify-between pt-2 border-t">

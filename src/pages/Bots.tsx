@@ -3,6 +3,7 @@ import { api, type Bot } from '@/lib/api';
 import { Switch } from '@/components/ui/switch';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Plus } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 
@@ -74,7 +75,12 @@ export default function Bots() {
                 <div className="flex items-start gap-4">
                   <div className={`w-3 h-3 rounded-full mt-1 ${getStatusColor(bot.status)}`} />
                   <div className="flex-1 min-w-0">
-                    <div className="text-base font-medium">{bot.name}</div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-base font-medium">{bot.name}</span>
+                      <Badge variant="outline" className="text-xs">
+                        {bot.account_kind === 'main' ? 'Main' : 'Sub'}
+                      </Badge>
+                    </div>
                     <div className="text-xs text-muted-foreground mt-1">
                       Am Laufen seit: {bot.created_at ? new Date(bot.created_at).toLocaleDateString('de-CH') : '—'}
                     </div>

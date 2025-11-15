@@ -2,7 +2,7 @@
 // 1) IMPORTS
 // ==============================
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import api, { type PositionListItem, type Bot } from '@/lib/api';
 import TradesFiltersBar, { type TradesFilters } from '@/components/app/TradesFiltersBar';
 import TradeCardCompact from '@/components/app/TradeCardCompact';
@@ -91,9 +91,13 @@ function groupTradesByDate(trades: PositionListItem[], dateField: 'opened_at' | 
 // ==============================
 export default function Trades() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const loadMoreObserverRef = useRef<IntersectionObserver | null>(null);
+  const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   
   // ---- 4.1 STATE (UI & Daten) ----
   const [activeTab, setActiveTab] = useState<TabKey>(() => {
@@ -132,6 +136,7 @@ export default function Trades() {
         if (!cancel) {
           setPositions(Array.isArray(res?.items) ? res.items : []);
           setTotalCount(res?.total ?? 0);
+          setHasMore((res?.items?.length || 0) >= 50);
         }
       } catch (e: any) {
         if (!cancel) setError(e?.message ?? 'Unbekannter Fehler');
@@ -144,6 +149,46 @@ export default function Trades() {
     })();
     return () => { cancel = true; };
   }, [displayLimit]);
+
+  // Restore scroll position on mount
+  useEffect(() => {
+    const savedScrollY = sessionStorage.getItem('trades-scroll-position');
+    const savedTab = sessionStorage.getItem('trades-tab');
+    
+    if (savedTab && (savedTab === 'open' || savedTab === 'closed')) {
+      setActiveTab(savedTab as TabKey);
+    }
+    
+    if (savedScrollY) {
+      setTimeout(() => {
+        window.scrollTo(0, parseInt(savedScrollY, 10));
+        sessionStorage.removeItem('trades-scroll-position');
+      }, 100);
+    }
+  }, []);
+
+  // Infinite scroll with Intersection Observer
+  useEffect(() => {
+    if (!loadMoreTriggerRef.current || isLoadingMore || !hasMore) return;
+
+    loadMoreObserverRef.current = new IntersectionObserver(
+      (entries) => {
+        const target = entries[0];
+        if (target.isIntersecting && !isLoadingMore && hasMore) {
+          setDisplayLimit(prev => prev + 50);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    loadMoreObserverRef.current.observe(loadMoreTriggerRef.current);
+
+    return () => {
+      if (loadMoreObserverRef.current) {
+        loadMoreObserverRef.current.disconnect();
+      }
+    };
+  }, [isLoadingMore, hasMore, displayLimit]);
 
   useEffect(() => {
     let cancel = false;
@@ -247,49 +292,19 @@ export default function Trades() {
 
   const hasMoreToLoad = positions.length < totalCount;
 
-  // Wiederherstellung der scroll position beim Zurückkommen
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const savedPosition = sessionStorage.getItem(`trades-scroll-${activeTab}`);
-      if (savedPosition && scrollContainerRef.current) {
-        scrollContainerRef.current.scrollTop = parseInt(savedPosition, 10);
-      }
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [activeTab, openTrades.length, closedTrades.length]);
-
-  // Speichere scroll position
-  const handleScroll = useCallback(() => {
-    if (scrollContainerRef.current) {
-      sessionStorage.setItem(`trades-scroll-${activeTab}`, scrollContainerRef.current.scrollTop.toString());
-    }
+  // Save scroll position before navigating
+  const saveScrollPosition = useCallback(() => {
+    const scrollY = window.scrollY;
+    sessionStorage.setItem('trades-scroll-position', String(scrollY));
+    sessionStorage.setItem('trades-tab', activeTab);
   }, [activeTab]);
 
-  // Infinite scroll
-  const handleScrollForLoading = useCallback(() => {
-    if (!scrollContainerRef.current || loading || isLoadingMore || !hasMoreToLoad) return;
-    
-    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
-    if (scrollHeight - scrollTop - clientHeight < 300) {
-      setIsLoadingMore(true);
-      setDisplayLimit(prev => prev + 50);
-    }
-  }, [loading, isLoadingMore, hasMoreToLoad]);
+  // ---- 4.4 HANDLER ----
+  const handleCardClick = (t: PositionListItem) => {
+    saveScrollPosition();
+    navigate(`/trade/${t.id}`);
+  };
 
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-    
-    const handleScrollCombined = () => {
-      handleScroll();
-      handleScrollForLoading();
-    };
-    
-    container.addEventListener('scroll', handleScrollCombined);
-    return () => container.removeEventListener('scroll', handleScrollCombined);
-  }, [handleScroll, handleScrollForLoading]);
-
-  // Tab-Wechsel mit URL
   const handleTabChange = (newTab: TabKey) => {
     setActiveTab(newTab);
     setSearchParams({ tab: newTab });
@@ -298,15 +313,6 @@ export default function Trades() {
   // Gruppiere Trades nach Datum
   const openTradesGrouped = useMemo(() => groupTradesByDate(openTrades, 'opened_at'), [openTrades]);
   const closedTradesGrouped = useMemo(() => groupTradesByDate(closedTrades, 'closed_at'), [closedTrades]);
-
-  // ---- 4.4 HANDLER ----
-  const handleCardClick = (t: PositionListItem) => {
-    // Speichere scroll position vor Navigation
-    if (scrollContainerRef.current) {
-      sessionStorage.setItem(`trades-scroll-${activeTab}`, scrollContainerRef.current.scrollTop.toString());
-    }
-    navigate(`/trade/${t.id}?from=${activeTab}`);
-  };
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -372,18 +378,41 @@ export default function Trades() {
       <div ref={scrollContainerRef} className="overflow-auto flex-1">
         <div className="space-y-4 p-4 pb-24">
 
-        {/* Filter - Desktop (always visible) */}
-        <div className="hidden lg:block">
-          <TradesFiltersBar
-            value={filters}
-            onChange={setFilters}
-            availableBots={bots}
-            availableSymbols={symbols}
-            showDateRange={activeTab === 'closed'}
-            showTimeRange={activeTab === 'closed'}
-            showSignalKind={false}
-          />
+        {/* Filter Button - Desktop */}
+        <div className="hidden lg:flex justify-end gap-2">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => setShowFilters(!showFilters)}
+            className="relative"
+          >
+            <SlidersHorizontal className="h-4 w-4 mr-2" />
+            Filter
+            {activeFilterCount > 0 && (
+              <span className="ml-2 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-medium">
+                {activeFilterCount}
+              </span>
+            )}
+          </Button>
         </div>
+
+        {/* Filter - Desktop (collapsible) */}
+        {showFilters && (
+          <div className="hidden lg:block border rounded-lg p-4 bg-muted/30">
+            <TradesFiltersBar
+              value={filters}
+              onChange={setFilters}
+              availableBots={bots}
+              availableSymbols={symbols}
+              showDateRange={activeTab === 'closed'}
+              showTimeRange={activeTab === 'closed'}
+              showSignalKind={false}
+            />
+            <div className="flex justify-end mt-4">
+              <Button size="sm" onClick={() => setShowFilters(false)}>Fertig</Button>
+            </div>
+          </div>
+        )}
 
       {/* Liste: Offene oder Geschlossene */}
       {activeTab === 'open' ? (
@@ -439,6 +468,12 @@ export default function Trades() {
               Lädt weitere Trades...
             </div>
           )}
+          {/* Infinite Scroll Trigger */}
+          {hasMore && (
+            <div ref={loadMoreTriggerRef} className="py-4 text-center">
+              {isLoadingMore && <div className="text-muted-foreground">Lädt mehr...</div>}
+            </div>
+          )}
         </section>
       ) : (
         <section>
@@ -491,6 +526,12 @@ export default function Trades() {
           {isLoadingMore && (
             <div className="mt-4 text-center text-sm text-muted-foreground">
               Lädt weitere Trades...
+            </div>
+          )}
+          {/* Infinite Scroll Trigger */}
+          {hasMore && (
+            <div ref={loadMoreTriggerRef} className="py-4 text-center">
+              {isLoadingMore && <div className="text-muted-foreground">Lädt mehr...</div>}
             </div>
           )}
         </section>
