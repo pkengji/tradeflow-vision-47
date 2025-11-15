@@ -160,7 +160,8 @@ export default function Trades() {
         }
         setError(null);
         const skip = (page - 1) * pageSize;
-        const res = await api.getPositions({ skip, limit: pageSize });
+        const status = activeTab === 'open' ? 'open' : 'closed';
+        const res = await api.getPositions({ status, skip, limit: pageSize });
         if (!cancel) {
           if (page === 1) {
             setPositions(Array.isArray(res?.items) ? res.items : []);
@@ -178,7 +179,12 @@ export default function Trades() {
             const savedScrollY = sessionStorage.getItem('trades-scroll-position');
             if (savedScrollY) {
               setTimeout(() => {
-                window.scrollTo(0, parseInt(savedScrollY, 10));
+                const y = parseInt(savedScrollY, 10);
+                if (scrollContainerRef.current) {
+                  scrollContainerRef.current.scrollTo({ top: y });
+                } else {
+                  window.scrollTo(0, y);
+                }
                 sessionStorage.removeItem('trades-scroll-position');
                 sessionStorage.removeItem('trades-tab');
                 sessionStorage.removeItem('trades-page');
@@ -197,7 +203,17 @@ export default function Trades() {
       }
     })();
     return () => { cancel = true; };
-  }, [page, isRestoringScroll, targetPage]);
+  }, [page, activeTab, isRestoringScroll, targetPage]);
+
+  // Reset pagination when changing tabs (unless restoring)
+  useEffect(() => {
+    if (!isRestoringScroll) {
+      setPage(1);
+      setPositions([]);
+      setHasMore(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   // Infinite scroll with Intersection Observer
   useEffect(() => {
@@ -210,7 +226,7 @@ export default function Trades() {
           setPage(prev => prev + 1);
         }
       },
-      { threshold: 0.1 }
+      { threshold: 0.1, root: scrollContainerRef.current ?? null }
     );
 
     loadMoreObserverRef.current.observe(loadMoreTriggerRef.current);
@@ -326,7 +342,7 @@ export default function Trades() {
 
   // Save scroll position before navigating
   const saveScrollPosition = useCallback(() => {
-    const scrollY = window.scrollY;
+    const scrollY = scrollContainerRef.current ? scrollContainerRef.current.scrollTop : window.scrollY;
     sessionStorage.setItem('trades-scroll-position', String(scrollY));
     sessionStorage.setItem('trades-tab', activeTab);
     sessionStorage.setItem('trades-page', String(page));
