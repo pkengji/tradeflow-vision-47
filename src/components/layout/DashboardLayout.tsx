@@ -21,7 +21,7 @@ export function DashboardLayout({
   mobileHeaderLeft,
   showBackButton = false,
 }: { 
-  children: React.ReactNode;
+  children: ReactNode;
   pageTitle?: string;
   mobileHeaderRight?: ReactNode;
   mobileHeaderLeft?: ReactNode;
