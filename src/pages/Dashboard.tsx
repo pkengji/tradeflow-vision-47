@@ -285,36 +285,36 @@ export default function Dashboard() {
             <CardContent className="space-y-0 py-2 pb-3">
               <div className="space-y-0">
                 <Link to="/trades?status=closed">
-                  <MetricRow label="P&L realized heute" value={formatCurrency(summary.pnl_today)} hoverable />
+                  <MetricRow label="P&L realized heute" value={formatCurrency(summary.pnl_today ?? 0)} hoverable />
                 </Link>
-                <MetricRow label="Win Rate heute" value={pct(summary.winrate_today)} />
+                <MetricRow label="Win Rate heute" value={pct(summary.winrate_today ?? 0)} />
                 <MetricRow label="Anzahl Signale" value={String(signalsCount.today)} />
                 <Link to="/trades?status=open">
-                  <MetricRow label="Offene Trades aktuell" value={summary.open_trades_count} hoverable />
+                  <MetricRow label="Offene Trades aktuell" value={summary.open_trades_count ?? 0} hoverable />
                 </Link>
               </div>
 
               <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Transaktionskosten" 
-                  value={pct(summary.fees_pct_today_total)} 
+                  value={pct(summary.fees_pct_today_total ?? 0)} 
                 />
                 <div className="pl-4 space-y-0">
-                  <MetricRow label="Fees" value={pct(summary.fees_pct_today)} small />
-                  <MetricRow label="Slippage (Liquidität)" value={pct(summary.slippage_liq_pct_today)} small />
-                  <MetricRow label="Slippage (Timelag)" value={pct(summary.slippage_time_pct_today)} small />
+                  <MetricRow label="Fees" value={pct(summary.fees_pct_today ?? 0)} small />
+                  <MetricRow label="Slippage (Liquidität)" value={pct(summary.slippage_liq_pct_today ?? 0)} small />
+                  <MetricRow label="Slippage (Timelag)" value={pct(summary.slippage_time_pct_today ?? 0)} small />
                 </div>
               </div>
 
               <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Timelag" 
-                  value={ms(summary.timelag_tv_to_bot_ms_today + summary.timelag_bot_to_ex_ms_today)} 
+                  value={ms((summary.timelag_tv_to_bot_ms_today ?? 0) + (summary.timelag_bot_to_ex_ms_today ?? 0))} 
                 />
                 <div className="pl-4 space-y-0">
-                  <MetricRow label="Entry" value={ms(summary.timelag_tv_to_bot_ms_today)} small />
+                  <MetricRow label="Entry" value={ms(summary.timelag_tv_to_bot_ms_today ?? 0)} small />
                   <MetricRow label="Processing time" value={ms(0)} small />
-                  <MetricRow label="Exit" value={ms(summary.timelag_bot_to_ex_ms_today)} small />
+                  <MetricRow label="Exit" value={ms(summary.timelag_bot_to_ex_ms_today ?? 0)} small />
                 </div>
               </div>
             </CardContent>
@@ -322,39 +322,39 @@ export default function Dashboard() {
         )}
 
         {/* 4. Aktueller Monat (nur wenn kein Datumsfilter) */}
-        {summary && !hasDateFilter && (
+        {summary && summary.mtd && !hasDateFilter && (
           <Card>
             <CardHeader className="pb-1 pt-3">
               <CardTitle className="text-lg font-semibold">Aktueller Monat</CardTitle>
             </CardHeader>
             <CardContent className="space-y-0 py-2 pb-3">
               <div className="space-y-0">
-                <MetricRow label="Realized P&L" value={formatCurrency(summary.mtd.pnl)} />
-                <MetricRow label="Win Rate" value={pct(summary.mtd.winrate)} />
+                <MetricRow label="Realized P&L" value={formatCurrency(summary.mtd.pnl ?? 0)} />
+                <MetricRow label="Win Rate" value={pct(summary.mtd.winrate ?? 0)} />
                 <MetricRow label="Anzahl Signale" value={String(signalsCount.mtd)} />
               </div>
 
               <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Transaktionskosten" 
-                  value={pct(summary.mtd.fees_pct_total)} 
+                  value={pct(summary.mtd.fees_pct_total ?? 0)} 
                 />
                 <div className="pl-4 space-y-0">
-                  <MetricRow label="Fees" value={pct(summary.mtd.fees_pct)} small />
-                  <MetricRow label="Slippage (Liquidität)" value={pct(summary.mtd.slippage_liq_pct)} small />
-                  <MetricRow label="Slippage (Timelag)" value={pct(summary.mtd.slippage_time_pct)} small />
+                  <MetricRow label="Fees" value={pct(summary.mtd.fees_pct ?? 0)} small />
+                  <MetricRow label="Slippage (Liquidität)" value={pct(summary.mtd.slippage_liq_pct ?? 0)} small />
+                  <MetricRow label="Slippage (Timelag)" value={pct(summary.mtd.slippage_time_pct ?? 0)} small />
                 </div>
               </div>
 
               <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Timelag" 
-                  value={ms(summary.mtd.timelag_tv_to_bot_ms + summary.mtd.timelag_bot_to_ex_ms)} 
+                  value={ms((summary.mtd.timelag_tv_to_bot_ms ?? 0) + (summary.mtd.timelag_bot_to_ex_ms ?? 0))} 
                 />
                 <div className="pl-4 space-y-0">
-                  <MetricRow label="Entry" value={ms(summary.mtd.timelag_tv_to_bot_ms)} small />
+                  <MetricRow label="Entry" value={ms(summary.mtd.timelag_tv_to_bot_ms ?? 0)} small />
                   <MetricRow label="Processing time" value={ms(0)} small />
-                  <MetricRow label="Exit" value={ms(summary.mtd.timelag_bot_to_ex_ms)} small />
+                  <MetricRow label="Exit" value={ms(summary.mtd.timelag_bot_to_ex_ms ?? 0)} small />
                 </div>
               </div>
             </CardContent>
@@ -362,39 +362,39 @@ export default function Dashboard() {
         )}
 
         {/* 5. Letzte 30 Tage (nur wenn kein Datumsfilter) */}
-        {summary && !hasDateFilter && (
+        {summary && summary.last30d && !hasDateFilter && (
           <Card>
             <CardHeader className="pb-1 pt-3">
               <CardTitle className="text-lg font-semibold">Letzte 30 Tage</CardTitle>
             </CardHeader>
             <CardContent className="space-y-0 py-2 pb-3">
               <div className="space-y-0">
-                <MetricRow label="Realized P&L" value={formatCurrency(summary.last30d.pnl)} />
-                <MetricRow label="Win Rate" value={pct(summary.last30d.winrate)} />
+                <MetricRow label="Realized P&L" value={formatCurrency(summary.last30d.pnl ?? 0)} />
+                <MetricRow label="Win Rate" value={pct(summary.last30d.winrate ?? 0)} />
                 <MetricRow label="Anzahl Signale" value={String(signalsCount.last30d)} />
               </div>
 
               <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Transaktionskosten" 
-                  value={pct(summary.last30d.fees_pct_total)} 
+                  value={pct(summary.last30d.fees_pct_total ?? 0)} 
                 />
                 <div className="pl-4 space-y-0">
-                  <MetricRow label="Fees" value={pct(summary.last30d.fees_pct)} small />
-                  <MetricRow label="Slippage (Liquidität)" value={pct(summary.last30d.slippage_liq_pct)} small />
-                  <MetricRow label="Slippage (Timelag)" value={pct(summary.last30d.slippage_time_pct)} small />
+                  <MetricRow label="Fees" value={pct(summary.last30d.fees_pct ?? 0)} small />
+                  <MetricRow label="Slippage (Liquidität)" value={pct(summary.last30d.slippage_liq_pct ?? 0)} small />
+                  <MetricRow label="Slippage (Timelag)" value={pct(summary.last30d.slippage_time_pct ?? 0)} small />
                 </div>
               </div>
 
               <div className="space-y-0 pt-0.5">
                 <MetricRow 
                   label="Timelag" 
-                  value={ms(summary.last30d.timelag_tv_to_bot_ms + summary.last30d.timelag_bot_to_ex_ms)} 
+                  value={ms((summary.last30d.timelag_tv_to_bot_ms ?? 0) + (summary.last30d.timelag_bot_to_ex_ms ?? 0))} 
                 />
                 <div className="pl-4 space-y-0">
-                  <MetricRow label="Entry" value={ms(summary.last30d.timelag_tv_to_bot_ms)} small />
+                  <MetricRow label="Entry" value={ms(summary.last30d.timelag_tv_to_bot_ms ?? 0)} small />
                   <MetricRow label="Processing time" value={ms(0)} small />
-                  <MetricRow label="Exit" value={ms(summary.last30d.timelag_bot_to_ex_ms)} small />
+                  <MetricRow label="Exit" value={ms(summary.last30d.timelag_bot_to_ex_ms ?? 0)} small />
                 </div>
               </div>
             </CardContent>
