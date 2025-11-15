@@ -13,29 +13,69 @@ import { formatCurrency } from '@/lib/formatters';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown } from 'lucide-react';
 
-// Typen
+// Typen - Backend API Format
 type Summary = {
-  portfolio_total: number;           // ungefiltert (exkl. unrealized P&L)
-  pnl_today: number;                 // realized heute
-  winrate_today: number;             // 0..1
-  open_trades_count: number;
-  pnl_filtered: number;              // realized P&L nach Filtern
-  portfolio_filtered: number;        // nach Filtern
-  winrate_filtered: number;          // 0..1, nach Filtern
-  fees_pct_filtered: number;         // gesamt in %
-  slippage_liq_pct_filtered: number;
-  slippage_time_pct_filtered: number;
-  fees_pct_filtered_total: number;   // Summe aller Transaktionskosten
-  timelag_tv_to_bot_ms_filtered: number;
-  timelag_bot_to_ex_ms_filtered: number;
-  fees_pct_today: number;
-  slippage_liq_pct_today: number;
-  slippage_time_pct_today: number;
-  fees_pct_today_total: number;
-  timelag_tv_to_bot_ms_today: number;
-  timelag_bot_to_ex_ms_today: number;
-  mtd: { pnl: number; winrate: number; fees_pct: number; slippage_liq_pct: number; slippage_time_pct: number; fees_pct_total: number; timelag_tv_to_bot_ms: number; timelag_bot_to_ex_ms: number };
-  last30d: { pnl: number; winrate: number; fees_pct: number; slippage_liq_pct: number; slippage_time_pct: number; fees_pct_total: number; timelag_tv_to_bot_ms: number; timelag_bot_to_ex_ms: number };
+  portfolio_total_equity: number;
+  kpis: {
+    today: {
+      realized_pnl: number;
+      win_rate: number;
+      tx_costs_pct: number;
+      tx_breakdown_usdt: {
+        fees: number;
+        funding: number;
+        slip_liquidity: number;
+        slip_time: number;
+      };
+      timelag_ms: {
+        ingress_ms_avg: number | null;
+        engine_ms_avg: number | null;
+        tv_to_send_ms_avg: number | null;
+        tv_to_fill_ms_avg: number | null;
+        samples: number;
+      };
+    };
+    month: {
+      realized_pnl: number;
+      win_rate: number;
+      tx_costs_pct: number;
+      tx_breakdown_usdt: {
+        fees: number;
+        funding: number;
+        slip_liquidity: number;
+        slip_time: number;
+      };
+      timelag_ms: {
+        ingress_ms_avg: number | null;
+        engine_ms_avg: number | null;
+        tv_to_send_ms_avg: number | null;
+        tv_to_fill_ms_avg: number | null;
+        samples: number;
+      };
+    };
+    last_30d: {
+      realized_pnl: number;
+      win_rate: number;
+      tx_costs_pct: number;
+      tx_breakdown_usdt: {
+        fees: number;
+        funding: number;
+        slip_liquidity: number;
+        slip_time: number;
+      };
+      timelag_ms: {
+        ingress_ms_avg: number | null;
+        engine_ms_avg: number | null;
+        tv_to_send_ms_avg: number | null;
+        tv_to_fill_ms_avg: number | null;
+        samples: number;
+      };
+    };
+    current: {
+      open_trades: number;
+      win_rate: number;
+    };
+  };
 };
 
 type DailyPnl = { date: string; pnl: number; equity: number };
@@ -115,45 +155,15 @@ export default function Dashboard() {
           mtd: tvSignalsMTD.length,
           last30d: tvSignalsLast30D.length
         });
-      } catch {
-        // Stub, falls Endpoint noch nicht fertig ist
-        setSummary({
-          portfolio_total: 12345.67,
-          pnl_today: 120.55,
-          winrate_today: 0.62,
-          open_trades_count: 3,
-          pnl_filtered: 456.78,
-          portfolio_filtered: 9876.54,
-          winrate_filtered: 0.58,
-          fees_pct_filtered: 0.8,
-          slippage_liq_pct_filtered: 0.5,
-          slippage_time_pct_filtered: 0.3,
-          fees_pct_filtered_total: 1.6,
-          timelag_tv_to_bot_ms_filtered: 180,
-          timelag_bot_to_ex_ms_filtered: 90,
-          fees_pct_today: 0.9,
-          slippage_liq_pct_today: 0.6,
-          slippage_time_pct_today: 0.4,
-          fees_pct_today_total: 1.9,
-          timelag_tv_to_bot_ms_today: 200,
-          timelag_bot_to_ex_ms_today: 100,
-          mtd: { pnl: 850.12, winrate: 0.61, fees_pct: 0.8, slippage_liq_pct: 0.5, slippage_time_pct: 0.3, fees_pct_total: 1.6, timelag_tv_to_bot_ms: 190, timelag_bot_to_ex_ms: 95 },
-          last30d: { pnl: 1230.5, winrate: 0.59, fees_pct: 0.9, slippage_liq_pct: 0.6, slippage_time_pct: 0.4, fees_pct_total: 1.9, timelag_tv_to_bot_ms: 210, timelag_bot_to_ex_ms: 105 },
-        });
+      } catch (err) {
+        console.error('Dashboard summary error:', err);
       }
 
       try {
         const d = await apiRequest<DailyPnl[]>(`/api/v1/dashboard/daily-pnl?${qs.toString()}`);
         setSeries(d);
-      } catch {
-        // Stub-Serie
-        const today = new Date();
-        const mock = Array.from({ length: 30 }, (_, i) => {
-          const dt = new Date(today);
-          dt.setDate(today.getDate() - (29 - i));
-          return { date: dt.toISOString().slice(0, 10), pnl: Math.round((Math.random() - 0.4) * 200), equity: 10000 + i * 50 + Math.random() * 100 };
-        });
-        setSeries(mock);
+      } catch (err) {
+        console.error('Daily PnL error:', err);
       }
     })();
   }, [filters]);
