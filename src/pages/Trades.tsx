@@ -1,7 +1,7 @@
 // ==============================
 // 1) IMPORTS
 // ==============================
-import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import api, { type PositionListItem, type Bot } from '@/lib/api';
 import TradesFiltersBar, { type TradesFilters } from '@/components/app/TradesFiltersBar';
@@ -128,9 +128,10 @@ export default function Trades() {
   const [showFilters, setShowFilters] = useState(false);
   const [isRestoringScroll, setIsRestoringScroll] = useState(false);
   const [targetPage, setTargetPage] = useState(1);
+  const [targetScrollY, setTargetScrollY] = useState(0);
 
-  // ---- 4.2 EFFECTS: Restore saved state on mount ----
-  useEffect(() => {
+  // ---- 4.2 EFFECTS: Restore saved state EARLY (useLayoutEffect) ----
+  useLayoutEffect(() => {
     const savedScrollY = sessionStorage.getItem('trades-scroll-position');
     const savedTab = sessionStorage.getItem('trades-tab');
     const savedPage = sessionStorage.getItem('trades-page');
@@ -141,9 +142,11 @@ export default function Trades() {
     
     if (savedScrollY && savedPage) {
       const pageNum = parseInt(savedPage, 10);
-      if (pageNum > 1) {
+      const scrollY = parseInt(savedScrollY, 10);
+      if (pageNum > 1 && scrollY > 0) {
         setIsRestoringScroll(true);
         setTargetPage(pageNum);
+        setTargetScrollY(scrollY);
       }
     }
   }, []);
@@ -166,31 +169,58 @@ export default function Trades() {
           if (page === 1) {
             setPositions(Array.isArray(res?.items) ? res.items : []);
           } else {
-            setPositions(prev => [...prev, ...(Array.isArray(res?.items) ? res.items : [])]);
+            // Dedupe: nur neue Items hinzufügen
+            const existingIds = new Set(positions.map(p => p.id));
+            const newItems = (Array.isArray(res?.items) ? res.items : []).filter(item => !existingIds.has(item.id));
+            setPositions(prev => [...prev, ...newItems]);
           }
           setTotalCount(res?.total ?? 0);
-          setHasMore((res?.items?.length || 0) >= pageSize);
+          // hasMore basiert auf totalCount, nicht auf res.items.length
+          const newTotal = page === 1 ? (res?.items?.length || 0) : positions.length + (res?.items?.length || 0);
+          setHasMore(newTotal < (res?.total ?? 0));
           
           // If restoring scroll, load next page until we reach target
           if (isRestoringScroll && page < targetPage) {
             setPage(prev => prev + 1);
           } else if (isRestoringScroll && page === targetPage) {
-            // Now restore scroll position
-            const savedScrollY = sessionStorage.getItem('trades-scroll-position');
-            if (savedScrollY) {
-              setTimeout(() => {
-                const y = parseInt(savedScrollY, 10);
-                if (scrollContainerRef.current) {
-                  scrollContainerRef.current.scrollTo({ top: y });
-                } else {
-                  window.scrollTo(0, y);
-                }
+            // Now restore scroll position ROBUSTLY with rAF
+            const attemptScroll = (attempt = 0) => {
+              if (attempt > 10) {
+                // Give up after 10 attempts
                 sessionStorage.removeItem('trades-scroll-position');
                 sessionStorage.removeItem('trades-tab');
                 sessionStorage.removeItem('trades-page');
                 setIsRestoringScroll(false);
-              }, 100);
-            }
+                return;
+              }
+
+              requestAnimationFrame(() => {
+                const container = scrollContainerRef.current;
+                if (!container) {
+                  window.scrollTo(0, targetScrollY);
+                  sessionStorage.removeItem('trades-scroll-position');
+                  sessionStorage.removeItem('trades-tab');
+                  sessionStorage.removeItem('trades-page');
+                  setIsRestoringScroll(false);
+                  return;
+                }
+
+                const maxScroll = container.scrollHeight - container.clientHeight;
+                if (container.scrollHeight >= targetScrollY || maxScroll > 0) {
+                  // Clamp to valid range
+                  const clampedY = Math.min(targetScrollY, maxScroll);
+                  container.scrollTo({ top: clampedY });
+                  sessionStorage.removeItem('trades-scroll-position');
+                  sessionStorage.removeItem('trades-tab');
+                  sessionStorage.removeItem('trades-page');
+                  setIsRestoringScroll(false);
+                } else {
+                  // Not enough content yet, retry
+                  attemptScroll(attempt + 1);
+                }
+              });
+            };
+            attemptScroll();
           }
         }
       } catch (e: any) {
@@ -203,7 +233,7 @@ export default function Trades() {
       }
     })();
     return () => { cancel = true; };
-  }, [page, activeTab, isRestoringScroll, targetPage]);
+  }, [page, activeTab, isRestoringScroll, targetPage, targetScrollY, positions.length]);
 
   // Reset pagination when changing tabs (unless restoring)
   useEffect(() => {
@@ -211,25 +241,41 @@ export default function Trades() {
       setPage(1);
       setPositions([]);
       setHasMore(true);
+      // Reset scroll to top when changing tabs
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = 0;
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
-  // Infinite scroll with Intersection Observer
+  // Infinite scroll with Intersection Observer - ROBUST
   useEffect(() => {
-    if (!loadMoreTriggerRef.current || isLoadingMore || !hasMore || isRestoringScroll) return;
+    if (!loadMoreTriggerRef.current || isRestoringScroll) {
+      return;
+    }
 
-    loadMoreObserverRef.current = new IntersectionObserver(
-      (entries) => {
-        const target = entries[0];
-        if (target.isIntersecting && !isLoadingMore && hasMore && !isRestoringScroll) {
-          setPage(prev => prev + 1);
+    const container = scrollContainerRef.current;
+    const hasEnoughContent = container ? container.scrollHeight > container.clientHeight : true;
+
+    // Only activate observer if we have more to load AND enough content to scroll
+    if (!isLoadingMore && hasMore && hasEnoughContent) {
+      loadMoreObserverRef.current = new IntersectionObserver(
+        (entries) => {
+          const target = entries[0];
+          if (target.isIntersecting && !isLoadingMore && hasMore && !isRestoringScroll) {
+            setPage(prev => prev + 1);
+          }
+        },
+        { 
+          threshold: 0, 
+          root: container,
+          rootMargin: '400px 0px' // Load before reaching the bottom
         }
-      },
-      { threshold: 0.1, root: scrollContainerRef.current ?? null }
-    );
+      );
 
-    loadMoreObserverRef.current.observe(loadMoreTriggerRef.current);
+      loadMoreObserverRef.current.observe(loadMoreTriggerRef.current);
+    }
 
     return () => {
       if (loadMoreObserverRef.current) {
