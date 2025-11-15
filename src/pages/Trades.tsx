@@ -126,8 +126,31 @@ export default function Trades() {
   const [error, setError] = useState<string | null>(null);
 
   const [showFilters, setShowFilters] = useState(false);
+  const [shouldRestoreScroll, setShouldRestoreScroll] = useState(false);
 
-  // ---- 4.2 EFFECTS: Daten laden ----
+  // ---- 4.2 EFFECTS: Restore saved state on mount ----
+  useEffect(() => {
+    const savedScrollY = sessionStorage.getItem('trades-scroll-position');
+    const savedTab = sessionStorage.getItem('trades-tab');
+    const savedPage = sessionStorage.getItem('trades-page');
+    
+    if (savedTab && (savedTab === 'open' || savedTab === 'closed')) {
+      setActiveTab(savedTab as TabKey);
+    }
+    
+    if (savedPage) {
+      const pageNum = parseInt(savedPage, 10);
+      if (pageNum > 1) {
+        setPage(pageNum);
+      }
+    }
+    
+    if (savedScrollY) {
+      setShouldRestoreScroll(true);
+    }
+  }, []);
+
+  // ---- 4.3 EFFECTS: Daten laden ----
   useEffect(() => {
     let cancel = false;
     (async () => {
@@ -161,22 +184,21 @@ export default function Trades() {
     return () => { cancel = true; };
   }, [page]);
 
-  // Restore scroll position on mount
+  // Restore scroll position after data is loaded
   useEffect(() => {
-    const savedScrollY = sessionStorage.getItem('trades-scroll-position');
-    const savedTab = sessionStorage.getItem('trades-tab');
-    
-    if (savedTab && (savedTab === 'open' || savedTab === 'closed')) {
-      setActiveTab(savedTab as TabKey);
+    if (shouldRestoreScroll && !loading && !isLoadingMore && positions.length > 0) {
+      const savedScrollY = sessionStorage.getItem('trades-scroll-position');
+      if (savedScrollY) {
+        requestAnimationFrame(() => {
+          window.scrollTo(0, parseInt(savedScrollY, 10));
+          sessionStorage.removeItem('trades-scroll-position');
+          sessionStorage.removeItem('trades-tab');
+          sessionStorage.removeItem('trades-page');
+          setShouldRestoreScroll(false);
+        });
+      }
     }
-    
-    if (savedScrollY) {
-      setTimeout(() => {
-        window.scrollTo(0, parseInt(savedScrollY, 10));
-        sessionStorage.removeItem('trades-scroll-position');
-      }, 100);
-    }
-  }, []);
+  }, [shouldRestoreScroll, loading, isLoadingMore, positions.length]);
 
   // Infinite scroll with Intersection Observer
   useEffect(() => {
@@ -308,7 +330,8 @@ export default function Trades() {
     const scrollY = window.scrollY;
     sessionStorage.setItem('trades-scroll-position', String(scrollY));
     sessionStorage.setItem('trades-tab', activeTab);
-  }, [activeTab]);
+    sessionStorage.setItem('trades-page', String(page));
+  }, [activeTab, page]);
 
   // ---- 4.4 HANDLER ----
   const handleCardClick = (t: PositionListItem) => {
