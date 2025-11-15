@@ -321,11 +321,14 @@ useMemo(() => {
   };
 
   return (
-    <DashboardLayout pageTitle={name || 'Bot Details'} showBackButton={true}>
+    <DashboardLayout pageTitle={name || 'Bot'} showBackButton={true}>
       <div className="space-y-4 p-4 pb-24 max-w-6xl mx-auto">
         {/* Header Card */}
         <Card>
-          <CardContent className="pt-4 space-y-4">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">{name || 'Bot Details'}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <div>
             <Label>Bot Name</Label>
             <Input 
