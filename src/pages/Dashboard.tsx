@@ -13,24 +13,27 @@ import { Skeleton } from '@/components/ui/skeleton';
 type KpiBlock = {
   realized_pnl: number;
   win_rate: number;
-  wins?: number;
-  total_trades?: number;
-  fee_pct: number;
-  slip_liq_pct: number;
-  slip_time_pct: number;
-  fee_usdt: number;
-  slip_liq_usdt: number;
-  slip_time_usdt: number;
-  entry_ms_avg: number | null;
-  engine_ms_avg: number | null;
-  exit_ms_avg: number | null;
+  trade_count: number;
+  tx_costs_pct: number;
+  tx_breakdown_usdt: {
+    fees: number;
+    funding: number;
+    slip_liquidity: number;
+    slip_time: number;
+  };
+  timelag_ms: {
+    entry_ms_avg: number | null;
+    engine_ms_avg: number | null;
+    exit_ms_avg: number | null;
+    samples: number;
+  };
 };
 
 type Summary = {
   portfolio_total_equity: number;
-  equity_timeseries: { ts: string; day_pnl: number }[];
+  equity_timeseries: { ts: string; day_pnl: number; equity?: number }[];
   kpis: {
-    overall?: KpiBlock & { portfolio_value?: number; count_signals?: number };
+    overall?: KpiBlock;
     today?: KpiBlock;
     month?: KpiBlock;
     last_30d?: KpiBlock;
@@ -52,12 +55,12 @@ const formatPercent = (value: number | null | undefined): string => {
   return `${value.toFixed(2)}%`;
 };
 
-const formatWinRate = (value: number | null | undefined, wins?: number, totalTrades?: number): string => {
+const formatWinRate = (value: number | null | undefined, tradeCount?: number): string => {
   if (value === null || value === undefined || Number.isNaN(value)) return '—';
   if (value === 0) return '0%';
   const percentage = `${(value * 100).toFixed(2)}%`;
-  if (wins !== undefined && totalTrades !== undefined) {
-    return `${percentage} (${wins}/${totalTrades})`;
+  if (tradeCount !== undefined) {
+    return `${percentage} (${tradeCount} Trades)`;
   }
   return percentage;
 };
@@ -116,20 +119,19 @@ const formatChartData = (timeseries: { ts: string; day_pnl: number }[], initialE
 export default function Dashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [filters, setFilters] = useState<TradesFilters>({
-    botIds: [],
-    symbols: [],
-    side: 'all',
-    dateFrom: undefined,
-    dateTo: undefined,
-    timeFrom: undefined,
-    timeTo: undefined,
-    timeMode: 'opened',
-  });
+  const [selectedBots, setSelectedBots] = useState<number[]>([]);
+  const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
+  const [dateFrom, setDateFrom] = useState<Date | undefined>();
+  const [dateTo, setDateTo] = useState<Date | undefined>();
+  const [direction, setDirection] = useState<string>('both');
+  const [openHourFrom, setOpenHourFrom] = useState<string>('');
+  const [openHourTo, setOpenHourTo] = useState<string>('');
+  const [closeHourFrom, setCloseHourFrom] = useState<string>('');
+  const [closeHourTo, setCloseHourTo] = useState<string>('');
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
-  const [txCostsMode, setTxCostsMode] = useState<'percent' | 'usdt'>('percent');
+  const [txCostsMode, setTxCostsMode] = useState<'percent' | 'usdt'>('usdt');
   const [chartTimeRange, setChartTimeRange] = useState<'30' | '60' | '90' | 'custom'>('90');
   const [chartDateFrom, setChartDateFrom] = useState<Date | undefined>();
   const [chartDateTo, setChartDateTo] = useState<Date | undefined>();
@@ -151,12 +153,13 @@ export default function Dashboard() {
   // Load dashboard data
   useEffect(() => {
     const qs = new URLSearchParams();
-    if (filters.botIds.length) qs.set('bot_ids', filters.botIds.join(','));
-    if (filters.symbols.length) qs.set('symbols', filters.symbols.join(','));
-    if (filters.dateFrom) qs.set('from', filters.dateFrom.toISOString().split('T')[0]);
-    if (filters.dateTo) qs.set('to', filters.dateTo.toISOString().split('T')[0]);
-    if (filters.timeFrom) qs.set('time_from', filters.timeFrom);
-    if (filters.timeTo) qs.set('time_to', filters.timeTo);
+    if (selectedBots.length) qs.set('bot_ids', selectedBots.join(','));
+    if (selectedSymbols.length) qs.set('symbols', selectedSymbols.join(','));
+    if (dateFrom) qs.set('date_from', dateFrom.toISOString().split('T')[0]);
+    if (dateTo) qs.set('date_to', dateTo.toISOString().split('T')[0]);
+    if (direction && direction !== 'both') qs.set('direction', direction);
+    if (openHourFrom && openHourTo) qs.set('open_hour', `${openHourFrom}-${openHourTo}`);
+    if (closeHourFrom && closeHourTo) qs.set('close_hour', `${closeHourFrom}-${closeHourTo}`);
 
     setIsLoading(true);
     (async () => {
@@ -169,17 +172,19 @@ export default function Dashboard() {
         setIsLoading(false);
       }
     })();
-  }, [filters]);
+  }, [selectedBots, selectedSymbols, dateFrom, dateTo, direction, openHourFrom, openHourTo, closeHourFrom, closeHourTo]);
 
   // Active filter count for badge
   const activeFilterCount = useMemo(() => {
     let count = 0;
-    if (filters.botIds.length > 0) count++;
-    if (filters.symbols.length > 0) count++;
-    if (filters.side && filters.side !== 'all') count++;
-    if (filters.dateFrom || filters.dateTo) count++;
+    if (selectedBots.length > 0) count++;
+    if (selectedSymbols.length > 0) count++;
+    if (direction && direction !== 'both') count++;
+    if (dateFrom || dateTo) count++;
+    if (openHourFrom || openHourTo) count++;
+    if (closeHourFrom || closeHourTo) count++;
     return count;
-  }, [filters]);
+  }, [selectedBots, selectedSymbols, direction, dateFrom, dateTo, openHourFrom, openHourTo, closeHourFrom, closeHourTo]);
 
   const chartData = useMemo(() => {
     if (!summary?.equity_timeseries) return [];
@@ -203,8 +208,27 @@ export default function Dashboard() {
     return formatChartData(timeseriesToUse, summary.portfolio_total_equity);
   }, [summary, chartTimeRange, chartDateFrom, chartDateTo]);
   
-  // Check if date filters are active
-  const hasDateFilters = filters.dateFrom || filters.dateTo;
+  // Calculate filtered portfolio value from equity timeseries
+  const filteredPortfolioValue = useMemo(() => {
+    if (!summary?.equity_timeseries || summary.equity_timeseries.length === 0) {
+      return summary?.portfolio_total_equity ?? 0;
+    }
+    // Get the last equity value from the timeseries
+    const lastEntry = summary.equity_timeseries[summary.equity_timeseries.length - 1];
+    return lastEntry.equity ?? summary.portfolio_total_equity;
+  }, [summary]);
+
+  const handleResetFilters = () => {
+    setSelectedBots([]);
+    setSelectedSymbols([]);
+    setDateFrom(undefined);
+    setDateTo(undefined);
+    setDirection('both');
+    setOpenHourFrom('');
+    setOpenHourTo('');
+    setCloseHourFrom('');
+    setCloseHourTo('');
+  };
 
   // Custom tooltip to show daily PnL with color
   const CustomTooltip = ({ active, payload }: any) => {
@@ -254,16 +278,33 @@ export default function Dashboard() {
         <div className="fixed inset-0 bg-background/80 z-50 lg:hidden" onClick={() => setShowFilters(false)}>
           <div className="fixed inset-x-0 top-14 bottom-0 bg-background flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="overflow-auto">
-              <TradesFiltersBar
-                value={filters}
-                onChange={setFilters}
-                availableBots={bots}
-                availableSymbols={symbols}
-                showDateRange={true}
-                showTimeRange={false}
-                txCostsMode={txCostsMode}
-                onTxCostsModeChange={setTxCostsMode}
-              />
+            <TradesFiltersBar
+              selectedBots={selectedBots}
+              onBotsChange={setSelectedBots}
+              selectedSymbols={selectedSymbols}
+              onSymbolsChange={setSelectedSymbols}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              onDateFromChange={setDateFrom}
+              onDateToChange={setDateTo}
+              direction={direction}
+              onDirectionChange={setDirection}
+              openHourFrom={openHourFrom}
+              openHourTo={openHourTo}
+              onOpenHourFromChange={setOpenHourFrom}
+              onOpenHourToChange={setOpenHourTo}
+              closeHourFrom={closeHourFrom}
+              closeHourTo={closeHourTo}
+              onCloseHourFromChange={setCloseHourFrom}
+              onCloseHourToChange={setCloseHourTo}
+              onResetFilters={handleResetFilters}
+              availableBots={bots}
+              availableSymbols={symbols}
+              showDateRange={true}
+              showTimeRange={true}
+              txCostsMode={txCostsMode}
+              onTxCostsModeChange={setTxCostsMode}
+            />
             </div>
             <div className="border-t p-3">
               <Button className="w-full" onClick={() => setShowFilters(false)}>Fertig</Button>
@@ -346,9 +387,9 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent className="space-y-3">
               <MetricRow label="Realized P&L" value={formatUSDT(summary.kpis.overall?.realized_pnl)} />
-              <MetricRow label="Portfoliowert" value={formatUSDT(summary.kpis.overall?.portfolio_value ?? summary.portfolio_total_equity)} />
-              <MetricRow label="Win Rate" value={formatWinRate(summary.kpis.overall?.win_rate, summary.kpis.overall?.wins, summary.kpis.overall?.total_trades)} />
-              <MetricRow label="Anzahl Signale" value={formatNumber(summary.kpis.overall?.count_signals)} />
+              <MetricRow label="Portfoliowert" value={formatUSDT(filteredPortfolioValue)} />
+              <MetricRow label="Win Rate" value={formatWinRate(summary.kpis.overall?.win_rate, summary.kpis.overall?.trade_count)} />
+              <MetricRow label="Anzahl Trades" value={formatNumber(summary.kpis.overall?.trade_count)} />
               <MetricRow label="Offene Trades" value={formatNumber(summary.kpis.current?.open_trades ?? 0)} />
               
               <div className="pt-2">
@@ -356,15 +397,24 @@ export default function Dashboard() {
                 <div className="space-y-2 pl-4">
                   {txCostsMode === 'percent' ? (
                     <>
-                      <MetricRow label="Fees" value={formatPercent(summary.kpis.overall?.fee_pct)} />
-                      <MetricRow label="Slippage (Liquidität)" value={formatPercent(summary.kpis.overall?.slip_liq_pct)} />
-                      <MetricRow label="Slippage (Timelag)" value={formatPercent(summary.kpis.overall?.slip_time_pct)} />
+                      <MetricRow label="Gesamt" value={formatPercent(summary.kpis.overall?.tx_costs_pct)} />
+                      <MetricRow label="Fees" value={formatPercent((summary.kpis.overall?.tx_breakdown_usdt.fees ?? 0) / (summary.kpis.overall?.realized_pnl ?? 1) * 100)} />
+                      <MetricRow label="Funding" value={formatPercent((summary.kpis.overall?.tx_breakdown_usdt.funding ?? 0) / (summary.kpis.overall?.realized_pnl ?? 1) * 100)} />
+                      <MetricRow label="Slippage (Liquidität)" value={formatPercent((summary.kpis.overall?.tx_breakdown_usdt.slip_liquidity ?? 0) / (summary.kpis.overall?.realized_pnl ?? 1) * 100)} />
+                      <MetricRow label="Slippage (Timelag)" value={formatPercent((summary.kpis.overall?.tx_breakdown_usdt.slip_time ?? 0) / (summary.kpis.overall?.realized_pnl ?? 1) * 100)} />
                     </>
                   ) : (
                     <>
-                      <MetricRow label="Fees" value={formatUSDT(summary.kpis.overall?.fee_usdt)} />
-                      <MetricRow label="Slippage (Liquidität)" value={formatUSDT(summary.kpis.overall?.slip_liq_usdt)} />
-                      <MetricRow label="Slippage (Timelag)" value={formatUSDT(summary.kpis.overall?.slip_time_usdt)} />
+                      <MetricRow label="Gesamt" value={formatUSDT(
+                        (summary.kpis.overall?.tx_breakdown_usdt.fees ?? 0) +
+                        (summary.kpis.overall?.tx_breakdown_usdt.funding ?? 0) +
+                        (summary.kpis.overall?.tx_breakdown_usdt.slip_liquidity ?? 0) +
+                        (summary.kpis.overall?.tx_breakdown_usdt.slip_time ?? 0)
+                      )} />
+                      <MetricRow label="Fees" value={formatUSDT(summary.kpis.overall?.tx_breakdown_usdt.fees)} />
+                      <MetricRow label="Funding" value={formatUSDT(summary.kpis.overall?.tx_breakdown_usdt.funding)} />
+                      <MetricRow label="Slippage (Liquidität)" value={formatUSDT(summary.kpis.overall?.tx_breakdown_usdt.slip_liquidity)} />
+                      <MetricRow label="Slippage (Timelag)" value={formatUSDT(summary.kpis.overall?.tx_breakdown_usdt.slip_time)} />
                     </>
                   )}
                 </div>
@@ -373,9 +423,9 @@ export default function Dashboard() {
               <div className="pt-2">
                 <div className="text-sm font-medium mb-2">Timelag</div>
                 <div className="space-y-2 pl-4">
-                  <MetricRow label="Entry" value={formatTimelag(summary.kpis.overall?.entry_ms_avg)} />
-                  <MetricRow label="Processing time" value={formatTimelag(summary.kpis.overall?.engine_ms_avg)} />
-                  <MetricRow label="Exit" value={formatTimelag(summary.kpis.overall?.exit_ms_avg)} />
+                  <MetricRow label="Entry" value={formatTimelag(summary.kpis.overall?.timelag_ms.entry_ms_avg)} />
+                  <MetricRow label="Processing time" value={formatTimelag(summary.kpis.overall?.timelag_ms.engine_ms_avg)} />
+                  <MetricRow label="Exit" value={formatTimelag(summary.kpis.overall?.timelag_ms.exit_ms_avg)} />
                 </div>
               </div>
             </CardContent>
