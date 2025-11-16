@@ -29,6 +29,7 @@ type Props = {
   showTimeRange?: boolean;
   showSignalKind?: boolean;
   showSignalStatus?: boolean;
+  compact?: boolean; // für Dashboard-Integration
 };
 
 export default function TradesFiltersBar({
@@ -40,6 +41,7 @@ export default function TradesFiltersBar({
   showTimeRange = true,
   showSignalKind = false,
   showSignalStatus = false,
+  compact = false,
 }: Props) {
   const [showFilters] = useState(true);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
@@ -102,12 +104,14 @@ export default function TradesFiltersBar({
   }, [value]);
 
   return (
-    <div className="w-full p-4 space-y-3">
+    <div className={compact ? "space-y-3" : "w-full p-4 space-y-3"}>
       {showFilters && (
-        <div className="bg-card border rounded-lg shadow-lg p-4 space-y-3">
-          <div className="flex items-center justify-between border-b pb-2">
-            <span className="font-medium">Filter</span>
-          </div>
+        <div className={compact ? "space-y-3" : "bg-card border rounded-lg shadow-lg p-4 space-y-3"}>
+          {!compact && (
+            <div className="flex items-center justify-between border-b pb-2">
+              <span className="font-medium">Filter</span>
+            </div>
+          )}
 
           {/* Bot-Filter */}
           <div className="relative">
@@ -128,7 +132,7 @@ export default function TradesFiltersBar({
                   className="text-sm"
                 />
                 {filteredBots.map((b) => (
-                  <label key={b.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted px-2 py-1 rounded">
+                  <label key={b.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted px-2 py-1 rounded" onClick={(e) => e.stopPropagation()}>
                     <input type="checkbox" checked={value.botIds.includes(b.id)} onChange={() => toggleBot(b.id)} />
                     <span className="text-sm">{b.name}</span>
                   </label>
@@ -157,7 +161,7 @@ export default function TradesFiltersBar({
                   className="text-sm"
                 />
                 {filteredSymbols.map((s) => (
-                  <label key={s} className="flex items-center gap-2 cursor-pointer hover:bg-muted px-2 py-1 rounded">
+                  <label key={s} className="flex items-center gap-2 cursor-pointer hover:bg-muted px-2 py-1 rounded" onClick={(e) => e.stopPropagation()}>
                     <input type="checkbox" checked={value.symbols.includes(s)} onChange={() => toggleSymbol(s)} />
                     <span className="text-sm">{s}</span>
                   </label>

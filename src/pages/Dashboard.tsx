@@ -6,9 +6,11 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
-import { SlidersHorizontal, ChevronDown } from 'lucide-react';
+import { SlidersHorizontal, ChevronDown, Filter } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 // Backend API Response Format
 type KpiBlock = {
@@ -129,7 +131,8 @@ export default function Dashboard() {
   });
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [showDesktopFilters, setShowDesktopFilters] = useState(false);
   const [txCostsMode, setTxCostsMode] = useState<'percent' | 'usdt'>('percent');
   const [chartTimeRange, setChartTimeRange] = useState<'30' | '60' | '90' | 'custom'>('90');
   const [chartDateFrom, setChartDateFrom] = useState<Date | undefined>();
@@ -174,7 +177,6 @@ export default function Dashboard() {
 
   const handleApplyFilters = (newFilters: TradesFilters) => {
     setFilters(newFilters);
-    setShowFilters(false);
   };
 
   const chartData = useMemo(() => {
@@ -231,47 +233,118 @@ export default function Dashboard() {
     <DashboardLayout
       pageTitle="Dashboard"
       mobileHeaderRight={
-        <Button variant="ghost" size="icon" onClick={() => setShowFilters(!showFilters)}>
-          <SlidersHorizontal className="h-4 w-4" />
-        </Button>
+        <Sheet open={showMobileFilters} onOpenChange={setShowMobileFilters}>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon">
+              <Filter className="h-5 w-5" />
+              {(filters.botIds.length > 0 || filters.symbols.length > 0 || filters.dateFrom) && (
+                <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-primary" />
+              )}
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+            <div className="space-y-4 pt-6">
+              <div className="flex items-center justify-between border-b pb-2">
+                <span className="font-medium">Filter</span>
+              </div>
+              
+              <TradesFiltersBar
+                value={filters}
+                onChange={handleApplyFilters}
+                availableBots={bots}
+                availableSymbols={symbols}
+                showDateRange={true}
+                showTimeRange={false}
+                compact={true}
+              />
+
+              {/* Transaction Costs Toggle in Filter */}
+              <div className="border-t pt-3">
+                <div className="text-sm font-medium mb-2">Transaktionskosten</div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant={txCostsMode === 'percent' ? 'default' : 'outline'}
+                    onClick={() => setTxCostsMode('percent')}
+                    className="flex-1"
+                  >
+                    In %
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={txCostsMode === 'usdt' ? 'default' : 'outline'}
+                    onClick={() => setTxCostsMode('usdt')}
+                    className="flex-1"
+                  >
+                    In USDT
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
       }
     >
-      <div className="flex justify-end mb-4">
-        <Button variant="ghost" size="sm" onClick={() => setShowFilters(!showFilters)}>
-          <SlidersHorizontal className="h-4 w-4 mr-2" />
-          Filter
-        </Button>
-      </div>
+      <div className="p-4 lg:p-6 space-y-4">
+        {/* Desktop Filter Button */}
+        <div className="hidden lg:flex justify-end mb-4">
+          <Popover open={showDesktopFilters} onOpenChange={setShowDesktopFilters}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className="gap-2"
+              >
+                <Filter className="h-4 w-4" />
+                Filter
+                {(filters.botIds.length > 0 || filters.symbols.length > 0 || filters.dateFrom) && (
+                  <span className="ml-1 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
+                    {filters.botIds.length + filters.symbols.length + (filters.dateFrom ? 1 : 0)}
+                  </span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-[min(calc(100vw-2rem),28rem)] p-4">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-b pb-2">
+                  <span className="font-medium">Filter</span>
+                </div>
+                
+                <TradesFiltersBar
+                  value={filters}
+                  onChange={handleApplyFilters}
+                  availableBots={bots}
+                  availableSymbols={symbols}
+                  showDateRange={true}
+                  showTimeRange={false}
+                  compact={true}
+                />
 
-      {showFilters && (
-        <div className="mb-6 space-y-4">
-          <TradesFiltersBar
-            value={filters}
-            onChange={handleApplyFilters}
-            availableBots={bots}
-            availableSymbols={symbols}
-            showDateRange={true}
-            showTimeRange={true}
-          />
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Transaktionskosten:</span>
-            <Button
-              variant={txCostsMode === 'percent' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setTxCostsMode('percent')}
-            >
-              in %
-            </Button>
-            <Button
-              variant={txCostsMode === 'usdt' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setTxCostsMode('usdt')}
-            >
-              in USDT
-            </Button>
-          </div>
+                {/* Transaction Costs Toggle in Filter */}
+                <div className="border-t pt-3">
+                  <div className="text-sm font-medium mb-2">Transaktionskosten</div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant={txCostsMode === 'percent' ? 'default' : 'outline'}
+                      onClick={() => setTxCostsMode('percent')}
+                      className="flex-1"
+                    >
+                      In %
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={txCostsMode === 'usdt' ? 'default' : 'outline'}
+                      onClick={() => setTxCostsMode('usdt')}
+                      className="flex-1"
+                    >
+                      In USDT
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
-      )}
 
       {!summary ? (
         <div className="space-y-6">
@@ -535,6 +608,7 @@ export default function Dashboard() {
           </Card>
         </div>
       )}
+      </div>
     </DashboardLayout>
   );
 }
