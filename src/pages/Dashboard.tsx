@@ -21,6 +21,7 @@ function zurichToUTC(localHourMin: string): string {
 
 export default function Dashboard() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [dailyPnlData, setDailyPnlData] = useState<Array<{ date: string; pnl: number; equity: number }>>([]);
   const [selectedBots, setSelectedBots] = useState<number[]>([]);
   const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
@@ -61,8 +62,13 @@ export default function Dashboard() {
         if (openHourFrom && openHourTo) params.open_hour = `${openHourFrom}-${openHourTo}`;
         if (closeHourFrom && closeHourTo) params.close_hour = `${closeHourFrom}-${closeHourTo}`;
 
-        const data = await api.getDashboardSummary(params);
-        setSummary(data);
+        const [summaryData, dailyData] = await Promise.all([
+          api.getDashboardSummary(params),
+          api.getDailyPnl(params)
+        ]);
+        
+        setSummary(summaryData);
+        setDailyPnlData(dailyData);
       } catch (err) {
         console.error('Error loading dashboard:', err);
       } finally {
@@ -104,21 +110,36 @@ export default function Dashboard() {
 
   const renderKPISection = (title: string, kpi: DashboardKPIPeriod | null) => {
     if (!kpi) return null;
-    const totalFees = (kpi.tx_breakdown_usdt?.fees || 0) + (kpi.tx_breakdown_usdt?.funding || 0) + 
-                     (kpi.tx_breakdown_usdt?.slip_liquidity || 0) + (kpi.tx_breakdown_usdt?.slip_time || 0);
+    const totalFeesUsdt = (kpi.tx_breakdown_usdt?.fees || 0) + (kpi.tx_breakdown_usdt?.funding || 0) + 
+                          (kpi.tx_breakdown_usdt?.slip_liquidity || 0) + (kpi.tx_breakdown_usdt?.slip_time || 0);
     const totalTimelag = (kpi.timelag_ms?.ingress_ms_avg || 0) + (kpi.timelag_ms?.engine_ms_avg || 0) + 
                         (kpi.timelag_ms?.tv_to_send_ms_avg || 0) + (kpi.timelag_ms?.tv_to_fill_ms_avg || 0);
 
     return (
       <Card>
         <CardHeader><CardTitle className="text-base">{title}</CardTitle></CardHeader>
-        <CardContent className="space-y-1">
+        <CardContent className="space-y-2">
           <MetricRow label="Realisierter P&L" value={formatCurrency(kpi.realized_pnl)} highlight />
-          <MetricRow label="Win Rate" value={`${kpi.win_rate.toFixed(1)}%`} />
-          <MetricRow label="TX Costs" value={`${kpi.tx_costs_pct.toFixed(2)}%`} />
-          <MetricRow label="Total Fees" value={formatCurrency(totalFees)} />
-          <MetricRow label="Total Timelag" value={`${Math.round(totalTimelag)} ms`} />
-          {kpi.timelag_ms?.samples > 0 && <MetricRow label="Samples" value={kpi.timelag_ms.samples} />}
+          <MetricRow label="Anzahl Trades" value={kpi.trade_count} />
+          <MetricRow label="Win Rate" value={`${(kpi.win_rate * 100).toFixed(1)}%`} />
+          
+          <div className="pt-2 border-t">
+            <div className="text-sm font-medium mb-1">Transaktionskosten</div>
+            <MetricRow label="Gesamt" value={`${(kpi.tx_costs_pct * 100).toFixed(2)}%`} />
+            <MetricRow label="Fees" value={formatCurrency(kpi.tx_breakdown_usdt?.fees || 0)} />
+            <MetricRow label="Funding" value={formatCurrency(kpi.tx_breakdown_usdt?.funding || 0)} />
+            <MetricRow label="Slippage (Liquidität)" value={formatCurrency(kpi.tx_breakdown_usdt?.slip_liquidity || 0)} />
+            <MetricRow label="Slippage (Timelag)" value={formatCurrency(kpi.tx_breakdown_usdt?.slip_time || 0)} />
+          </div>
+
+          <div className="pt-2 border-t">
+            <div className="text-sm font-medium mb-1">Timelag (Gesamt: {Math.round(totalTimelag)} ms)</div>
+            <MetricRow label="Entry" value={`${Math.round(kpi.timelag_ms?.ingress_ms_avg || 0)} ms`} />
+            <MetricRow label="Processing" value={`${Math.round(kpi.timelag_ms?.engine_ms_avg || 0)} ms`} />
+            <MetricRow label="TV → Send" value={`${Math.round(kpi.timelag_ms?.tv_to_send_ms_avg || 0)} ms`} />
+            <MetricRow label="TV → Fill" value={`${Math.round(kpi.timelag_ms?.tv_to_fill_ms_avg || 0)} ms`} />
+            {kpi.timelag_ms?.samples > 0 && <MetricRow label="Samples" value={kpi.timelag_ms.samples} />}
+          </div>
         </CardContent>
       </Card>
     );
@@ -252,15 +273,45 @@ export default function Dashboard() {
           </Card>
         )}
 
-        {/* Filtered View */}
-        {activeFilterCount > 0 && summary?.kpis.current && (
+        {/* Gesamtansicht */}
+        {summary?.kpis.overall && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Gesamtansicht (gefiltert)</CardTitle>
+              <CardTitle className="text-base">Gesamtansicht{activeFilterCount > 0 ? ' (gefiltert)' : ''}</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-1">
-              <MetricRow label="Offene Trades" value={summary.kpis.current.open_trades} highlight />
-              <MetricRow label="Win Rate" value={`${summary.kpis.current.win_rate.toFixed(1)}%`} />
+            <CardContent className="space-y-2">
+              <MetricRow 
+                label="Portfoliowert" 
+                value={formatCurrency(dailyPnlData.length > 0 ? dailyPnlData[dailyPnlData.length - 1].equity : 0)} 
+                highlight 
+              />
+              <MetricRow label="Realisierter P&L" value={formatCurrency(summary.kpis.overall.realized_pnl)} highlight />
+              <MetricRow label="Anzahl Trades" value={summary.kpis.overall.trade_count} />
+              <MetricRow label="Win Rate" value={`${(summary.kpis.overall.win_rate * 100).toFixed(1)}%`} />
+              
+              <div className="pt-2 border-t">
+                <div className="text-sm font-medium mb-1">Transaktionskosten</div>
+                <MetricRow label="Gesamt" value={`${(summary.kpis.overall.tx_costs_pct * 100).toFixed(2)}%`} />
+                <MetricRow label="Fees" value={formatCurrency(summary.kpis.overall.tx_breakdown_usdt?.fees || 0)} />
+                <MetricRow label="Funding" value={formatCurrency(summary.kpis.overall.tx_breakdown_usdt?.funding || 0)} />
+                <MetricRow label="Slippage (Liquidität)" value={formatCurrency(summary.kpis.overall.tx_breakdown_usdt?.slip_liquidity || 0)} />
+                <MetricRow label="Slippage (Timelag)" value={formatCurrency(summary.kpis.overall.tx_breakdown_usdt?.slip_time || 0)} />
+              </div>
+
+              <div className="pt-2 border-t">
+                <div className="text-sm font-medium mb-1">Timelag</div>
+                <MetricRow 
+                  label="Gesamt" 
+                  value={`${Math.round((summary.kpis.overall.timelag_ms?.ingress_ms_avg || 0) + 
+                                      (summary.kpis.overall.timelag_ms?.engine_ms_avg || 0) + 
+                                      (summary.kpis.overall.timelag_ms?.tv_to_send_ms_avg || 0) + 
+                                      (summary.kpis.overall.timelag_ms?.tv_to_fill_ms_avg || 0))} ms`} 
+                />
+                <MetricRow label="Entry" value={`${Math.round(summary.kpis.overall.timelag_ms?.ingress_ms_avg || 0)} ms`} />
+                <MetricRow label="Processing" value={`${Math.round(summary.kpis.overall.timelag_ms?.engine_ms_avg || 0)} ms`} />
+                <MetricRow label="TV → Send" value={`${Math.round(summary.kpis.overall.timelag_ms?.tv_to_send_ms_avg || 0)} ms`} />
+                <MetricRow label="TV → Fill" value={`${Math.round(summary.kpis.overall.timelag_ms?.tv_to_fill_ms_avg || 0)} ms`} />
+              </div>
             </CardContent>
           </Card>
         )}
@@ -275,7 +326,7 @@ export default function Dashboard() {
         )}
 
         {/* Equity Chart */}
-        {summary?.equity_timeseries && summary.equity_timeseries.length > 0 && (
+        {dailyPnlData.length > 0 && (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-base">Equity Chart</CardTitle>
@@ -284,7 +335,7 @@ export default function Dashboard() {
               </Link>
             </CardHeader>
             <CardContent>
-              <EquityChart data={summary.equity_timeseries} />
+              <EquityChart data={dailyPnlData} />
             </CardContent>
           </Card>
         )}
