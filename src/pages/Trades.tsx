@@ -164,8 +164,19 @@ export default function Trades() {
         setError(null);
         const skip = (page - 1) * pageSize;
         const status = activeTab === 'open' ? 'open' : 'closed';
-        const res = await api.getPositions({ status, skip, limit: pageSize });
-        if (!cancel) {
+        let res: { items: PositionListItem[]; total: number } | null = null;
+        try {
+          res = await api.getPositions({ status, skip, limit: pageSize });
+        } catch (e) {
+          // Fallback: wenn open fehlschlägt, ohne Status laden und clientseitig filtern
+          if (status === 'open') {
+            const all = await api.getPositions({ skip, limit: pageSize });
+            res = { items: (all.items || []).filter(p => p.status === 'open'), total: all.total };
+          } else {
+            throw e;
+          }
+        }
+        if (!cancel && res) {
           if (page === 1) {
             setPositions(Array.isArray(res?.items) ? res.items : []);
           } else {
@@ -175,25 +186,20 @@ export default function Trades() {
             setPositions(prev => [...prev, ...newItems]);
           }
           setTotalCount(res?.total ?? 0);
-          // hasMore basiert auf totalCount, nicht auf res.items.length
           const newTotal = page === 1 ? (res?.items?.length || 0) : positions.length + (res?.items?.length || 0);
           setHasMore(newTotal < (res?.total ?? 0));
-          
-          // If restoring scroll, load next page until we reach target
+
           if (isRestoringScroll && page < targetPage) {
             setPage(prev => prev + 1);
           } else if (isRestoringScroll && page === targetPage) {
-            // Now restore scroll position ROBUSTLY with rAF
             const attemptScroll = (attempt = 0) => {
               if (attempt > 10) {
-                // Give up after 10 attempts
                 sessionStorage.removeItem('trades-scroll-position');
                 sessionStorage.removeItem('trades-tab');
                 sessionStorage.removeItem('trades-page');
                 setIsRestoringScroll(false);
                 return;
               }
-
               requestAnimationFrame(() => {
                 const container = scrollContainerRef.current;
                 if (!container) {
@@ -204,10 +210,8 @@ export default function Trades() {
                   setIsRestoringScroll(false);
                   return;
                 }
-
                 const maxScroll = container.scrollHeight - container.clientHeight;
                 if (container.scrollHeight >= targetScrollY || maxScroll > 0) {
-                  // Clamp to valid range
                   const clampedY = Math.min(targetScrollY, maxScroll);
                   container.scrollTo({ top: clampedY });
                   sessionStorage.removeItem('trades-scroll-position');
@@ -215,7 +219,6 @@ export default function Trades() {
                   sessionStorage.removeItem('trades-page');
                   setIsRestoringScroll(false);
                 } else {
-                  // Not enough content yet, retry
                   attemptScroll(attempt + 1);
                 }
               });

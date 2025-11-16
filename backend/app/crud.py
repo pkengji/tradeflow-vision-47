@@ -133,11 +133,17 @@ def get_positions(
     if side:
         q = q.filter(models.Position.side == side)
 
-    # neueste zuerst
-    q = q.order_by(
-        models.Position.opened_at.desc().nullslast(),
-        models.Position.id.desc(),
-    )
+    # Sortierung abhängig vom Status
+    if status == 'closed':
+        q = q.order_by(
+            models.Position.closed_at.desc().nullslast(),
+            models.Position.id.desc(),
+        )
+    else:
+        q = q.order_by(
+            models.Position.opened_at.desc().nullslast(),
+            models.Position.id.desc(),
+        )
 
     return q.offset(skip).limit(limit).all()
 

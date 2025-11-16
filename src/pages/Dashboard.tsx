@@ -120,10 +120,12 @@ export default function Dashboard() {
       }
 
       try {
+        // daily-pnl liefert jetzt {date,pnl,equity}
         const d = await apiRequest<DailyPnl[]>(`/api/v1/dashboard/daily-pnl?${qs.toString()}`);
-        setSeries(d);
+        setSeries(Array.isArray(d) ? d : []);
       } catch (err) {
         console.error('Daily PnL error:', err);
+        setSeries([]);
       }
     })();
   }, [filters]);
@@ -183,7 +185,38 @@ export default function Dashboard() {
       )}
 
       <div className="space-y-4 p-4 pb-24 max-w-7xl mx-auto">
-        {/* Filterzeile - Desktop (collapsible) */}
+        {/* Skeletons while loading */}
+        {!summary && series.length === 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card>
+              <CardContent className="pt-4">
+                <div className="space-y-2">
+                  <div className="h-3 w-24 bg-muted rounded" />
+                  <div className="h-7 w-40 bg-muted rounded" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-1 pt-3">
+                <CardTitle className="text-lg font-semibold">Gesamtansicht</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 py-2 pb-3">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="h-4 bg-muted rounded" />
+                ))}
+              </CardContent>
+            </Card>
+            <Card className="md:col-span-2">
+              <CardHeader>
+                <CardTitle className="text-lg font-semibold">Equity & Daily P&L</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[250px] bg-muted rounded" />
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         <div className="hidden lg:block">
           <Collapsible open={showFilters} onOpenChange={setShowFilters}>
             <div className="flex justify-end mb-2">
@@ -225,7 +258,7 @@ export default function Dashboard() {
               <div className="text-center">
                 <div className="text-sm text-muted-foreground mb-1">Portfolio total</div>
                 <div className="text-3xl font-bold text-foreground">
-                  {formatCurrency(summary.portfolio_total)}
+                  {formatCurrency(summary.portfolio_total ?? 0)}
                 </div>
               </div>
             </CardContent>
