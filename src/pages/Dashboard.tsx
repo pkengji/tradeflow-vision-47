@@ -374,7 +374,7 @@ export default function Dashboard() {
           {/* Equity Chart - at the bottom */}
           <Card>
             <CardHeader>
-              <CardTitle>Equity & P&L</CardTitle>
+              <CardTitle>Portfolio Equity</CardTitle>
             </CardHeader>
             <CardContent>
               {chartData.length > 0 ? (
@@ -384,13 +384,13 @@ export default function Dashboard() {
                     <XAxis dataKey="date" className="text-xs" />
                     <YAxis className="text-xs" />
                     <Tooltip content={<CustomTooltip />} />
-                    <Legend />
                     <Line 
                       type="monotone" 
                       dataKey="Equity" 
                       stroke="hsl(var(--primary))" 
                       strokeWidth={2}
                       dot={false}
+                      name="Portfolio Equity"
                     />
                   </LineChart>
                 </ResponsiveContainer>
