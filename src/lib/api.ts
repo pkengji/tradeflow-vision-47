@@ -396,8 +396,13 @@ async function getSymbols(): Promise<string[]> {
 }
 
 async function getDailyPnl(params?: { days?: number; bot_id?: number }): Promise<PnlDailyPoint[]> {
-  const rows = await http<PnlDailyRowRaw[]>('/api/v1/dashboard/daily-pnl', { query: params });
-  return rows.map((r) => ({ date: r.day, pnl: r.pnl_net_usdt ?? 0 }));
+  const rows = await http<any[]>('/api/v1/dashboard/daily-pnl', { query: params });
+  // Support both new and old shapes
+  return rows.map((r: any) => ({
+    date: r.date ?? r.day,
+    pnl: (r.pnl ?? r.pnl_net_usdt) ?? 0,
+    equity: r.equity ?? 0,
+  }));
 }
 
 async function getOutbox(params?: { status?: string; limit?: number }): Promise<OutboxItem[]> {
