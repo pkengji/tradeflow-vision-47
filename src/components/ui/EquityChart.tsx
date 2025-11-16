@@ -27,7 +27,8 @@ export default function EquityChart({ data }: { data: Point[] }) {
     return `$ ${value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, "'")}`;
   };
 
-  const formatDate = (dateStr: string) => {
+  const formatDate = (dateStr: string | undefined) => {
+    if (!dateStr) return '';
     const [year, month, day] = dateStr.split('-');
     return `${day}.${month}.${year}`;
   };
