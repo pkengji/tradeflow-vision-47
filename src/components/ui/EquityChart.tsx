@@ -9,8 +9,16 @@ export default function EquityChart({ data }: { data: Point[] }) {
   const width = 600, height = 180, pad = 24;
   if (!data || data.length === 0) return <div className="h-[180px] flex items-center justify-center text-sm text-muted-foreground">Keine Daten</div>;
   
-  const xs = data.map(d => new Date(d.date).getTime());
-  const ys = data.map(d => d.equity);
+  // Filter out invalid data points and parse dates safely
+  const validData = data.filter(d => d && d.date && d.equity != null && d.pnl != null);
+  if (validData.length === 0) return <div className="h-[180px] flex items-center justify-center text-sm text-muted-foreground">Keine gültigen Daten</div>;
+  
+  const xs = validData.map(d => {
+    const timestamp = new Date(d.date).getTime();
+    return isNaN(timestamp) ? 0 : timestamp;
+  });
+  const ys = validData.map(d => d.equity);
+  
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minY = Math.min(...ys);
   const maxY = Math.max(...ys);
@@ -18,8 +26,14 @@ export default function EquityChart({ data }: { data: Point[] }) {
   const scaledMinY = minY - yPadding;
   const scaledMaxY = maxY + yPadding;
   
-  const x = (t: number) => pad + ((t - minX) / (maxX - minX || 1)) * (width - 2 * pad);
-  const y = (v: number) => height - pad - ((v - scaledMinY) / (scaledMaxY - scaledMinY || 1)) * (height - 2 * pad);
+  const x = (t: number) => {
+    if (isNaN(t)) return pad;
+    return pad + ((t - minX) / (maxX - minX || 1)) * (width - 2 * pad);
+  };
+  const y = (v: number) => {
+    if (isNaN(v)) return height - pad;
+    return height - pad - ((v - scaledMinY) / (scaledMaxY - scaledMinY || 1)) * (height - 2 * pad);
+  };
   
   const path = ys.map((v, i) => (i === 0 ? `M ${x(xs[i])} ${y(v)}` : `L ${x(xs[i])} ${y(v)}`)).join(" ");
 
@@ -29,8 +43,16 @@ export default function EquityChart({ data }: { data: Point[] }) {
 
   const formatDate = (dateStr: string | undefined) => {
     if (!dateStr) return '';
-    const [year, month, day] = dateStr.split('-');
-    return `${day}.${month}.${year}`;
+    // Handle ISO 8601 dates with timezone info
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr;
+    
+    // Format in local timezone
+    return date.toLocaleDateString('de-CH', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
   };
 
   return (
@@ -43,13 +65,17 @@ export default function EquityChart({ data }: { data: Point[] }) {
           const rect = e.currentTarget.getBoundingClientRect();
           const mouseX = e.clientX - rect.left;
           const relativeX = (mouseX - pad) / (width - 2 * pad);
-          const dataIndex = Math.round(relativeX * (data.length - 1));
+          const dataIndex = Math.round(relativeX * (validData.length - 1));
           
-          if (dataIndex >= 0 && dataIndex < data.length) {
-            const point = data[dataIndex];
-            const pointX = x(new Date(point.date).getTime());
+          if (dataIndex >= 0 && dataIndex < validData.length) {
+            const point = validData[dataIndex];
+            const pointX = x(xs[dataIndex]);
             const pointY = y(point.equity);
-            setHoveredPoint({ x: pointX, y: pointY, point });
+            
+            // Only set hover point if coordinates are valid
+            if (!isNaN(pointX) && !isNaN(pointY)) {
+              setHoveredPoint({ x: pointX, y: pointY, point });
+            }
           }
         }}
         onMouseLeave={() => setHoveredPoint(null)}
@@ -57,7 +83,7 @@ export default function EquityChart({ data }: { data: Point[] }) {
         <rect x={0} y={0} width={width} height={height} fill="transparent" />
         <path d={path} fill="none" stroke="currentColor" strokeWidth={1.5} />
         
-        {hoveredPoint && (
+        {hoveredPoint && !isNaN(hoveredPoint.x) && !isNaN(hoveredPoint.y) && (
           <circle 
             cx={hoveredPoint.x} 
             cy={hoveredPoint.y} 
