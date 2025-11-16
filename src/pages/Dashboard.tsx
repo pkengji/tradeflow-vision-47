@@ -35,6 +35,12 @@ export default function Dashboard() {
   const [symbols, setSymbols] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
   const [loading, setLoading] = useState(true);
+  
+  // Chart-specific date filter (independent of other filters)
+  const [chartDateRange, setChartDateRange] = useState<string>('30d');
+  const [chartDateFrom, setChartDateFrom] = useState<Date | undefined>();
+  const [chartDateTo, setChartDateTo] = useState<Date | undefined>();
+  const [chartData, setChartData] = useState<Array<{ date: string; pnl: number; equity: number }>>([]);
 
   useEffect(() => {
     (async () => {
@@ -76,6 +82,33 @@ export default function Dashboard() {
       }
     })();
   }, [selectedBots, selectedSymbols, direction, dateFrom, dateTo, openHourFrom, openHourTo, closeHourFrom, closeHourTo]);
+
+  // Separate effect for chart data (only date filter, no other filters)
+  useEffect(() => {
+    (async () => {
+      try {
+        const params: any = {};
+        
+        // Apply chart date filter
+        if (chartDateRange === 'custom') {
+          if (chartDateFrom) params.date_from = chartDateFrom.toISOString().split('T')[0];
+          if (chartDateTo) params.date_to = chartDateTo.toISOString().split('T')[0];
+        } else {
+          const days = parseInt(chartDateRange);
+          const today = new Date();
+          const fromDate = new Date(today);
+          fromDate.setDate(today.getDate() - days);
+          params.date_from = fromDate.toISOString().split('T')[0];
+          params.date_to = today.toISOString().split('T')[0];
+        }
+
+        const data = await api.getDailyPnl(params);
+        setChartData(data);
+      } catch (err) {
+        console.error('Error loading chart data:', err);
+      }
+    })();
+  }, [chartDateRange, chartDateFrom, chartDateTo]);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -325,20 +358,44 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Equity Chart */}
-        {dailyPnlData.length > 0 && (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <CardTitle className="text-base">Equity Chart</CardTitle>
-              <Link to="/trades" className="text-sm text-primary hover:underline inline-flex items-center gap-1">
-                Alle Trades <ArrowRight className="h-3 w-3" />
-              </Link>
-            </CardHeader>
-            <CardContent>
-              <EquityChart data={dailyPnlData} />
-            </CardContent>
-          </Card>
-        )}
+        {/* Portfolio Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Portfolio</CardTitle>
+            <div className="flex flex-col sm:flex-row gap-2 mt-4">
+              <select 
+                value={chartDateRange} 
+                onChange={(e) => setChartDateRange(e.target.value)}
+                className="px-3 py-2 border rounded-md bg-background text-sm"
+              >
+                <option value="30d">Letzte 30 Tage</option>
+                <option value="60d">Letzte 60 Tage</option>
+                <option value="90d">Letzte 90 Tage</option>
+                <option value="custom">Benutzerdefiniert</option>
+              </select>
+              
+              {chartDateRange === 'custom' && (
+                <div className="flex gap-2 w-full sm:w-auto">
+                  <input
+                    type="date"
+                    value={chartDateFrom ? chartDateFrom.toISOString().split('T')[0] : ''}
+                    onChange={(e) => setChartDateFrom(e.target.value ? new Date(e.target.value) : undefined)}
+                    className="flex-1 sm:flex-none px-3 py-2 border rounded-md bg-background text-sm"
+                  />
+                  <input
+                    type="date"
+                    value={chartDateTo ? chartDateTo.toISOString().split('T')[0] : ''}
+                    onChange={(e) => setChartDateTo(e.target.value ? new Date(e.target.value) : undefined)}
+                    className="flex-1 sm:flex-none px-3 py-2 border rounded-md bg-background text-sm"
+                  />
+                </div>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <EquityChart data={chartData} />
+          </CardContent>
+        </Card>
       </div>
     </DashboardLayout>
   );
