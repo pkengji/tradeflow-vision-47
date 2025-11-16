@@ -336,12 +336,29 @@ export default function Dashboard() {
         {showFilters && (
           <div className="hidden lg:block border rounded-lg p-4 bg-muted/30">
             <TradesFiltersBar
-              value={filters}
-              onChange={setFilters}
+              selectedBots={selectedBots}
+              onBotsChange={setSelectedBots}
+              selectedSymbols={selectedSymbols}
+              onSymbolsChange={setSelectedSymbols}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              onDateFromChange={setDateFrom}
+              onDateToChange={setDateTo}
+              direction={direction}
+              onDirectionChange={setDirection}
+              openHourFrom={openHourFrom}
+              openHourTo={openHourTo}
+              onOpenHourFromChange={setOpenHourFrom}
+              onOpenHourToChange={setOpenHourTo}
+              closeHourFrom={closeHourFrom}
+              closeHourTo={closeHourTo}
+              onCloseHourFromChange={setCloseHourFrom}
+              onCloseHourToChange={setCloseHourTo}
+              onResetFilters={handleResetFilters}
               availableBots={bots}
               availableSymbols={symbols}
               showDateRange={true}
-              showTimeRange={false}
+              showTimeRange={true}
               txCostsMode={txCostsMode}
               onTxCostsModeChange={setTxCostsMode}
             />
