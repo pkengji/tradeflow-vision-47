@@ -16,19 +16,15 @@ type KpiBlock = {
   win_rate: number;
   wins?: number;
   total_trades?: number;
-  tx_costs_pct: number;
-  tx_breakdown_usdt: {
-    fees: number;
-    funding: number;
-    slip_liquidity: number;
-    slip_time: number;
-  };
-  timelag_ms: {
-    entry_ms_avg: number | null;
-    engine_ms_avg: number | null;
-    exit_ms_avg: number | null;
-    samples: number;
-  };
+  fee_pct: number;
+  slip_liq_pct: number;
+  slip_time_pct: number;
+  fee_usdt: number;
+  slip_liq_usdt: number;
+  slip_time_usdt: number;
+  entry_ms_avg: number | null;
+  engine_ms_avg: number | null;
+  exit_ms_avg: number | null;
 };
 
 type Summary = {
@@ -75,6 +71,29 @@ const formatTimelag = (value: number | null | undefined): string => {
 const formatNumber = (value: number | null | undefined): string => {
   if (value === null || value === undefined || Number.isNaN(value)) return '—';
   return value.toString();
+};
+
+// Fill in missing days with flat equity line
+const fillMissingDays = (timeseries: { ts: string; day_pnl: number }[], days: number) => {
+  if (timeseries.length === 0) return [];
+  
+  const result: { ts: string; day_pnl: number }[] = [];
+  const endDate = new Date();
+  endDate.setHours(0, 0, 0, 0);
+  
+  for (let i = days - 1; i >= 0; i--) {
+    const currentDate = new Date(endDate);
+    currentDate.setDate(endDate.getDate() - i);
+    const dateStr = currentDate.toISOString().split('T')[0];
+    
+    const existing = timeseries.find(t => t.ts.startsWith(dateStr));
+    result.push({
+      ts: dateStr,
+      day_pnl: existing?.day_pnl ?? 0
+    });
+  }
+  
+  return result;
 };
 
 // Chart data formatter - calculate cumulative equity from PnL
@@ -161,24 +180,23 @@ export default function Dashboard() {
   const chartData = useMemo(() => {
     if (!summary?.equity_timeseries) return [];
     
-    let filteredTimeseries = summary.equity_timeseries;
+    let timeseriesToUse = summary.equity_timeseries;
     
     // Apply chart time range filter
     if (chartTimeRange !== 'custom') {
       const days = parseInt(chartTimeRange);
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - days);
-      filteredTimeseries = filteredTimeseries.filter(item => new Date(item.ts) >= cutoffDate);
-    } else if (chartDateFrom || chartDateTo) {
-      filteredTimeseries = filteredTimeseries.filter(item => {
+      // Fill missing days to ensure continuous line
+      timeseriesToUse = fillMissingDays(summary.equity_timeseries, days);
+    } else if (chartDateFrom && chartDateTo) {
+      const daysDiff = Math.ceil((chartDateTo.getTime() - chartDateFrom.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      const filtered = summary.equity_timeseries.filter(item => {
         const itemDate = new Date(item.ts);
-        if (chartDateFrom && itemDate < chartDateFrom) return false;
-        if (chartDateTo && itemDate > chartDateTo) return false;
-        return true;
+        return itemDate >= chartDateFrom && itemDate <= chartDateTo;
       });
+      timeseriesToUse = fillMissingDays(filtered, daysDiff);
     }
     
-    return formatChartData(filteredTimeseries, summary.portfolio_total_equity);
+    return formatChartData(timeseriesToUse, summary.portfolio_total_equity);
   }, [summary, chartTimeRange, chartDateFrom, chartDateTo]);
   
   // Check if date filters are active
@@ -218,6 +236,13 @@ export default function Dashboard() {
         </Button>
       }
     >
+      <div className="flex justify-end mb-4">
+        <Button variant="ghost" size="sm" onClick={() => setShowFilters(!showFilters)}>
+          <SlidersHorizontal className="h-4 w-4 mr-2" />
+          Filter
+        </Button>
+      </div>
+
       {showFilters && (
         <div className="mb-6 space-y-4">
           <TradesFiltersBar
@@ -270,10 +295,10 @@ export default function Dashboard() {
           {/* Portfolio Total */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base font-semibold">Portfolio total</CardTitle>
+              <CardTitle className="text-base font-semibold text-center">Portfolio total</CardTitle>
             </CardHeader>
-            <CardContent>
-              <MetricRow label="Portfoliowert" value={formatUSDT(summary.portfolio_total_equity)} />
+            <CardContent className="flex items-center justify-center">
+              <div className="text-3xl font-bold">{formatUSDT(summary.portfolio_total_equity)}</div>
             </CardContent>
           </Card>
 
@@ -293,12 +318,16 @@ export default function Dashboard() {
                 <div className="text-sm font-medium mb-2">Transaktionskosten</div>
                 <div className="space-y-2 pl-4">
                   {txCostsMode === 'percent' ? (
-                    <MetricRow label="Total" value={formatPercent(summary.kpis.overall?.tx_costs_pct)} />
+                    <>
+                      <MetricRow label="Fees" value={formatPercent(summary.kpis.overall?.fee_pct)} />
+                      <MetricRow label="Slippage (Liquidität)" value={formatPercent(summary.kpis.overall?.slip_liq_pct)} />
+                      <MetricRow label="Slippage (Timelag)" value={formatPercent(summary.kpis.overall?.slip_time_pct)} />
+                    </>
                   ) : (
                     <>
-                      <MetricRow label="Fees" value={formatUSDT(summary.kpis.overall?.tx_breakdown_usdt?.fees)} />
-                      <MetricRow label="Slippage (Liquidität)" value={formatUSDT(summary.kpis.overall?.tx_breakdown_usdt?.slip_liquidity)} />
-                      <MetricRow label="Slippage (Timelag)" value={formatUSDT(summary.kpis.overall?.tx_breakdown_usdt?.slip_time)} />
+                      <MetricRow label="Fees" value={formatUSDT(summary.kpis.overall?.fee_usdt)} />
+                      <MetricRow label="Slippage (Liquidität)" value={formatUSDT(summary.kpis.overall?.slip_liq_usdt)} />
+                      <MetricRow label="Slippage (Timelag)" value={formatUSDT(summary.kpis.overall?.slip_time_usdt)} />
                     </>
                   )}
                 </div>
@@ -307,9 +336,9 @@ export default function Dashboard() {
               <div className="pt-2">
                 <div className="text-sm font-medium mb-2">Timelag</div>
                 <div className="space-y-2 pl-4">
-                  <MetricRow label="Entry" value={formatTimelag(summary.kpis.overall?.timelag_ms?.entry_ms_avg)} />
-                  <MetricRow label="Processing time" value={formatTimelag(summary.kpis.overall?.timelag_ms?.engine_ms_avg)} />
-                  <MetricRow label="Exit" value={formatTimelag(summary.kpis.overall?.timelag_ms?.exit_ms_avg)} />
+                  <MetricRow label="Entry" value={formatTimelag(summary.kpis.overall?.entry_ms_avg)} />
+                  <MetricRow label="Processing time" value={formatTimelag(summary.kpis.overall?.engine_ms_avg)} />
+                  <MetricRow label="Exit" value={formatTimelag(summary.kpis.overall?.exit_ms_avg)} />
                 </div>
               </div>
             </CardContent>
@@ -331,12 +360,16 @@ export default function Dashboard() {
                   <div className="text-sm font-medium mb-2">Transaktionskosten</div>
                   <div className="space-y-2 pl-4">
                     {txCostsMode === 'percent' ? (
-                      <MetricRow label="Total" value={formatPercent(summary.kpis.today?.tx_costs_pct)} />
+                      <>
+                        <MetricRow label="Fees" value={formatPercent(summary.kpis.today?.fee_pct)} />
+                        <MetricRow label="Slippage (Liquidität)" value={formatPercent(summary.kpis.today?.slip_liq_pct)} />
+                        <MetricRow label="Slippage (Timelag)" value={formatPercent(summary.kpis.today?.slip_time_pct)} />
+                      </>
                     ) : (
                       <>
-                        <MetricRow label="Fees" value={formatUSDT(summary.kpis.today?.tx_breakdown_usdt?.fees)} />
-                        <MetricRow label="Slippage (Liquidität)" value={formatUSDT(summary.kpis.today?.tx_breakdown_usdt?.slip_liquidity)} />
-                        <MetricRow label="Slippage (Timelag)" value={formatUSDT(summary.kpis.today?.tx_breakdown_usdt?.slip_time)} />
+                        <MetricRow label="Fees" value={formatUSDT(summary.kpis.today?.fee_usdt)} />
+                        <MetricRow label="Slippage (Liquidität)" value={formatUSDT(summary.kpis.today?.slip_liq_usdt)} />
+                        <MetricRow label="Slippage (Timelag)" value={formatUSDT(summary.kpis.today?.slip_time_usdt)} />
                       </>
                     )}
                   </div>
@@ -345,9 +378,9 @@ export default function Dashboard() {
                 <div className="pt-2">
                   <div className="text-sm font-medium mb-2">Timelag</div>
                   <div className="space-y-2 pl-4">
-                    <MetricRow label="Entry" value={formatTimelag(summary.kpis.today?.timelag_ms?.entry_ms_avg)} />
-                    <MetricRow label="Processing time" value={formatTimelag(summary.kpis.today?.timelag_ms?.engine_ms_avg)} />
-                    <MetricRow label="Exit" value={formatTimelag(summary.kpis.today?.timelag_ms?.exit_ms_avg)} />
+                    <MetricRow label="Entry" value={formatTimelag(summary.kpis.today?.entry_ms_avg)} />
+                    <MetricRow label="Processing time" value={formatTimelag(summary.kpis.today?.engine_ms_avg)} />
+                    <MetricRow label="Exit" value={formatTimelag(summary.kpis.today?.exit_ms_avg)} />
                   </div>
                 </div>
               </CardContent>
@@ -371,12 +404,16 @@ export default function Dashboard() {
                   <div className="text-sm font-medium mb-2">Transaktionskosten</div>
                   <div className="space-y-2 pl-4">
                     {txCostsMode === 'percent' ? (
-                      <MetricRow label="Total" value={formatPercent(summary.kpis.month?.tx_costs_pct)} />
+                      <>
+                        <MetricRow label="Fees" value={formatPercent(summary.kpis.month?.fee_pct)} />
+                        <MetricRow label="Slippage (Liquidität)" value={formatPercent(summary.kpis.month?.slip_liq_pct)} />
+                        <MetricRow label="Slippage (Timelag)" value={formatPercent(summary.kpis.month?.slip_time_pct)} />
+                      </>
                     ) : (
                       <>
-                        <MetricRow label="Fees" value={formatUSDT(summary.kpis.month?.tx_breakdown_usdt?.fees)} />
-                        <MetricRow label="Slippage (Liquidität)" value={formatUSDT(summary.kpis.month?.tx_breakdown_usdt?.slip_liquidity)} />
-                        <MetricRow label="Slippage (Timelag)" value={formatUSDT(summary.kpis.month?.tx_breakdown_usdt?.slip_time)} />
+                        <MetricRow label="Fees" value={formatUSDT(summary.kpis.month?.fee_usdt)} />
+                        <MetricRow label="Slippage (Liquidität)" value={formatUSDT(summary.kpis.month?.slip_liq_usdt)} />
+                        <MetricRow label="Slippage (Timelag)" value={formatUSDT(summary.kpis.month?.slip_time_usdt)} />
                       </>
                     )}
                   </div>
@@ -385,9 +422,9 @@ export default function Dashboard() {
                 <div className="pt-2">
                   <div className="text-sm font-medium mb-2">Timelag</div>
                   <div className="space-y-2 pl-4">
-                    <MetricRow label="Entry" value={formatTimelag(summary.kpis.month?.timelag_ms?.entry_ms_avg)} />
-                    <MetricRow label="Processing time" value={formatTimelag(summary.kpis.month?.timelag_ms?.engine_ms_avg)} />
-                    <MetricRow label="Exit" value={formatTimelag(summary.kpis.month?.timelag_ms?.exit_ms_avg)} />
+                    <MetricRow label="Entry" value={formatTimelag(summary.kpis.month?.entry_ms_avg)} />
+                    <MetricRow label="Processing time" value={formatTimelag(summary.kpis.month?.engine_ms_avg)} />
+                    <MetricRow label="Exit" value={formatTimelag(summary.kpis.month?.exit_ms_avg)} />
                   </div>
                 </div>
               </CardContent>
@@ -410,12 +447,16 @@ export default function Dashboard() {
                   <div className="text-sm font-medium mb-2">Transaktionskosten</div>
                   <div className="space-y-2 pl-4">
                     {txCostsMode === 'percent' ? (
-                      <MetricRow label="Total" value={formatPercent(summary.kpis.last_30d?.tx_costs_pct)} />
+                      <>
+                        <MetricRow label="Fees" value={formatPercent(summary.kpis.last_30d?.fee_pct)} />
+                        <MetricRow label="Slippage (Liquidität)" value={formatPercent(summary.kpis.last_30d?.slip_liq_pct)} />
+                        <MetricRow label="Slippage (Timelag)" value={formatPercent(summary.kpis.last_30d?.slip_time_pct)} />
+                      </>
                     ) : (
                       <>
-                        <MetricRow label="Fees" value={formatUSDT(summary.kpis.last_30d?.tx_breakdown_usdt?.fees)} />
-                        <MetricRow label="Slippage (Liquidität)" value={formatUSDT(summary.kpis.last_30d?.tx_breakdown_usdt?.slip_liquidity)} />
-                        <MetricRow label="Slippage (Timelag)" value={formatUSDT(summary.kpis.last_30d?.tx_breakdown_usdt?.slip_time)} />
+                        <MetricRow label="Fees" value={formatUSDT(summary.kpis.last_30d?.fee_usdt)} />
+                        <MetricRow label="Slippage (Liquidität)" value={formatUSDT(summary.kpis.last_30d?.slip_liq_usdt)} />
+                        <MetricRow label="Slippage (Timelag)" value={formatUSDT(summary.kpis.last_30d?.slip_time_usdt)} />
                       </>
                     )}
                   </div>
@@ -424,9 +465,9 @@ export default function Dashboard() {
                 <div className="pt-2">
                   <div className="text-sm font-medium mb-2">Timelag</div>
                   <div className="space-y-2 pl-4">
-                    <MetricRow label="Entry" value={formatTimelag(summary.kpis.last_30d?.timelag_ms?.entry_ms_avg)} />
-                    <MetricRow label="Processing time" value={formatTimelag(summary.kpis.last_30d?.timelag_ms?.engine_ms_avg)} />
-                    <MetricRow label="Exit" value={formatTimelag(summary.kpis.last_30d?.timelag_ms?.exit_ms_avg)} />
+                    <MetricRow label="Entry" value={formatTimelag(summary.kpis.last_30d?.entry_ms_avg)} />
+                    <MetricRow label="Processing time" value={formatTimelag(summary.kpis.last_30d?.engine_ms_avg)} />
+                    <MetricRow label="Exit" value={formatTimelag(summary.kpis.last_30d?.exit_ms_avg)} />
                   </div>
                 </div>
               </CardContent>
@@ -437,26 +478,26 @@ export default function Dashboard() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
               <CardTitle>Portfolio Equity</CardTitle>
-              <div className="flex items-center gap-2">
-                {chartTimeRange === 'custom' ? (
-                  <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2">
+                {chartTimeRange === 'custom' && (
+                  <div className="flex items-center gap-1 sm:gap-2">
                     <input 
                       type="date" 
-                      className="text-xs border rounded px-2 py-1"
+                      className="text-xs border border-border bg-background rounded px-1.5 sm:px-2 py-1 w-24 sm:w-auto"
                       value={chartDateFrom?.toISOString().split('T')[0] ?? ''}
                       onChange={(e) => setChartDateFrom(e.target.value ? new Date(e.target.value) : undefined)}
                     />
                     <span className="text-xs">-</span>
                     <input 
                       type="date" 
-                      className="text-xs border rounded px-2 py-1"
+                      className="text-xs border border-border bg-background rounded px-1.5 sm:px-2 py-1 w-24 sm:w-auto"
                       value={chartDateTo?.toISOString().split('T')[0] ?? ''}
                       onChange={(e) => setChartDateTo(e.target.value ? new Date(e.target.value) : undefined)}
                     />
                   </div>
-                ) : null}
+                )}
                 <select 
-                  className="text-xs border rounded px-2 py-1"
+                  className="text-xs border border-border bg-background rounded px-2 py-1"
                   value={chartTimeRange}
                   onChange={(e) => setChartTimeRange(e.target.value as any)}
                 >
