@@ -266,7 +266,8 @@ export type DashboardKPIPeriod = {
   timelag_ms: {
     ingress_ms_avg: number;
     engine_ms_avg: number;
-    exit_ms_avg: number;
+    tv_to_send_ms_avg: number;
+    tv_to_fill_ms_avg: number;
     samples: number;
   };
 };

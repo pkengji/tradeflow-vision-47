@@ -113,25 +113,33 @@ export default function Dashboard() {
     const totalFeesUsdt = (kpi.tx_breakdown_usdt?.fees || 0) + (kpi.tx_breakdown_usdt?.funding || 0) + 
                           (kpi.tx_breakdown_usdt?.slip_liquidity || 0) + (kpi.tx_breakdown_usdt?.slip_time || 0);
     const totalTimelag = (kpi.timelag_ms?.ingress_ms_avg || 0) + (kpi.timelag_ms?.engine_ms_avg || 0) + 
-                        (kpi.timelag_ms?.exit_ms_avg || 0);
+                        (kpi.timelag_ms?.tv_to_send_ms_avg || 0) + (kpi.timelag_ms?.tv_to_fill_ms_avg || 0);
 
     return (
       <Card>
         <CardHeader><CardTitle className="text-base">{title}</CardTitle></CardHeader>
-        <CardContent className="space-y-1">
+        <CardContent className="space-y-2">
           <MetricRow label="Realisierter P&L" value={formatCurrency(kpi.realized_pnl)} highlight />
           <MetricRow label="Anzahl Trades" value={kpi.trade_count} />
           <MetricRow label="Win Rate" value={`${(kpi.win_rate * 100).toFixed(1)}%`} />
-          <MetricRow label="Transaktionskosten Gesamt" value={`${(kpi.tx_costs_pct * 100).toFixed(2)}% (${formatCurrency(totalFeesUsdt)})`} />
-          <MetricRow label="  Fees" value={`${((kpi.tx_breakdown_pct?.fees || 0) * 100).toFixed(2)}% (${formatCurrency(kpi.tx_breakdown_usdt?.fees || 0)})`} />
-          <MetricRow label="  Funding" value={`${((kpi.tx_breakdown_pct?.funding || 0) * 100).toFixed(2)}% (${formatCurrency(kpi.tx_breakdown_usdt?.funding || 0)})`} />
-          <MetricRow label="  Slippage (Liquidität)" value={`${((kpi.tx_breakdown_pct?.slip_liquidity || 0) * 100).toFixed(2)}% (${formatCurrency(kpi.tx_breakdown_usdt?.slip_liquidity || 0)})`} />
-          <MetricRow label="  Slippage (Timelag)" value={`${((kpi.tx_breakdown_pct?.slip_time || 0) * 100).toFixed(2)}% (${formatCurrency(kpi.tx_breakdown_usdt?.slip_time || 0)})`} />
-          <MetricRow label="Timelag Gesamt" value={`${Math.round(totalTimelag)} ms`} />
-          <MetricRow label="  Entry" value={`${Math.round(kpi.timelag_ms?.ingress_ms_avg || 0)} ms`} />
-          <MetricRow label="  Processing" value={`${Math.round(kpi.timelag_ms?.engine_ms_avg || 0)} ms`} />
-          <MetricRow label="  Exit" value={`${Math.round(kpi.timelag_ms?.exit_ms_avg || 0)} ms`} />
-          {kpi.timelag_ms?.samples > 0 && <MetricRow label="Samples" value={kpi.timelag_ms.samples} />}
+          
+          <div className="pt-2 border-t">
+            <div className="text-sm font-medium mb-1">Transaktionskosten</div>
+            <MetricRow label="Gesamt" value={`${(kpi.tx_costs_pct * 100).toFixed(2)}%`} />
+            <MetricRow label="Fees" value={formatCurrency(kpi.tx_breakdown_usdt?.fees || 0)} />
+            <MetricRow label="Funding" value={formatCurrency(kpi.tx_breakdown_usdt?.funding || 0)} />
+            <MetricRow label="Slippage (Liquidität)" value={formatCurrency(kpi.tx_breakdown_usdt?.slip_liquidity || 0)} />
+            <MetricRow label="Slippage (Timelag)" value={formatCurrency(kpi.tx_breakdown_usdt?.slip_time || 0)} />
+          </div>
+
+          <div className="pt-2 border-t">
+            <div className="text-sm font-medium mb-1">Timelag (Gesamt: {Math.round(totalTimelag)} ms)</div>
+            <MetricRow label="Entry" value={`${Math.round(kpi.timelag_ms?.ingress_ms_avg || 0)} ms`} />
+            <MetricRow label="Processing" value={`${Math.round(kpi.timelag_ms?.engine_ms_avg || 0)} ms`} />
+            <MetricRow label="TV → Send" value={`${Math.round(kpi.timelag_ms?.tv_to_send_ms_avg || 0)} ms`} />
+            <MetricRow label="TV → Fill" value={`${Math.round(kpi.timelag_ms?.tv_to_fill_ms_avg || 0)} ms`} />
+            {kpi.timelag_ms?.samples > 0 && <MetricRow label="Samples" value={kpi.timelag_ms.samples} />}
+          </div>
         </CardContent>
       </Card>
     );
@@ -271,7 +279,7 @@ export default function Dashboard() {
             <CardHeader>
               <CardTitle className="text-base">Gesamtansicht{activeFilterCount > 0 ? ' (gefiltert)' : ''}</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-1">
+            <CardContent className="space-y-2">
               <MetricRow 
                 label="Portfoliowert" 
                 value={formatCurrency(dailyPnlData.length > 0 ? dailyPnlData[dailyPnlData.length - 1].equity : 0)} 
@@ -280,28 +288,30 @@ export default function Dashboard() {
               <MetricRow label="Realisierter P&L" value={formatCurrency(summary.kpis.overall.realized_pnl)} highlight />
               <MetricRow label="Anzahl Trades" value={summary.kpis.overall.trade_count} />
               <MetricRow label="Win Rate" value={`${(summary.kpis.overall.win_rate * 100).toFixed(1)}%`} />
-              <MetricRow 
-                label="Transaktionskosten Gesamt" 
-                value={`${(summary.kpis.overall.tx_costs_pct * 100).toFixed(2)}% (${formatCurrency(
-                  (summary.kpis.overall.tx_breakdown_usdt?.fees || 0) + 
-                  (summary.kpis.overall.tx_breakdown_usdt?.funding || 0) + 
-                  (summary.kpis.overall.tx_breakdown_usdt?.slip_liquidity || 0) + 
-                  (summary.kpis.overall.tx_breakdown_usdt?.slip_time || 0)
-                )})`} 
-              />
-              <MetricRow label="  Fees" value={`${((summary.kpis.overall.tx_breakdown_pct?.fees || 0) * 100).toFixed(2)}% (${formatCurrency(summary.kpis.overall.tx_breakdown_usdt?.fees || 0)})`} />
-              <MetricRow label="  Funding" value={`${((summary.kpis.overall.tx_breakdown_pct?.funding || 0) * 100).toFixed(2)}% (${formatCurrency(summary.kpis.overall.tx_breakdown_usdt?.funding || 0)})`} />
-              <MetricRow label="  Slippage (Liquidität)" value={`${((summary.kpis.overall.tx_breakdown_pct?.slip_liquidity || 0) * 100).toFixed(2)}% (${formatCurrency(summary.kpis.overall.tx_breakdown_usdt?.slip_liquidity || 0)})`} />
-              <MetricRow label="  Slippage (Timelag)" value={`${((summary.kpis.overall.tx_breakdown_pct?.slip_time || 0) * 100).toFixed(2)}% (${formatCurrency(summary.kpis.overall.tx_breakdown_usdt?.slip_time || 0)})`} />
-              <MetricRow 
-                label="Timelag Gesamt" 
-                value={`${Math.round((summary.kpis.overall.timelag_ms?.ingress_ms_avg || 0) + 
-                                    (summary.kpis.overall.timelag_ms?.engine_ms_avg || 0) + 
-                                    (summary.kpis.overall.timelag_ms?.exit_ms_avg || 0))} ms`} 
-              />
-              <MetricRow label="  Entry" value={`${Math.round(summary.kpis.overall.timelag_ms?.ingress_ms_avg || 0)} ms`} />
-              <MetricRow label="  Processing" value={`${Math.round(summary.kpis.overall.timelag_ms?.engine_ms_avg || 0)} ms`} />
-              <MetricRow label="  Exit" value={`${Math.round(summary.kpis.overall.timelag_ms?.exit_ms_avg || 0)} ms`} />
+              
+              <div className="pt-2 border-t">
+                <div className="text-sm font-medium mb-1">Transaktionskosten</div>
+                <MetricRow label="Gesamt" value={`${(summary.kpis.overall.tx_costs_pct * 100).toFixed(2)}%`} />
+                <MetricRow label="Fees" value={formatCurrency(summary.kpis.overall.tx_breakdown_usdt?.fees || 0)} />
+                <MetricRow label="Funding" value={formatCurrency(summary.kpis.overall.tx_breakdown_usdt?.funding || 0)} />
+                <MetricRow label="Slippage (Liquidität)" value={formatCurrency(summary.kpis.overall.tx_breakdown_usdt?.slip_liquidity || 0)} />
+                <MetricRow label="Slippage (Timelag)" value={formatCurrency(summary.kpis.overall.tx_breakdown_usdt?.slip_time || 0)} />
+              </div>
+
+              <div className="pt-2 border-t">
+                <div className="text-sm font-medium mb-1">Timelag</div>
+                <MetricRow 
+                  label="Gesamt" 
+                  value={`${Math.round((summary.kpis.overall.timelag_ms?.ingress_ms_avg || 0) + 
+                                      (summary.kpis.overall.timelag_ms?.engine_ms_avg || 0) + 
+                                      (summary.kpis.overall.timelag_ms?.tv_to_send_ms_avg || 0) + 
+                                      (summary.kpis.overall.timelag_ms?.tv_to_fill_ms_avg || 0))} ms`} 
+                />
+                <MetricRow label="Entry" value={`${Math.round(summary.kpis.overall.timelag_ms?.ingress_ms_avg || 0)} ms`} />
+                <MetricRow label="Processing" value={`${Math.round(summary.kpis.overall.timelag_ms?.engine_ms_avg || 0)} ms`} />
+                <MetricRow label="TV → Send" value={`${Math.round(summary.kpis.overall.timelag_ms?.tv_to_send_ms_avg || 0)} ms`} />
+                <MetricRow label="TV → Fill" value={`${Math.round(summary.kpis.overall.timelag_ms?.tv_to_fill_ms_avg || 0)} ms`} />
+              </div>
             </CardContent>
           </Card>
         )}
