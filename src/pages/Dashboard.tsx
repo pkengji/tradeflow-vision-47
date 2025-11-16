@@ -6,11 +6,8 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
-import { SlidersHorizontal, ChevronDown, Filter } from 'lucide-react';
+import { SlidersHorizontal } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 // Backend API Response Format
 type KpiBlock = {
@@ -131,8 +128,7 @@ export default function Dashboard() {
   });
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
-  const [showMobileFilters, setShowMobileFilters] = useState(false);
-  const [showDesktopFilters, setShowDesktopFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [txCostsMode, setTxCostsMode] = useState<'percent' | 'usdt'>('percent');
   const [chartTimeRange, setChartTimeRange] = useState<'30' | '60' | '90' | 'custom'>('90');
   const [chartDateFrom, setChartDateFrom] = useState<Date | undefined>();
@@ -175,9 +171,15 @@ export default function Dashboard() {
     })();
   }, [filters]);
 
-  const handleApplyFilters = (newFilters: TradesFilters) => {
-    setFilters(newFilters);
-  };
+  // Active filter count for badge
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filters.botIds.length > 0) count++;
+    if (filters.symbols.length > 0) count++;
+    if (filters.side && filters.side !== 'all') count++;
+    if (filters.dateFrom || filters.dateTo) count++;
+    return count;
+  }, [filters]);
 
   const chartData = useMemo(() => {
     if (!summary?.equity_timeseries) return [];
@@ -229,122 +231,84 @@ export default function Dashboard() {
     );
   };
 
+  const FilterButton = (
+    <Button 
+      variant="ghost" 
+      size="icon"
+      onClick={() => setShowFilters(!showFilters)}
+      className="relative"
+    >
+      <SlidersHorizontal className="h-5 w-5" />
+      {activeFilterCount > 0 && (
+        <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-medium">
+          {activeFilterCount}
+        </span>
+      )}
+    </Button>
+  );
+
   return (
-    <DashboardLayout
-      pageTitle="Dashboard"
-      mobileHeaderRight={
-        <Sheet open={showMobileFilters} onOpenChange={setShowMobileFilters}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <Filter className="h-5 w-5" />
-              {(filters.botIds.length > 0 || filters.symbols.length > 0 || filters.dateFrom) && (
-                <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-primary" />
-              )}
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
-            <div className="space-y-4 pt-6">
-              <div className="flex items-center justify-between border-b pb-2">
-                <span className="font-medium">Filter</span>
-              </div>
-              
+    <DashboardLayout pageTitle="Dashboard" mobileHeaderRight={FilterButton}>
+      {/* Filter-Modal - Mobile */}
+      {showFilters && (
+        <div className="fixed inset-0 bg-background/80 z-50 lg:hidden" onClick={() => setShowFilters(false)}>
+          <div className="fixed inset-x-0 top-14 bottom-0 bg-background flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="overflow-auto">
               <TradesFiltersBar
                 value={filters}
-                onChange={handleApplyFilters}
+                onChange={setFilters}
                 availableBots={bots}
                 availableSymbols={symbols}
                 showDateRange={true}
                 showTimeRange={false}
-                compact={true}
+                txCostsMode={txCostsMode}
+                onTxCostsModeChange={setTxCostsMode}
               />
-
-              {/* Transaction Costs Toggle in Filter */}
-              <div className="border-t pt-3">
-                <div className="text-sm font-medium mb-2">Transaktionskosten</div>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant={txCostsMode === 'percent' ? 'default' : 'outline'}
-                    onClick={() => setTxCostsMode('percent')}
-                    className="flex-1"
-                  >
-                    In %
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={txCostsMode === 'usdt' ? 'default' : 'outline'}
-                    onClick={() => setTxCostsMode('usdt')}
-                    className="flex-1"
-                  >
-                    In USDT
-                  </Button>
-                </div>
-              </div>
             </div>
-          </SheetContent>
-        </Sheet>
-      }
-    >
+            <div className="border-t p-3">
+              <Button className="w-full" onClick={() => setShowFilters(false)}>Fertig</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="p-4 lg:p-6 space-y-4">
         {/* Desktop Filter Button */}
         <div className="hidden lg:flex justify-end mb-4">
-          <Popover open={showDesktopFilters} onOpenChange={setShowDesktopFilters}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className="gap-2"
-              >
-                <Filter className="h-4 w-4" />
-                Filter
-                {(filters.botIds.length > 0 || filters.symbols.length > 0 || filters.dateFrom) && (
-                  <span className="ml-1 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
-                    {filters.botIds.length + filters.symbols.length + (filters.dateFrom ? 1 : 0)}
-                  </span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-[min(calc(100vw-2rem),28rem)] p-4">
-              <div className="space-y-3">
-                <div className="flex items-center justify-between border-b pb-2">
-                  <span className="font-medium">Filter</span>
-                </div>
-                
-                <TradesFiltersBar
-                  value={filters}
-                  onChange={handleApplyFilters}
-                  availableBots={bots}
-                  availableSymbols={symbols}
-                  showDateRange={true}
-                  showTimeRange={false}
-                  compact={true}
-                />
-
-                {/* Transaction Costs Toggle in Filter */}
-                <div className="border-t pt-3">
-                  <div className="text-sm font-medium mb-2">Transaktionskosten</div>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant={txCostsMode === 'percent' ? 'default' : 'outline'}
-                      onClick={() => setTxCostsMode('percent')}
-                      className="flex-1"
-                    >
-                      In %
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={txCostsMode === 'usdt' ? 'default' : 'outline'}
-                      onClick={() => setTxCostsMode('usdt')}
-                      className="flex-1"
-                    >
-                      In USDT
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => setShowFilters(!showFilters)}
+            className="relative"
+          >
+            <SlidersHorizontal className="h-4 w-4 mr-2" />
+            Filter
+            {activeFilterCount > 0 && (
+              <span className="ml-2 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-medium">
+                {activeFilterCount}
+              </span>
+            )}
+          </Button>
         </div>
+
+        {/* Filter - Desktop (collapsible) */}
+        {showFilters && (
+          <div className="hidden lg:block border rounded-lg p-4 bg-muted/30">
+            <TradesFiltersBar
+              value={filters}
+              onChange={setFilters}
+              availableBots={bots}
+              availableSymbols={symbols}
+              showDateRange={true}
+              showTimeRange={false}
+              txCostsMode={txCostsMode}
+              onTxCostsModeChange={setTxCostsMode}
+            />
+            <div className="flex justify-end mt-4">
+              <Button size="sm" onClick={() => setShowFilters(false)}>Fertig</Button>
+            </div>
+          </div>
+        )}
 
       {!summary ? (
         <div className="space-y-6">
