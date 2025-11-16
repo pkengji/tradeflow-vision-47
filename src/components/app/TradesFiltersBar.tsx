@@ -20,8 +20,32 @@ export type TradesFilters = {
 };
 
 type Props = {
-  value: TradesFilters;
-  onChange: (v: TradesFilters) => void;
+  // For Dashboard usage with direct props
+  selectedBots?: number[];
+  onBotsChange?: (bots: number[]) => void;
+  selectedSymbols?: string[];
+  onSymbolsChange?: (symbols: string[]) => void;
+  dateFrom?: Date;
+  dateTo?: Date;
+  onDateFromChange?: (date: Date | undefined) => void;
+  onDateToChange?: (date: Date | undefined) => void;
+  direction?: string;
+  onDirectionChange?: (direction: string) => void;
+  openHourFrom?: string;
+  openHourTo?: string;
+  onOpenHourFromChange?: (value: string) => void;
+  onOpenHourToChange?: (value: string) => void;
+  closeHourFrom?: string;
+  closeHourTo?: string;
+  onCloseHourFromChange?: (value: string) => void;
+  onCloseHourToChange?: (value: string) => void;
+  onResetFilters?: () => void;
+  txCostsMode?: 'percent' | 'usdt';
+  onTxCostsModeChange?: (mode: 'percent' | 'usdt') => void;
+  
+  // For Trades/Signals page usage with TradesFilters object
+  value?: TradesFilters;
+  onChange?: (v: TradesFilters) => void;
   availableBots: { id: number; name: string }[];
   availableSymbols: string[];
   // Welche Filter anzeigen?
@@ -29,12 +53,34 @@ type Props = {
   showTimeRange?: boolean;
   showSignalKind?: boolean;
   showSignalStatus?: boolean;
-  compact?: boolean; // für Dashboard-Integration
-  txCostsMode?: 'percent' | 'usdt'; // für Dashboard
-  onTxCostsModeChange?: (mode: 'percent' | 'usdt') => void; // für Dashboard
+  compact?: boolean;
 };
 
 export default function TradesFiltersBar({
+  // Dashboard props
+  selectedBots,
+  onBotsChange,
+  selectedSymbols,
+  onSymbolsChange,
+  dateFrom,
+  dateTo,
+  onDateFromChange,
+  onDateToChange,
+  direction,
+  onDirectionChange,
+  openHourFrom,
+  openHourTo,
+  onOpenHourFromChange,
+  onOpenHourToChange,
+  closeHourFrom,
+  closeHourTo,
+  onCloseHourFromChange,
+  onCloseHourToChange,
+  onResetFilters,
+  txCostsMode,
+  onTxCostsModeChange,
+  
+  // Trades/Signals props
   value,
   onChange,
   availableBots,
@@ -44,13 +90,18 @@ export default function TradesFiltersBar({
   showSignalKind = false,
   showSignalStatus = false,
   compact = false,
-  txCostsMode,
-  onTxCostsModeChange,
 }: Props) {
   const [showFilters] = useState(true);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [botSearch, setBotSearch] = useState('');
   const [symbolSearch, setSymbolSearch] = useState('');
+
+  // Use Dashboard props or Trades/Signals props
+  const isDashboardMode = selectedBots !== undefined;
+  const currentBots = isDashboardMode ? selectedBots : value?.botIds || [];
+  const currentSymbols = isDashboardMode ? selectedSymbols : value?.symbols || [];
+  const currentDateFrom = isDashboardMode ? dateFrom : value?.dateFrom;
+  const currentDateTo = isDashboardMode ? dateTo : value?.dateTo;
 
   const filteredBots = useMemo(() => {
     if (!botSearch) return availableBots;
@@ -65,28 +116,42 @@ export default function TradesFiltersBar({
   }, [availableSymbols, symbolSearch]);
 
   const toggleBot = (id: number) => {
-    const has = value.botIds.includes(id);
-    onChange({ ...value, botIds: has ? value.botIds.filter((x) => x !== id) : [...value.botIds, id] });
+    if (isDashboardMode && onBotsChange) {
+      const has = currentBots.includes(id);
+      onBotsChange(has ? currentBots.filter((x) => x !== id) : [...currentBots, id]);
+    } else if (onChange && value) {
+      const has = value.botIds.includes(id);
+      onChange({ ...value, botIds: has ? value.botIds.filter((x) => x !== id) : [...value.botIds, id] });
+    }
   };
 
   const toggleSymbol = (sym: string) => {
-    const has = value.symbols.includes(sym);
-    onChange({ ...value, symbols: has ? value.symbols.filter((x) => x !== sym) : [...value.symbols, sym] });
+    if (isDashboardMode && onSymbolsChange) {
+      const has = currentSymbols.includes(sym);
+      onSymbolsChange(has ? currentSymbols.filter((x) => x !== sym) : [...currentSymbols, sym]);
+    } else if (onChange && value) {
+      const has = value.symbols.includes(sym);
+      onChange({ ...value, symbols: has ? value.symbols.filter((x) => x !== sym) : [...value.symbols, sym] });
+    }
   };
 
   const resetFilters = () => {
-    onChange({
-      botIds: [],
-      symbols: [],
-      side: 'all',
-      dateFrom: undefined,
-      dateTo: undefined,
-      timeFrom: undefined,
-      timeTo: undefined,
-      timeMode: 'opened',
-      signalKind: 'all',
-      signalStatus: 'all',
-    });
+    if (onResetFilters) {
+      onResetFilters();
+    } else if (onChange) {
+      onChange({
+        botIds: [],
+        symbols: [],
+        side: 'all',
+        dateFrom: undefined,
+        dateTo: undefined,
+        timeFrom: undefined,
+        timeTo: undefined,
+        timeMode: 'opened',
+        signalKind: 'all',
+        signalStatus: 'all',
+      });
+    }
   };
 
   const closeAllDropdowns = () => setOpenDropdown(null);
@@ -96,16 +161,26 @@ export default function TradesFiltersBar({
   };
 
   const activeFilterCount = useMemo(() => {
-    let count = 0;
-    if (value.botIds.length > 0) count++;
-    if (value.symbols.length > 0) count++;
-    if (value.side && value.side !== 'all') count++;
-    if (value.dateFrom || value.dateTo) count++;
-    if (value.timeFrom || value.timeTo) count++;
-    if (value.signalKind && value.signalKind !== 'all') count++;
-    if (value.signalStatus && value.signalStatus !== 'all') count++;
-    return count;
-  }, [value]);
+    if (isDashboardMode) {
+      let count = 0;
+      if (currentBots.length > 0) count++;
+      if (currentSymbols.length > 0) count++;
+      if (direction && direction !== 'both') count++;
+      if (dateFrom || dateTo) count++;
+      if (openHourFrom || closeHourFrom) count++;
+      return count;
+    } else {
+      let count = 0;
+      if (value?.botIds.length) count++;
+      if (value?.symbols.length) count++;
+      if (value?.side && value.side !== 'all') count++;
+      if (value?.dateFrom || value?.dateTo) count++;
+      if (value?.timeFrom || value?.timeTo) count++;
+      if (value?.signalKind && value.signalKind !== 'all') count++;
+      if (value?.signalStatus && value.signalStatus !== 'all') count++;
+      return count;
+    }
+  }, [isDashboardMode, currentBots, currentSymbols, direction, dateFrom, dateTo, openHourFrom, closeHourFrom, value]);
 
   return (
     <div className={compact ? "space-y-3" : "w-full p-4 space-y-3"}>
