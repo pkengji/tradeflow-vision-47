@@ -174,9 +174,9 @@ export default function Dashboard() {
       (kpi.tx_breakdown_usdt?.slip_liquidity || 0) +
       (kpi.tx_breakdown_usdt?.slip_time || 0);
     const totalTimelag =
-      (kpi.timelag_ms?.open_ms_avg || 0) +
+      (kpi.timelag_ms?.ingress_ms_avg || 0) +
       (kpi.timelag_ms?.engine_ms_avg || 0) +
-      (kpi.timelag_ms?.exit_ms_avg || 0);
+      (kpi.timelag_ms?.tv_to_fill_ms_avg || 0);
 
     return (
       <Card>
@@ -204,9 +204,9 @@ export default function Dashboard() {
 
           <div className="pt-2 border-t">
             <div className="text-sm font-medium mb-1">Timelag {Math.round(totalTimelag)} ms</div>
-            <MetricRow label="Entry" value={`${Math.round(kpi.timelag_ms?.entry_ms_avg || 0)} ms`} />
+            <MetricRow label="Entry" value={`${Math.round(kpi.timelag_ms?.ingress_ms_avg || 0)} ms`} />
             <MetricRow label="Processing" value={`${Math.round(kpi.timelag_ms?.engine_ms_avg || 0)} ms`} />
-            <MetricRow label="Exit" value={`${Math.round(kpi.timelag_ms?.exit_ms_avg || 0)} ms`} />
+            <MetricRow label="Exit" value={`${Math.round(kpi.timelag_ms?.tv_to_fill_ms_avg || 0)} ms`} />
 
             {kpi.timelag_ms?.samples > 0 && <MetricRow label="Samples" value={kpi.timelag_ms.samples} />}
           </div>
@@ -381,14 +381,14 @@ export default function Dashboard() {
                 <MetricRow
                   label="Gesamt"
                   value={`${Math.round(
-                    (summary.kpis.overall.timelag_ms?entry_ms_avg || 0) +
+                    (summary.kpis.overall.timelag_ms?.ingress_ms_avg || 0) +
                       (summary.kpis.overall.timelag_ms?.engine_ms_avg || 0) +
-                      (summary.kpis.overall.timelag_ms?.exit_ms_avg || 0),
+                      (summary.kpis.overall.timelag_ms?.tv_to_fill_ms_avg || 0),
                   )} ms`}
                 />
                 <MetricRow
                   label="Entry"
-                  value={`${Math.round(summary.kpis.overall.timelag_ms?.entry_ms_avg || 0)} ms`}
+                  value={`${Math.round(summary.kpis.overall.timelag_ms?.ingress_ms_avg || 0)} ms`}
                 />
                 <MetricRow
                   label="Processing"
@@ -396,7 +396,7 @@ export default function Dashboard() {
                 />
                 <MetricRow
                   label="Exit"
-                  value={`${Math.round(summary.kpis.overall.timelag_ms?.exit_ms_avg || 0)} ms`}
+                  value={`${Math.round(summary.kpis.overall.timelag_ms?.tv_to_fill_ms_avg || 0)} ms`}
                 />
               </div>
             </CardContent>
