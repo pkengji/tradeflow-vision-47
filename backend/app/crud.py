@@ -1,6 +1,6 @@
 
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from .models import User, Bot, Position, Outbox, DailyPnl, BotSymbolSetting
 from .schemas import BotCreate, BotUpdate
 from uuid import uuid4
@@ -53,7 +53,7 @@ def update_bot(db: Session, user_id: int, bot_id: int, data: BotUpdate) -> Bot |
         bot.api_key = data.api_key
     if data.api_secret is not None:
         bot.api_secret = data.api_secret
-    bot.updated_at = datetime.utcnow()
+    bot.updated_at = datetime.now(timezone.utc)
     db.commit(); db.refresh(bot)
     return bot
 
@@ -63,7 +63,7 @@ def set_bot_exchange_keys(db: Session, user_id: int, bot_id: int, api_key: str, 
         return None
     bot.api_key = api_key
     bot.api_secret = api_secret
-    bot.updated_at = datetime.utcnow()
+    bot.updated_at = datetime.now(timezone.utc)
     db.commit(); db.refresh(bot)
     return bot
 
@@ -134,10 +134,16 @@ def get_positions(
         q = q.filter(models.Position.side == side)
 
     # neueste zuerst
-    q = q.order_by(
-        models.Position.opened_at.desc().nullslast(),
-        models.Position.id.desc(),
-    )
+    if status == "closed":
+        q = q.order_by(
+            models.Position.closed_at.desc().nullslast(),
+            models.Position.id.desc(),
+        )
+    else:
+        q = q.order_by(
+            models.Position.opened_at.desc().nullslast(),
+            models.Position.id.desc(),
+        )
 
     return q.offset(skip).limit(limit).all()
 
@@ -198,7 +204,7 @@ def get_outbox(db: Session, user_id: int, status=None):
 
 # -------- Daily PnL --------
 def get_daily_pnl(db: Session, user_id: int, bot_id=None, days=30):
-    since = (datetime.utcnow() - timedelta(days=days-1)).strftime("%Y-%m-%d")
+    since = (datetime.now(timezone.utc) - timedelta(days=days-1)).strftime("%Y-%m-%d")
     q = (
         db.query(DailyPnl)
         .join(Bot, DailyPnl.bot_id == Bot.id)

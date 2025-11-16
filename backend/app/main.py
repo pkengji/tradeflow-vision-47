@@ -55,14 +55,6 @@ app.add_middleware(
     max_age=600,
 )
 
-Base.metadata.create_all(bind=engine)
-with engine.connect() as con:
-    cols = [r[1] for r in con.exec_driver_sql("PRAGMA table_info(bots)").fetchall()]
-    if "last_sync_at" not in cols:
-        con.exec_driver_sql("ALTER TABLE bots ADD COLUMN last_sync_at TIMESTAMP NULL")
-
-position_cache: dict[tuple[int, str], dict] = {}   # key = (bot_id, symbol)
-
 
 # ---------- DB Session ----------
 def get_db():
@@ -264,7 +256,7 @@ def delete_bot(bot_id: int):
             bot.status = models.BotStatus.deleted
         if hasattr(bot, "updated_at"):
             from datetime import datetime
-            bot.updated_at = datetime.utcnow()
+            bot.updated_at = datetime.now(timezone.utc)
         db.add(bot); db.commit()
         return {"ok": True}
 

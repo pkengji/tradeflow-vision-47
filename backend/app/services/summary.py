@@ -15,6 +15,14 @@ from app import models
 
 HourRange = Optional[Tuple[Tuple[int, int], Tuple[int, int]]]  # ((h1,m1), (h2,m2))
 
+
+def _to_utc_aware(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -28,7 +36,7 @@ def days_ago_utc(n: int) -> datetime:
     return utc_now() - timedelta(days=n)
 
 def safe_rate(wins: int, total: int) -> float:
-    return (wins / total * 100.0) if total > 0 else 0.0
+    return (wins / total) if total > 0 else 0.0
 
 def time_in_range(dt: Optional[datetime], rng: HourRange) -> bool:
     """
@@ -37,6 +45,7 @@ def time_in_range(dt: Optional[datetime], rng: HourRange) -> bool:
     """
     if not rng or not dt:
         return True
+    dt = _to_utc_aware(dt)
     (ah, am), (bh, bm) = rng
     t = (dt.hour, dt.minute)
     tmin = (ah, am); tmax = (bh, bm)
@@ -74,6 +83,31 @@ def _sum_usdt_tx(positions: Iterable[models.Position]) -> Dict[str, float]:
         "slip_time": slip_time,
     }
 
+def _avg_tx_cost_pct(positions: Iterable[models.Position]) -> float:
+    """
+    Durchschnittliche Transaktionskosten in % des Risikos.
+    Für jede Position: (Fees + Funding + Slippage) / risk_amount_usdt.
+    Positionen ohne risk_amount_usdt oder mit risk <= 0 werden ignoriert.
+    """
+    values: List[float] = []
+    for p in positions:
+        risk = getattr(p, "risk_amount_usdt", None)
+        if not risk or risk <= 0.0:
+            continue
+
+        fees = float(p.fee_open_usdt or 0.0) + float(p.fee_close_usdt or 0.0)
+        funding = float(p.funding_usdt or 0.0)
+        slip_liq = float(p.slippage_entry_usdt or 0.0) + float(p.slippage_exit_usdt or 0.0)
+        slip_time = float(p.slippage_timelag_usdt or 0.0)
+
+        cost = fees + funding + slip_liq + slip_time
+        values.append(cost / risk * 100.0)
+
+    if not values:
+        return 0.0
+    return sum(values) / len(values)
+
+
 def _timelag_kpis_for_range(
     db: Session,
     user_id: int,
@@ -92,6 +126,12 @@ def _timelag_kpis_for_range(
       - tv_to_send_ms_avg = sent_at         - tv_ts
       - tv_to_fill_ms_avg = first_exec_at   - tv_ts            (falls vorhanden)
     Gefiltert nach closed_at in [dt_from, dt_to).
+
+
+    NEU:
+    - entry     = bot_received_at   -   tv_ts
+    - engine    = processet_at      -   bot_received_at    
+    - exit      = first_exec_at     -   sent_at
     """
     q = (
         db.query(models.Position, models.TvSignal, models.OutboxItem)
@@ -112,8 +152,11 @@ def _timelag_kpis_for_range(
 
     rows = q.all()
 
-    ingress, engine, tv_to_send, tv_to_fill = [], [], [], []
+    entry, engine, exit = [], [], []
     for p, tv, ob in rows:
+        opened_at = _to_utc_aware(p.opened_at)
+        closed_at = _to_utc_aware(p.closed_at)
+        
         if not _dir_ok(p, direction):
             continue
         if not time_in_range(p.opened_at, open_rng):
@@ -122,25 +165,20 @@ def _timelag_kpis_for_range(
             continue
 
         if getattr(tv, "tv_ts", None) and getattr(tv, "bot_received_at", None):
-            ingress.append((tv.bot_received_at - tv.tv_ts).total_seconds() * 1000.0)
+            entry.append((tv.bot_received_at - tv.tv_ts).total_seconds() * 1000.0)
 
         if getattr(tv, "processed_at", None) and getattr(tv, "bot_received_at", None):
             engine.append((tv.processed_at - tv.bot_received_at).total_seconds() * 1000.0)
 
         if getattr(ob, "sent_at", None) and getattr(tv, "tv_ts", None):
-            tv_to_send.append((ob.sent_at - tv.tv_ts).total_seconds() * 1000.0)
-
-        if getattr(p, "first_exec_at", None) and getattr(tv, "tv_ts", None):
-            tv_to_fill.append((p.first_exec_at - tv.tv_ts).total_seconds() * 1000.0)
-
+            exit.append((ob.sent_at - tv.processed_at).total_seconds() * 1000.0)
     def _avg(lst: List[float]) -> Optional[float]:
         return (sum(lst) / len(lst)) if lst else None
 
     return {
-        "ingress_ms_avg": _avg(ingress),
+        "entry_ms_avg": _avg(entry),
         "engine_ms_avg": _avg(engine),
-        "tv_to_send_ms_avg": _avg(tv_to_send),
-        "tv_to_fill_ms_avg": _avg(tv_to_fill),
+        "exit_ms_avg": _avg(exit),
         "samples": len(rows),
     }
 
@@ -223,19 +261,24 @@ def compute_dashboard_summary(db: Session, user_id: int, f: SummaryFilters) -> D
     open_positions = [p for p in positions_all if p.closed_at is None]
     closed_positions = [p for p in positions_all if p.closed_at is not None]
 
-    def _closed_in(p: models.Position, dt_from: datetime, dt_to: datetime) -> bool:
-        if not p.closed_at:
+    def _closed_in(p, dt_from, dt_to):
+        if p.closed_at is None:
             return False
-        return (p.closed_at >= dt_from) and (p.closed_at < dt_to)
+        closed_at = _to_utc_aware(p.closed_at)
+        return (closed_at >= dt_from) and (closed_at < dt_to)
 
     def _apply_intraday_and_dir(pl: Iterable[models.Position]) -> List[models.Position]:
         res = []
+
         for p in pl:
+            opened_at = _to_utc_aware(p.opened_at)
+            closed_at = _to_utc_aware(p.closed_at)
+
             if not _dir_ok(p, f.direction):
                 continue
-            if not time_in_range(p.opened_at, f.open_hour_range):
+            if not time_in_range(opened_at, f.open_hour_range):
                 continue
-            if not time_in_range(p.closed_at, f.close_hour_range):
+            if not time_in_range(closed_at, f.close_hour_range):
                 continue
             res.append(p)
         return res
@@ -244,27 +287,66 @@ def compute_dashboard_summary(db: Session, user_id: int, f: SummaryFilters) -> D
     month_pos = _apply_intraday_and_dir([p for p in closed_positions if _closed_in(p, kpi_month_from, kpi_month_to)])
     last30_pos = _apply_intraday_and_dir([p for p in closed_positions if _closed_in(p, kpi_last30_from, kpi_last30_to)])
 
-    # Realized & Winrate
-    today_realized = sum(float(p.pnl_usdt or 0.0) for p in today_pos)
-    month_realized = sum(float(p.pnl_usdt or 0.0) for p in month_pos)
-    last30_realized = sum(float(p.pnl_usdt or 0.0) for p in last30_pos)
+    # Overall-Positionen (Gesamtansicht basierend auf date_from/date_to)
+    if f.date_from or f.date_to:
+        overall_raw: List[models.Position] = []
+        overall_from = start_of_day_utc(f.date_from) if f.date_from else None
+        overall_to = start_of_day_utc(f.date_to + timedelta(days=1)) if f.date_to else None
 
-    today_wins, month_wins, last30_wins = (
-        sum(1 for p in today_pos if float(p.pnl_usdt or 0.0) > 0.0),
-        sum(1 for p in month_pos if float(p.pnl_usdt or 0.0) > 0.0),
-        sum(1 for p in last30_pos if float(p.pnl_usdt or 0.0) > 0.0),
-    )
-    today_total, month_total, last30_total = len(today_pos), len(month_pos), len(last30_pos)
+        for p in closed_positions:
+            if p.closed_at is None:
+                continue
+            closed_at = _to_utc_aware(p.closed_at)
+            if overall_from and closed_at < overall_from:
+                continue
+            if overall_to and closed_at >= overall_to:
+                continue
+            overall_raw.append(p)
+    else:
+        # Kein Datumsfilter gesetzt → gesamte Historie für die Gesamtansicht nutzen
+        overall_raw = list(closed_positions)
+
+    overall_pos = _apply_intraday_and_dir(overall_raw)
+
+    # Realized & Winrate (inkl. Gesamtansicht)
+    def _realized(pl: Iterable[models.Position]) -> float:
+        return sum(float(p.pnl_usdt or 0.0) for p in pl)
+
+    today_realized = _realized(today_pos)
+    month_realized = _realized(month_pos)
+    last30_realized = _realized(last30_pos)
+    overall_realized = _realized(overall_pos)
+
+    def _wins(pl: Iterable[models.Position]) -> int:
+        return sum(1 for p in pl if float(p.pnl_usdt or 0.0) > 0.0)
+
+    today_wins = _wins(today_pos)
+    month_wins = _wins(month_pos)
+    last30_wins = _wins(last30_pos)
+    overall_wins = _wins(overall_pos)
+
+    today_total = len(today_pos)
+    month_total = len(month_pos)
+    last30_total = len(last30_pos)
+    overall_total = len(overall_pos)
 
     # USDT-Breakdown
     tx_today = _sum_usdt_tx(today_pos)
     tx_month = _sum_usdt_tx(month_pos)
     tx_last30 = _sum_usdt_tx(last30_pos)
+    tx_overall = _sum_usdt_tx(overall_pos)
+
+    # Tx-Kosten in % (gewichteter Durchschnitt über Trades mit risk_amount)
+    tx_costs_today_pct = _avg_tx_cost_pct(today_pos)
+    tx_costs_month_pct = _avg_tx_cost_pct(month_pos)
+    tx_costs_last30_pct = _avg_tx_cost_pct(last30_pos)
+    tx_costs_overall_pct = _avg_tx_cost_pct(overall_pos)
 
     # Timelag-KPIs
     tl_today = _timelag_kpis_for_range(db, user_id, kpi_today_from, kpi_today_to, f.bot_ids, f.symbols, f.direction, f.open_hour_range, f.close_hour_range)
     tl_month = _timelag_kpis_for_range(db, user_id, kpi_month_from, kpi_month_to, f.bot_ids, f.symbols, f.direction, f.open_hour_range, f.close_hour_range)
     tl_last30 = _timelag_kpis_for_range(db, user_id, kpi_last30_from, kpi_last30_to, f.bot_ids, f.symbols, f.direction, f.open_hour_range, f.close_hour_range)
+    tl_overall = _timelag_kpis_for_range(db, user_id, pf_from_dt, pf_to_dt, f.bot_ids, f.symbols, f.direction, f.open_hour_range, f.close_hour_range)
 
     # 3) Equity Timeseries (nur ZEIT-basierend)
     ts_from = start_of_day_utc(f.date_from) if f.date_from else start_of_day_utc((utc_now() - timedelta(days=30)).date())
@@ -307,24 +389,35 @@ def compute_dashboard_summary(db: Session, user_id: int, f: SummaryFilters) -> D
     summary: Dict[str, Any] = {
         "portfolio_total_equity": portfolio_total_equity,  # nur ZEIT-gefiltert
         "kpis": {
+            "overall": {
+                "realized_pnl": overall_realized,
+                "win_rate": safe_rate(overall_wins, overall_total),
+                "trade_count": overall_total,
+                "tx_costs_pct": tx_costs_overall_pct,
+                "tx_breakdown_usdt": tx_overall,
+                "timelag_ms": tl_overall,
+            },
             "today": {
                 "realized_pnl": today_realized,
                 "win_rate": safe_rate(today_wins, today_total),
-                "tx_costs_pct": 0.0,  # Prozent kann das Frontend aus USDT ableiten
+                "trade_count": today_total, 
+                "tx_costs_pct": tx_costs_today_pct,
                 "tx_breakdown_usdt": tx_today,
                 "timelag_ms": tl_today,
             },
             "month": {
                 "realized_pnl": month_realized,
                 "win_rate": safe_rate(month_wins, month_total),
-                "tx_costs_pct": 0.0,
+                "trade_count": month_total,
+                "tx_costs_pct": tx_costs_month_pct,
                 "tx_breakdown_usdt": tx_month,
                 "timelag_ms": tl_month,
             },
             "last_30d": {
                 "realized_pnl": last30_realized,
                 "win_rate": safe_rate(last30_wins, last30_total),
-                "tx_costs_pct": 0.0,
+                "trade_count": last30_total,
+                "tx_costs_pct": tx_costs_last30_pct,
                 "tx_breakdown_usdt": tx_last30,
                 "timelag_ms": tl_last30,
             },

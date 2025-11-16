@@ -2,7 +2,7 @@
 # app/services/metrics.py
 from __future__ import annotations
 from typing import Dict, Any, Optional, List, Tuple
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, timezone,  date
 from sqlalchemy.orm import Session
 from zoneinfo import ZoneInfo
 
@@ -30,6 +30,14 @@ def _safe(x) -> float:
 def _ratio(n: float, d: float) -> Optional[float]:
     return (n / d * 100.0) if d else None
 
+def _to_utc_aware(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 
 def _has_full_timelag(p: Position) -> bool:
     """
@@ -53,10 +61,10 @@ def get_timelags_ms(p: Position):
     s = p.tv_signal
     if not s:
         return None, None, None
-    tv_ts   = s.tv_ts
-    bot_rcv = s.bot_received_at
-    bot_sent= s.bot_sent_at
-    exch_ts = p.first_exec_at or p.opened_at
+    tv_ts   = _to_utc_aware(s.tv_ts)
+    bot_rcv = _to_utc_aware(s.bot_received_at)
+    bot_sent= _to_utc_aware(s.bot_sent)
+    exch_ts = _to_utc_aware(p.first_exec_at or p.opened_at)
 
     tl_tv_bot   = (bot_rcv - tv_ts).total_seconds()*1000 if tv_ts and bot_rcv else None
     tl_bot_proc = (bot_sent - bot_rcv).total_seconds()*1000 if bot_sent and bot_rcv else None

@@ -42,8 +42,8 @@ class Bot(Base):
     is_active = Column(Boolean, default=True)
     is_deleted = Column(Boolean, default=False)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc), nullable=False)
 
     # Ownership
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -71,8 +71,8 @@ class BotSymbolSetting(Base):
     enabled = Column(Boolean, default=True)
     target_risk_amount = Column(Float, default=1.0)
     leverage_override = Column(Float, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc), nullable=False)
 
 
 # =========================
@@ -99,6 +99,7 @@ class Position(Base):
 
     # Menge
     qty = Column(Float, nullable=True)
+    risk_amount_usdt = Column(Float, nullable=True)
 
     # ---------- ENTRY (3x) ----------
     entry_price_trigger = Column(Float, nullable=True)
@@ -159,7 +160,7 @@ class Outbox(Base):
     kind = Column(String, nullable=False)  # signal, order, etc.
     payload = Column(Text, nullable=True)
     status = Column(String, default="pending")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     bot = relationship("Bot")
 
@@ -193,7 +194,7 @@ class Execution(Base):
     fee_currency = Column(String, default="USDT")
     liquidity = Column(String, nullable=True)    # 'maker'/'taker'
     reduce_only = Column(Boolean, default=False) # True => Closing-Fee
-    ts = Column(DateTime, default=datetime.utcnow, nullable=False)
+    ts = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     exchange_exec_id = Column(String, index=True)
     exchange_order_id = Column(String, index=True)
@@ -215,7 +216,7 @@ class FundingEvent(Base):
     symbol = Column(String, nullable=True)
     amount_usdt = Column(Float, default=0.0)
     rate = Column(Float, nullable=True)
-    ts = Column(DateTime, default=datetime.utcnow, nullable=False)
+    ts = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     bot = relationship("Bot")
 
@@ -244,8 +245,8 @@ class Order(Base):
     exchange_order_id = Column(String, unique=True, index=True)
     position_id = Column(Integer, ForeignKey("positions.id"), nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    filled_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    filled_at = Column(DateTime(timezone=True), nullable=True)
 
     bot = relationship("Bot")
     position = relationship("Position", back_populates="orders")
@@ -260,7 +261,7 @@ class Symbol(Base):
     base_currency: Mapped[str] = mapped_column(String)
     quote_currency: Mapped[str] = mapped_column(String)
     max_leverage: Mapped[float] = mapped_column(Float, default=100.0)
-    refreshed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    refreshed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     icon_url = Column(String, nullable=True)                 # Quelle (CDN/Coingecko…)
     icon_local_path = Column(String, nullable=True)          # z.B. "icons/btc.png"
     icon_last_synced_at = Column(DateTime(timezone=True), nullable=True)
@@ -292,8 +293,8 @@ class OutboxItem(Base):
     # Hinweis: gültige Werte laut deiner Vorgabe:
     # pending_approval, waiting_for_approval, sent, completed, rejected, failed, error
     error = Column(Text, nullable=True)
-    sent_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
     user = relationship("User", backref="outbox_items")
     bot = relationship("Bot", backref="outbox_items")
@@ -331,8 +332,8 @@ class TvSignal(Base):
     status = Column(Text, nullable=False, default="received")
     error_message = Column(Text, nullable=True)
 
-    bot_received_at = Column(DateTime, nullable=False, default=datetime.utcnow)  # Bot hat Signal empfangenU
-    processed_at = Column(DateTime, nullable=True)                           # Bot hat Order gesendet (zumindest in Outbox)
+    bot_received_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))  # Bot hat Signal empfangenU
+    processed_at = Column(DateTime(timezone=True), nullable=True)                           # Bot hat Order gesendet (zumindest in Outbox)
 
     raw_json = Column(Text, nullable=True)  # komplette TV-JSON
 
@@ -369,7 +370,7 @@ class Cashflow(Base):  # ADDED
     tx_type = Column(String, nullable=True)     # z. B. 'on-chain', 'off-chain'
     tx_id = Column(String, nullable=True, index=True)    # externe TX-ID (unique-ish)
     account_kind = Column(String, nullable=True)         # 'main' | 'sub'
-    is_internal = Column(Boolean, default=True)             # sollte False sein (interne Transfers nicht speichern)
+    is_internal = Column(Boolean, nullable=False, default=True)             # sollte False sein (interne Transfers nicht speichern)
     status = Column(String, nullable=True)               # 'success', 'pending', etc.
     external_addr = Column(Text, nullable=True) 
 
@@ -397,7 +398,7 @@ class PushSubscription(Base):
     endpoint = Column(String, nullable=False)
     p256dh = Column(String, nullable=False)
     auth = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     user = relationship("User")
 

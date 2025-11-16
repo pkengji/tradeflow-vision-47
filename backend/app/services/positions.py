@@ -37,6 +37,15 @@ def handle_position_open(
         funding_usdt=0.0,            # bewusst 0 für offene
     )
 
+    bss = (
+        db.query(models.BotSymbolSetting)
+          .filter(models.BotSymbolSetting.bot_id == bot_id)
+          .filter(models.BotSymbolSetting.symbol == symbol)
+          .first()
+    )
+    if bss and getattr(bss, "target_risk_amount", None) is not None:
+        pos.risk_amount_usdt = float(bss.target_risk_amount or 0.0)
+
     es, _, _ = _slippage_entry_exit_usdt(pos)
     pos.slippage_entry_usdt = es
     

@@ -360,7 +360,7 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
             })
 
         # Chronologisch sortieren
-        agg.sort(key=lambda g: (g["first_ts"] or datetime.utcnow()))
+        agg.sort(key=lambda g: (g["first_ts"] or datetime.now(timezone.utc)))
 
         i = 0
         eps = 1e-9
@@ -382,7 +382,7 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
                 i += 1
                 continue
 
-            if (g1["first_ts"] or datetime.utcnow()) <= (g2["first_ts"] or datetime.utcnow()):
+            if (g1["first_ts"] or datetime.now(timezone.utc)) <= (g2["first_ts"] or datetime.now(timezone.utc)):
                 entry_g, exit_g = g1, g2
             else:
                 entry_g, exit_g = g2, g1
@@ -766,7 +766,7 @@ def rebuild_positions(db: Session, *, bot_id: int) -> int:
 
     created = 0
     for symbol, rows in grouped.items():
-        rows.sort(key=lambda x: x.ts or datetime.utcnow())
+        rows.sort(key=lambda x: x.ts or datetime.now(timezone.utc))
         net = 0.0
         entry, exit = [], []
         fee_open, fee_close = 0.0, 0.0
