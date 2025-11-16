@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { apiRequest } from '@/lib/api';
 import api from '@/lib/api';
 import TradesFiltersBar, { type TradesFilters } from '@/components/app/TradesFiltersBar';
@@ -6,8 +6,9 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
-import { SlidersHorizontal } from 'lucide-react';
+import { SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 // Backend API Response Format
 type KpiBlock = {
@@ -61,6 +62,15 @@ const formatTimelag = (value: number | null | undefined): string => {
 const formatNumber = (value: number | null | undefined): string => {
   if (value === null || value === undefined || Number.isNaN(value)) return '—';
   return value.toString();
+};
+
+// Chart data formatter
+const formatChartData = (timeseries: { date: string; pnl: number; equity: number }[]) => {
+  return timeseries.map(item => ({
+    date: item.date,
+    Equity: item.equity,
+    'Daily P&L': item.pnl,
+  }));
 };
 
 export default function Dashboard() {
@@ -122,65 +132,33 @@ export default function Dashboard() {
     setShowFilters(false);
   };
 
-  // Helper to render a KPI block
-  const renderKpiBlock = (title: string, kpis: KpiBlock | undefined) => {
-    const k = kpis || {
-      realized_pnl: null,
-      win_rate: null,
-      count_signals: null,
-      fee_pct: null,
-      slip_liq_pct: null,
-      slip_time_pct: null,
-      fee_usdt: null,
-      slip_liq_usdt: null,
-      slip_time_usdt: null,
-      timelag_entry_ms: null,
-      timelag_processing_ms: null,
-      timelag_exit_ms: null,
-    };
+  const chartData = useMemo(() => {
+    if (!summary?.timeseries) return [];
+    return formatChartData(summary.timeseries);
+  }, [summary?.timeseries]);
 
+  // Custom tooltip to show daily PnL with color
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (!active || !payload || !payload.length) return null;
+    
+    const data = payload[0].payload;
+    const dailyPnl = data['Daily P&L'];
+    const isPositive = dailyPnl >= 0;
+    
     return (
-      <Card key={title}>
-        <CardHeader>
-          <CardTitle className="text-base font-semibold">{title}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Performance */}
-          <div>
-            <div className="text-xs text-muted-foreground mb-2">Performance</div>
-            <div className="grid grid-cols-2 gap-3">
-              <MetricItem label="Realized P&L" value={formatUSDT(k.realized_pnl)} />
-              <MetricItem label="Win Rate" value={formatWinRate(k.win_rate)} />
-              <MetricItem label="Anzahl Signale" value={formatNumber(k.count_signals)} />
-            </div>
-          </div>
-
-          {/* Transaction Costs */}
-          <div>
-            <div className="text-xs text-muted-foreground mb-2">Transaktionskosten</div>
-            <div className="grid grid-cols-2 gap-3">
-              <MetricItem label="Total %" value={formatPercent(k.fee_pct)} />
-              <MetricItem label="Total USDT" value={formatUSDT(k.fee_usdt)} />
-              <MetricItem label="Fees %" value={formatPercent(k.fee_pct)} />
-              <MetricItem label="Fees USDT" value={formatUSDT(k.fee_usdt)} />
-              <MetricItem label="Liq. Slippage %" value={formatPercent(k.slip_liq_pct)} />
-              <MetricItem label="Liq. Slippage USDT" value={formatUSDT(k.slip_liq_usdt)} />
-              <MetricItem label="Time Slippage %" value={formatPercent(k.slip_time_pct)} />
-              <MetricItem label="Time Slippage USDT" value={formatUSDT(k.slip_time_usdt)} />
-            </div>
-          </div>
-
-          {/* Timelags */}
-          <div>
-            <div className="text-xs text-muted-foreground mb-2">Timelags</div>
-            <div className="grid grid-cols-2 gap-3">
-              <MetricItem label="Entry" value={formatTimelag(k.timelag_entry_ms)} />
-              <MetricItem label="Processing" value={formatTimelag(k.timelag_processing_ms)} />
-              <MetricItem label="Exit" value={formatTimelag(k.timelag_exit_ms)} />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="bg-card border rounded-lg p-3 shadow-lg">
+        <p className="text-sm font-medium mb-2">{data.date}</p>
+        <p className="text-sm">
+          <span className="text-muted-foreground">Equity: </span>
+          <span className="font-medium">{formatUSDT(data.Equity)}</span>
+        </p>
+        <p className="text-sm">
+          <span className="text-muted-foreground">Daily P&L: </span>
+          <span className={`font-medium ${isPositive ? 'text-green-600 dark:text-green-500' : 'text-red-600 dark:text-red-500'}`}>
+            {formatUSDT(dailyPnl)}
+          </span>
+        </p>
+      </div>
     );
   };
 
@@ -206,108 +184,235 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="space-y-6">
-        {/* Portfolio Total */}
-        {isLoading ? (
+      {!summary ? (
+        <div className="space-y-6">
+          {/* Loading skeletons */}
           <Card>
-            <CardHeader>
-              <Skeleton className="h-5 w-40" />
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="h-8 w-32" />
-            </CardContent>
+            <CardHeader><Skeleton className="h-5 w-40" /></CardHeader>
+            <CardContent><Skeleton className="h-8 w-32" /></CardContent>
           </Card>
-        ) : (
+          {[1, 2, 3, 4].map(i => (
+            <Card key={i}>
+              <CardHeader><Skeleton className="h-5 w-40" /></CardHeader>
+              <CardContent className="space-y-3">
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-32 w-full" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Portfolio Total */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base font-semibold">Portfolio Total</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">
-                {formatUSDT(summary?.portfolio_total_equity || 0)}
+                {formatUSDT(summary.portfolio_total_equity)}
               </div>
             </CardContent>
           </Card>
-        )}
 
-        {/* Chart */}
-        {isLoading ? (
+          {/* Gesamtansicht (filtered) */}
           <Card>
             <CardHeader>
-              <Skeleton className="h-5 w-40" />
+              <CardTitle className="text-base font-semibold">Gesamtansicht</CardTitle>
             </CardHeader>
-            <CardContent>
-              <Skeleton className="h-80 w-full" />
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <MetricRow label="Realized P&L" value={formatUSDT(summary.kpis.overall.realized_pnl)} />
+                <MetricRow label="Win Rate" value={formatWinRate(summary.kpis.overall.win_rate)} />
+                <MetricRow label="Anzahl Signale" value={formatNumber(summary.kpis.overall.count_signals)} />
+              </div>
+
+              <Collapsible>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
+                  <ChevronDown className="h-4 w-4" />
+                  Transaktionskosten
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 space-y-2">
+                  <MetricRow label="Total %" value={formatPercent(summary.kpis.overall.fee_pct)} />
+                  <MetricRow label="Fees %" value={formatPercent(summary.kpis.overall.fee_pct)} />
+                  <MetricRow label="Liq. Slippage %" value={formatPercent(summary.kpis.overall.slip_liq_pct)} />
+                  <MetricRow label="Time Slippage %" value={formatPercent(summary.kpis.overall.slip_time_pct)} />
+                </CollapsibleContent>
+              </Collapsible>
+
+              <Collapsible>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
+                  <ChevronDown className="h-4 w-4" />
+                  Timelags
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 space-y-2">
+                  <MetricRow label="Entry" value={formatTimelag(summary.kpis.overall.timelag_entry_ms)} />
+                  <MetricRow label="Processing" value={formatTimelag(summary.kpis.overall.timelag_processing_ms)} />
+                  <MetricRow label="Exit" value={formatTimelag(summary.kpis.overall.timelag_exit_ms)} />
+                </CollapsibleContent>
+              </Collapsible>
             </CardContent>
           </Card>
-        ) : (
+
+          {/* Heute */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base font-semibold">Heute</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <MetricRow label="Realized P&L" value={formatUSDT(summary.kpis.today.realized_pnl)} />
+                <MetricRow label="Win Rate" value={formatWinRate(summary.kpis.today.win_rate)} />
+                <MetricRow label="Anzahl Signale" value={formatNumber(summary.kpis.today.count_signals)} />
+              </div>
+
+              <Collapsible>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
+                  <ChevronDown className="h-4 w-4" />
+                  Transaktionskosten
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 space-y-2">
+                  <MetricRow label="Total %" value={formatPercent(summary.kpis.today.fee_pct)} />
+                  <MetricRow label="Fees %" value={formatPercent(summary.kpis.today.fee_pct)} />
+                  <MetricRow label="Liq. Slippage %" value={formatPercent(summary.kpis.today.slip_liq_pct)} />
+                  <MetricRow label="Time Slippage %" value={formatPercent(summary.kpis.today.slip_time_pct)} />
+                </CollapsibleContent>
+              </Collapsible>
+
+              <Collapsible>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
+                  <ChevronDown className="h-4 w-4" />
+                  Timelags
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 space-y-2">
+                  <MetricRow label="Entry" value={formatTimelag(summary.kpis.today.timelag_entry_ms)} />
+                  <MetricRow label="Processing" value={formatTimelag(summary.kpis.today.timelag_processing_ms)} />
+                  <MetricRow label="Exit" value={formatTimelag(summary.kpis.today.timelag_exit_ms)} />
+                </CollapsibleContent>
+              </Collapsible>
+            </CardContent>
+          </Card>
+
+          {/* Aktueller Monat */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base font-semibold">Aktueller Monat</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <MetricRow label="Realized P&L" value={formatUSDT(summary.kpis.month.realized_pnl)} />
+                <MetricRow label="Win Rate" value={formatWinRate(summary.kpis.month.win_rate)} />
+                <MetricRow label="Anzahl Signale" value={formatNumber(summary.kpis.month.count_signals)} />
+              </div>
+
+              <Collapsible>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
+                  <ChevronDown className="h-4 w-4" />
+                  Transaktionskosten
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 space-y-2">
+                  <MetricRow label="Total %" value={formatPercent(summary.kpis.month.fee_pct)} />
+                  <MetricRow label="Fees %" value={formatPercent(summary.kpis.month.fee_pct)} />
+                  <MetricRow label="Liq. Slippage %" value={formatPercent(summary.kpis.month.slip_liq_pct)} />
+                  <MetricRow label="Time Slippage %" value={formatPercent(summary.kpis.month.slip_time_pct)} />
+                </CollapsibleContent>
+              </Collapsible>
+
+              <Collapsible>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
+                  <ChevronDown className="h-4 w-4" />
+                  Timelags
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 space-y-2">
+                  <MetricRow label="Entry" value={formatTimelag(summary.kpis.month.timelag_entry_ms)} />
+                  <MetricRow label="Processing" value={formatTimelag(summary.kpis.month.timelag_processing_ms)} />
+                  <MetricRow label="Exit" value={formatTimelag(summary.kpis.month.timelag_exit_ms)} />
+                </CollapsibleContent>
+              </Collapsible>
+            </CardContent>
+          </Card>
+
+          {/* Letzte 30 Tage */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base font-semibold">Letzte 30 Tage</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <MetricRow label="Realized P&L" value={formatUSDT(summary.kpis.last_30d.realized_pnl)} />
+                <MetricRow label="Win Rate" value={formatWinRate(summary.kpis.last_30d.win_rate)} />
+                <MetricRow label="Anzahl Signale" value={formatNumber(summary.kpis.last_30d.count_signals)} />
+              </div>
+
+              <Collapsible>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
+                  <ChevronDown className="h-4 w-4" />
+                  Transaktionskosten
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 space-y-2">
+                  <MetricRow label="Total %" value={formatPercent(summary.kpis.last_30d.fee_pct)} />
+                  <MetricRow label="Fees %" value={formatPercent(summary.kpis.last_30d.fee_pct)} />
+                  <MetricRow label="Liq. Slippage %" value={formatPercent(summary.kpis.last_30d.slip_liq_pct)} />
+                  <MetricRow label="Time Slippage %" value={formatPercent(summary.kpis.last_30d.slip_time_pct)} />
+                </CollapsibleContent>
+              </Collapsible>
+
+              <Collapsible>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
+                  <ChevronDown className="h-4 w-4" />
+                  Timelags
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 space-y-2">
+                  <MetricRow label="Entry" value={formatTimelag(summary.kpis.last_30d.timelag_entry_ms)} />
+                  <MetricRow label="Processing" value={formatTimelag(summary.kpis.last_30d.timelag_processing_ms)} />
+                  <MetricRow label="Exit" value={formatTimelag(summary.kpis.last_30d.timelag_exit_ms)} />
+                </CollapsibleContent>
+              </Collapsible>
+            </CardContent>
+          </Card>
+
+          {/* Equity Chart - at the bottom */}
           <Card>
             <CardHeader>
               <CardTitle>Equity & P&L</CardTitle>
             </CardHeader>
             <CardContent>
-              {summary?.timeseries && summary.timeseries.length > 0 ? (
+              {chartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={320}>
-                  <LineChart data={summary.timeseries}>
+                  <LineChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                     <XAxis dataKey="date" className="text-xs" />
                     <YAxis className="text-xs" />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--card))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px',
-                      }}
-                    />
+                    <Tooltip content={<CustomTooltip />} />
                     <Legend />
-                    <Line type="monotone" dataKey="equity" stroke="hsl(var(--primary))" name="Equity" />
-                    <Line type="monotone" dataKey="pnl" stroke="hsl(var(--chart-2))" name="P&L" />
+                    <Line 
+                      type="monotone" 
+                      dataKey="Equity" 
+                      stroke="hsl(var(--primary))" 
+                      strokeWidth={2}
+                      dot={false}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
                 <div className="h-80 flex items-center justify-center text-muted-foreground">
-                  No chart data available
+                  Keine Chart-Daten verfügbar
                 </div>
               )}
             </CardContent>
           </Card>
-        )}
-
-        {/* KPI Sections - Always show all 4 */}
-        {isLoading ? (
-          <>
-            {['Gesamtansicht', 'Heute', 'Aktueller Monat', 'Letzte 30 Tage'].map((title) => (
-              <Card key={title}>
-                <CardHeader>
-                  <Skeleton className="h-5 w-40" />
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <Skeleton className="h-20 w-full" />
-                  <Skeleton className="h-32 w-full" />
-                  <Skeleton className="h-24 w-full" />
-                </CardContent>
-              </Card>
-            ))}
-          </>
-        ) : (
-          <>
-            {renderKpiBlock('Gesamtansicht', summary?.kpis?.overall)}
-            {renderKpiBlock('Heute', summary?.kpis?.today)}
-            {renderKpiBlock('Aktueller Monat', summary?.kpis?.month)}
-            {renderKpiBlock('Letzte 30 Tage', summary?.kpis?.last_30d)}
-          </>
-        )}
-      </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }
 
-// Helper component for metric items
-function MetricItem({ label, value }: { label: string; value: string }) {
+// Helper component for metric rows
+function MetricRow({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-sm font-medium">{value}</div>
+    <div className="flex justify-between text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium">{value}</span>
     </div>
   );
 }
