@@ -184,7 +184,7 @@ export type PositionListItem = {
   last_exec_at?: string | null;
 };
 
-export type PnlDailyPoint = { date: string; pnl: number };
+export type PnlDailyPoint = { date: string; pnl: number; equity: number };
 
 // Aliases für bestehende Importe in Dashboard.tsx
 export type DailyPnl = PnlDailyPoint;
@@ -234,6 +234,7 @@ export type TradesResponse = {
 export type DashboardSummary = {
   portfolio_total_equity: number;
   kpis: {
+    overall: DashboardKPIPeriod;
     today: DashboardKPIPeriod;
     month: DashboardKPIPeriod;
     last_30d: DashboardKPIPeriod;
@@ -247,8 +248,15 @@ export type DashboardSummary = {
 
 export type DashboardKPIPeriod = {
   realized_pnl: number;
+  trade_count: number;
   win_rate: number;
   tx_costs_pct: number;
+  tx_breakdown_pct?: {
+    fees: number;
+    funding: number;
+    slip_liquidity: number;
+    slip_time: number;
+  };
   tx_breakdown_usdt: {
     fees: number;
     funding: number;
@@ -398,9 +406,19 @@ async function getSymbols(): Promise<string[]> {
   return rows.map((s) => s.symbol ?? (s as any).name ?? String(s));
 }
 
-async function getDailyPnl(params?: { days?: number; bot_id?: number }): Promise<PnlDailyPoint[]> {
-  const rows = await http<PnlDailyRowRaw[]>('/api/v1/dashboard/daily-pnl', { query: params });
-  return rows.map((r) => ({ date: r.day, pnl: r.pnl_net_usdt ?? 0 }));
+async function getDailyPnl(params?: { 
+  days?: number; 
+  bot_id?: number;
+  bot_ids?: string;
+  symbols?: string;
+  direction?: string;
+  date_from?: string;
+  date_to?: string;
+  open_hour?: string;
+  close_hour?: string;
+}): Promise<PnlDailyPoint[]> {
+  const rows = await http<Array<{ day: string; pnl_net_usdt: number; equity: number }>>('/api/v1/dashboard/daily-pnl', { query: params });
+  return rows.map((r) => ({ date: r.day, pnl: r.pnl_net_usdt ?? 0, equity: r.equity ?? 0 }));
 }
 
 async function getOutbox(params?: { status?: string; limit?: number }): Promise<OutboxItem[]> {

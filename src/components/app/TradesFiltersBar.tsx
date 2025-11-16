@@ -91,9 +91,9 @@ export default function TradesFiltersBar({
   const [symbolSearch, setSymbolSearch] = useState('');
 
   // Use Dashboard props or Trades/Signals props
-  const isDashboardMode = selectedBots !== undefined;
-  const currentBots = isDashboardMode ? selectedBots : value?.botIds || [];
-  const currentSymbols = isDashboardMode ? selectedSymbols : value?.symbols || [];
+  const isDashboardMode = onBotsChange !== undefined;
+  const currentBots = isDashboardMode ? (selectedBots || []) : (value?.botIds || []);
+  const currentSymbols = isDashboardMode ? (selectedSymbols || []) : (value?.symbols || []);
   const currentDateFrom = isDashboardMode ? dateFrom : value?.dateFrom;
   const currentDateTo = isDashboardMode ? dateTo : value?.dateTo;
 

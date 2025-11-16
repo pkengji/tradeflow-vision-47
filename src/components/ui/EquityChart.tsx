@@ -1,13 +1,13 @@
 
 import { useEffect, useRef } from "react";
 
-type Point = { ts: string; day_pnl: number };
+type Point = { date: string; equity: number };
 export default function EquityChart({ data }: { data: Point[] }){
   // Simple inline SVG; no external lib needed
   const width = 600, height = 180, pad = 24;
   if (!data || data.length===0) return <div className="h-[180px] flex items-center justify-center text-sm text-muted-foreground">Keine Daten</div>;
-  const xs = data.map(d=>new Date(d.ts).getTime());
-  const ys = data.map(d=>d.day_pnl);
+  const xs = data.map(d=>new Date(d.date).getTime());
+  const ys = data.map(d=>d.equity);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   // Variable y-axis scaling (not forced to start at 0)
   const minY = Math.min(...ys);
