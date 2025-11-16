@@ -30,6 +30,8 @@ type Props = {
   showSignalKind?: boolean;
   showSignalStatus?: boolean;
   compact?: boolean; // für Dashboard-Integration
+  txCostsMode?: 'percent' | 'usdt'; // für Dashboard
+  onTxCostsModeChange?: (mode: 'percent' | 'usdt') => void; // für Dashboard
 };
 
 export default function TradesFiltersBar({
@@ -42,6 +44,8 @@ export default function TradesFiltersBar({
   showSignalKind = false,
   showSignalStatus = false,
   compact = false,
+  txCostsMode,
+  onTxCostsModeChange,
 }: Props) {
   const [showFilters] = useState(true);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
@@ -199,6 +203,31 @@ export default function TradesFiltersBar({
             </Button>
           </div>
 
+          {/* Transaktionskosten Toggle (nur für Dashboard) */}
+          {txCostsMode !== undefined && onTxCostsModeChange && (
+            <div className="space-y-2">
+              <div className="text-xs font-medium">Transaktionskosten</div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant={txCostsMode === 'percent' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => onTxCostsModeChange('percent')}
+                >
+                  In %
+                </Button>
+                <Button
+                  size="sm"
+                  variant={txCostsMode === 'usdt' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => onTxCostsModeChange('usdt')}
+                >
+                  In USDT
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Datumsbereich */}
           {showDateRange && (
             <div className="space-y-2">
@@ -212,7 +241,7 @@ export default function TradesFiltersBar({
                       : 'Datum wählen'}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
+                <PopoverContent className="w-auto p-0 z-[60]" align="start">
                   <div className="p-3 space-y-2">
                     <div className="text-xs font-medium">Von</div>
                     <Calendar
