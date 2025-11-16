@@ -21,16 +21,15 @@ function zurichToUTC(localHourMin: string): string {
 
 export default function Dashboard() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [filters, setFilters] = useState<TradesFilters>({
-    botIds: [],
-    symbols: [],
-    side: 'all',
-    dateFrom: undefined,
-    dateTo: undefined,
-    timeFrom: undefined,
-    timeTo: undefined,
-    timeMode: 'opened',
-  });
+  const [selectedBots, setSelectedBots] = useState<number[]>([]);
+  const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
+  const [dateFrom, setDateFrom] = useState<Date | undefined>();
+  const [dateTo, setDateTo] = useState<Date | undefined>();
+  const [direction, setDirection] = useState<string>('both');
+  const [openHourFrom, setOpenHourFrom] = useState<string>('');
+  const [openHourTo, setOpenHourTo] = useState<string>('');
+  const [closeHourFrom, setCloseHourFrom] = useState<string>('');
+  const [closeHourTo, setCloseHourTo] = useState<string>('');
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
@@ -54,13 +53,13 @@ export default function Dashboard() {
       setLoading(true);
       try {
         const params: any = {};
-        if (filters.botIds.length) params.bot_ids = filters.botIds.join(',');
-        if (filters.symbols.length) params.symbols = filters.symbols.join(',');
-        if (filters.side !== 'all') params.direction = filters.side;
-        if (filters.dateFrom) params.date_from = filters.dateFrom.toISOString().split('T')[0];
-        if (filters.dateTo) params.date_to = filters.dateTo.toISOString().split('T')[0];
-        if (filters.timeFrom) params.open_hour = zurichToUTC(filters.timeFrom);
-        if (filters.timeTo) params.close_hour = zurichToUTC(filters.timeTo);
+        if (selectedBots.length) params.bot_ids = selectedBots.join(',');
+        if (selectedSymbols.length) params.symbols = selectedSymbols.join(',');
+        if (direction && direction !== 'both') params.direction = direction;
+        if (dateFrom) params.date_from = dateFrom.toISOString().split('T')[0];
+        if (dateTo) params.date_to = dateTo.toISOString().split('T')[0];
+        if (openHourFrom && openHourTo) params.open_hour = `${openHourFrom}-${openHourTo}`;
+        if (closeHourFrom && closeHourTo) params.close_hour = `${closeHourFrom}-${closeHourTo}`;
 
         const data = await api.getDashboardSummary(params);
         setSummary(data);
@@ -70,17 +69,30 @@ export default function Dashboard() {
         setLoading(false);
       }
     })();
-  }, [filters]);
+  }, [selectedBots, selectedSymbols, direction, dateFrom, dateTo, openHourFrom, openHourTo, closeHourFrom, closeHourTo]);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
-    if (filters.botIds.length > 0) count++;
-    if (filters.symbols.length > 0) count++;
-    if (filters.side !== 'all') count++;
-    if (filters.dateFrom || filters.dateTo) count++;
-    if (filters.timeFrom || filters.timeTo) count++;
+    if (selectedBots.length > 0) count++;
+    if (selectedSymbols.length > 0) count++;
+    if (direction && direction !== 'both') count++;
+    if (dateFrom || dateTo) count++;
+    if (openHourFrom || openHourTo) count++;
+    if (closeHourFrom || closeHourTo) count++;
     return count;
-  }, [filters]);
+  }, [selectedBots, selectedSymbols, direction, dateFrom, dateTo, openHourFrom, openHourTo, closeHourFrom, closeHourTo]);
+
+  const handleResetFilters = () => {
+    setSelectedBots([]);
+    setSelectedSymbols([]);
+    setDateFrom(undefined);
+    setDateTo(undefined);
+    setDirection('both');
+    setOpenHourFrom('');
+    setOpenHourTo('');
+    setCloseHourFrom('');
+    setCloseHourTo('');
+  };
 
   // Helper components
   const MetricRow = ({ label, value, highlight = false }: { label: string; value: string | number; highlight?: boolean }) => (
@@ -144,8 +156,25 @@ export default function Dashboard() {
             </div>
             <div className="flex-1 overflow-y-auto p-4">
               <TradesFiltersBar
-                value={filters}
-                onChange={setFilters}
+                selectedBots={selectedBots}
+                onBotsChange={setSelectedBots}
+                selectedSymbols={selectedSymbols}
+                onSymbolsChange={setSelectedSymbols}
+                dateFrom={dateFrom}
+                dateTo={dateTo}
+                onDateFromChange={setDateFrom}
+                onDateToChange={setDateTo}
+                direction={direction}
+                onDirectionChange={setDirection}
+                openHourFrom={openHourFrom}
+                openHourTo={openHourTo}
+                onOpenHourFromChange={setOpenHourFrom}
+                onOpenHourToChange={setOpenHourTo}
+                closeHourFrom={closeHourFrom}
+                closeHourTo={closeHourTo}
+                onCloseHourFromChange={setCloseHourFrom}
+                onCloseHourToChange={setCloseHourTo}
+                onResetFilters={handleResetFilters}
                 availableBots={bots}
                 availableSymbols={symbols}
                 showDateRange={true}
@@ -179,8 +208,25 @@ export default function Dashboard() {
         {showFilters && (
           <div className="hidden lg:block border rounded-lg p-4 bg-muted/30">
             <TradesFiltersBar
-              value={filters}
-              onChange={setFilters}
+              selectedBots={selectedBots}
+              onBotsChange={setSelectedBots}
+              selectedSymbols={selectedSymbols}
+              onSymbolsChange={setSelectedSymbols}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              onDateFromChange={setDateFrom}
+              onDateToChange={setDateTo}
+              direction={direction}
+              onDirectionChange={setDirection}
+              openHourFrom={openHourFrom}
+              openHourTo={openHourTo}
+              onOpenHourFromChange={setOpenHourFrom}
+              onOpenHourToChange={setOpenHourTo}
+              closeHourFrom={closeHourFrom}
+              closeHourTo={closeHourTo}
+              onCloseHourFromChange={setCloseHourFrom}
+              onCloseHourToChange={setCloseHourTo}
+              onResetFilters={handleResetFilters}
               availableBots={bots}
               availableSymbols={symbols}
               showDateRange={true}
