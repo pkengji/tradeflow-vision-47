@@ -241,10 +241,10 @@ export default function Dashboard() {
         {/* 2. Gesamtansicht (gefiltert) */}
         {summary && (
           <Card>
-            <CardHeader className="pb-1 pt-3">
+            <CardHeader className="pb-2 pt-3">
               <CardTitle className="text-[var(--font-size-page-title)] font-semibold">Gesamtansicht</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-0 py-2 pb-3">
+            <CardContent className="space-y-0 pt-0 pb-3">
               {/* Main Metrics - Simple List */}
               <div className="space-y-0">
                 <MetricRow label="Realized P&L" value={formatCurrency(summary.pnl_filtered)} />
@@ -285,10 +285,10 @@ export default function Dashboard() {
         {/* 3. Heute (nur wenn kein Datumsfilter aktiv) */}
         {summary && !hasDateFilter && (
           <Card>
-            <CardHeader className="pb-1 pt-3">
+            <CardHeader className="pb-2 pt-3">
               <CardTitle className="text-[var(--font-size-page-title)] font-semibold">Heute</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-0 py-2 pb-3">
+            <CardContent className="space-y-0 pt-0 pb-3">
               <div className="space-y-0">
                 <Link to="/trades?status=closed">
                   <MetricRow label="P&L realized heute" value={formatCurrency(summary.pnl_today)} hoverable />
@@ -330,10 +330,10 @@ export default function Dashboard() {
         {/* 4. Aktueller Monat (nur wenn kein Datumsfilter) */}
         {summary && !hasDateFilter && (
           <Card>
-            <CardHeader className="pb-1 pt-3">
+            <CardHeader className="pb-2 pt-3">
               <CardTitle className="text-[var(--font-size-page-title)] font-semibold">Aktueller Monat</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-0 py-2 pb-3">
+            <CardContent className="space-y-0 pt-0 pb-3">
               <div className="space-y-0">
                 <MetricRow label="Realized P&L" value={formatCurrency(summary.mtd.pnl)} />
                 <MetricRow label="Win Rate" value={pct(summary.mtd.winrate)} />
@@ -370,10 +370,10 @@ export default function Dashboard() {
         {/* 5. Letzte 30 Tage (nur wenn kein Datumsfilter) */}
         {summary && !hasDateFilter && (
           <Card>
-            <CardHeader className="pb-1 pt-3">
+            <CardHeader className="pb-2 pt-3">
               <CardTitle className="text-[var(--font-size-page-title)] font-semibold">Letzte 30 Tage</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-0 py-2 pb-3">
+            <CardContent className="space-y-0 pt-0 pb-3">
               <div className="space-y-0">
                 <MetricRow label="Realized P&L" value={formatCurrency(summary.last30d.pnl)} />
                 <MetricRow label="Win Rate" value={pct(summary.last30d.winrate)} />
