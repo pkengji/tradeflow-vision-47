@@ -24,8 +24,7 @@ type KpiBlock = {
   timelag_ms: {
     ingress_ms_avg: number | null;
     engine_ms_avg: number | null;
-    tv_to_send_ms_avg: number | null;
-    tv_to_fill_ms_avg: number | null;
+    egress_ms_avg: number | null;
     samples: number;
   };
 };
@@ -34,8 +33,8 @@ type Summary = {
   portfolio_total_equity: number;
   equity_timeseries: { ts: string; day_pnl: number }[];
   kpis: {
+    overall?: KpiBlock & { portfolio_value: number; count_signals: number };
     today?: KpiBlock;
-    month?: KpiBlock;
     last_30d?: KpiBlock;
     current?: {
       open_trades: number;
@@ -105,6 +104,7 @@ export default function Dashboard() {
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [txCostsMode, setTxCostsMode] = useState<'percent' | 'usdt'>('percent');
 
   // Load bots & symbols
   useEffect(() => {
@@ -188,7 +188,7 @@ export default function Dashboard() {
       }
     >
       {showFilters && (
-        <div className="mb-6">
+        <div className="mb-6 space-y-4">
           <TradesFiltersBar
             value={filters}
             onChange={handleApplyFilters}
@@ -197,6 +197,23 @@ export default function Dashboard() {
             showDateRange={true}
             showTimeRange={true}
           />
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Transaktionskosten:</span>
+            <Button
+              variant={txCostsMode === 'percent' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setTxCostsMode('percent')}
+            >
+              in %
+            </Button>
+            <Button
+              variant={txCostsMode === 'usdt' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setTxCostsMode('usdt')}
+            >
+              in USDT
+            </Button>
+          </div>
         </div>
       )}
 
@@ -222,13 +239,60 @@ export default function Dashboard() {
           {/* Portfolio Total */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base font-semibold">Portfolio Total</CardTitle>
+              <CardTitle className="text-base font-semibold">Portfolio total</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <MetricRow label="Total Equity" value={formatUSDT(summary.portfolio_total_equity)} />
-                <MetricRow label="Offene Trades" value={formatNumber(summary.kpis.current?.open_trades ?? 0)} />
+                <MetricRow label="Offene Trades aktuell" value={formatNumber(summary.kpis.current?.open_trades ?? 0)} />
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Gesamtansicht (filtered data) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base font-semibold">Gesamtansicht</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <MetricRow label="Realized P&L" value={formatUSDT(summary.kpis.overall?.realized_pnl)} />
+                <MetricRow label="Portfoliowert" value={formatUSDT(summary.kpis.overall?.portfolio_value)} />
+                <MetricRow label="Win Rate" value={formatWinRate(summary.kpis.overall?.win_rate)} />
+                <MetricRow label="Anzahl Signale" value={formatNumber(summary.kpis.overall?.count_signals)} />
+              </div>
+
+              <Collapsible>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
+                  <ChevronDown className="h-4 w-4" />
+                  Transaktionskosten
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 space-y-2">
+                  {txCostsMode === 'percent' ? (
+                    <>
+                      <MetricRow label="Total" value={formatPercent(summary.kpis.overall?.tx_costs_pct)} />
+                    </>
+                  ) : (
+                    <>
+                      <MetricRow label="Fees" value={formatUSDT(summary.kpis.overall?.tx_breakdown_usdt?.fees)} />
+                      <MetricRow label="Slippage (Liquidität)" value={formatUSDT(summary.kpis.overall?.tx_breakdown_usdt?.slip_liquidity)} />
+                      <MetricRow label="Slippage (Timelag)" value={formatUSDT(summary.kpis.overall?.tx_breakdown_usdt?.slip_time)} />
+                    </>
+                  )}
+                </CollapsibleContent>
+              </Collapsible>
+
+              <Collapsible>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
+                  <ChevronDown className="h-4 w-4" />
+                  Timelag
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 space-y-2">
+                  <MetricRow label="Entry" value={formatTimelag(summary.kpis.overall?.timelag_ms?.ingress_ms_avg)} />
+                  <MetricRow label="Processing time" value={formatTimelag(summary.kpis.overall?.timelag_ms?.engine_ms_avg)} />
+                  <MetricRow label="Exit" value={formatTimelag(summary.kpis.overall?.timelag_ms?.egress_ms_avg)} />
+                </CollapsibleContent>
+              </Collapsible>
             </CardContent>
           </Card>
 
@@ -239,8 +303,10 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
-                <MetricRow label="Realized P&L" value={formatUSDT(summary.kpis.today?.realized_pnl)} />
-                <MetricRow label="Win Rate" value={formatWinRate(summary.kpis.today?.win_rate)} />
+                <MetricRow label="P&L realized heute" value={formatUSDT(summary.kpis.today?.realized_pnl)} />
+                <MetricRow label="Win Rate heute" value={formatWinRate(summary.kpis.today?.win_rate)} />
+                <MetricRow label="Anzahl Signale" value={formatNumber(0)} />
+                <MetricRow label="Offene Trades aktuell" value={formatNumber(summary.kpis.current?.open_trades ?? 0)} />
               </div>
 
               <Collapsible>
@@ -249,68 +315,34 @@ export default function Dashboard() {
                   Transaktionskosten
                 </CollapsibleTrigger>
                 <CollapsibleContent className="mt-2 space-y-2">
-                  <MetricRow label="Total %" value={formatPercent(summary.kpis.today?.tx_costs_pct)} />
-                  <MetricRow label="Fees USDT" value={formatUSDT(summary.kpis.today?.tx_breakdown_usdt?.fees)} />
-                  <MetricRow label="Funding USDT" value={formatUSDT(summary.kpis.today?.tx_breakdown_usdt?.funding)} />
-                  <MetricRow label="Liq. Slippage USDT" value={formatUSDT(summary.kpis.today?.tx_breakdown_usdt?.slip_liquidity)} />
-                  <MetricRow label="Time Slippage USDT" value={formatUSDT(summary.kpis.today?.tx_breakdown_usdt?.slip_time)} />
+                  {txCostsMode === 'percent' ? (
+                    <>
+                      <MetricRow label="Total" value={formatPercent(summary.kpis.today?.tx_costs_pct)} />
+                    </>
+                  ) : (
+                    <>
+                      <MetricRow label="Fees" value={formatUSDT(summary.kpis.today?.tx_breakdown_usdt?.fees)} />
+                      <MetricRow label="Slippage (Liquidität)" value={formatUSDT(summary.kpis.today?.tx_breakdown_usdt?.slip_liquidity)} />
+                      <MetricRow label="Slippage (Timelag)" value={formatUSDT(summary.kpis.today?.tx_breakdown_usdt?.slip_time)} />
+                    </>
+                  )}
                 </CollapsibleContent>
               </Collapsible>
 
               <Collapsible>
                 <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
                   <ChevronDown className="h-4 w-4" />
-                  Timelags
+                  Timelag
                 </CollapsibleTrigger>
                 <CollapsibleContent className="mt-2 space-y-2">
-                  <MetricRow label="Ingress" value={formatTimelag(summary.kpis.today?.timelag_ms?.ingress_ms_avg)} />
-                  <MetricRow label="Engine" value={formatTimelag(summary.kpis.today?.timelag_ms?.engine_ms_avg)} />
-                  <MetricRow label="TV → Send" value={formatTimelag(summary.kpis.today?.timelag_ms?.tv_to_send_ms_avg)} />
-                  <MetricRow label="TV → Fill" value={formatTimelag(summary.kpis.today?.timelag_ms?.tv_to_fill_ms_avg)} />
+                  <MetricRow label="Entry" value={formatTimelag(summary.kpis.today?.timelag_ms?.ingress_ms_avg)} />
+                  <MetricRow label="Processing time" value={formatTimelag(summary.kpis.today?.timelag_ms?.engine_ms_avg)} />
+                  <MetricRow label="Exit" value={formatTimelag(summary.kpis.today?.timelag_ms?.egress_ms_avg)} />
                 </CollapsibleContent>
               </Collapsible>
             </CardContent>
           </Card>
 
-          {/* Aktueller Monat */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base font-semibold">Aktueller Monat</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <MetricRow label="Realized P&L" value={formatUSDT(summary.kpis.month?.realized_pnl)} />
-                <MetricRow label="Win Rate" value={formatWinRate(summary.kpis.month?.win_rate)} />
-              </div>
-
-              <Collapsible>
-                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
-                  <ChevronDown className="h-4 w-4" />
-                  Transaktionskosten
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-2 space-y-2">
-                  <MetricRow label="Total %" value={formatPercent(summary.kpis.month?.tx_costs_pct)} />
-                  <MetricRow label="Fees USDT" value={formatUSDT(summary.kpis.month?.tx_breakdown_usdt?.fees)} />
-                  <MetricRow label="Funding USDT" value={formatUSDT(summary.kpis.month?.tx_breakdown_usdt?.funding)} />
-                  <MetricRow label="Liq. Slippage USDT" value={formatUSDT(summary.kpis.month?.tx_breakdown_usdt?.slip_liquidity)} />
-                  <MetricRow label="Time Slippage USDT" value={formatUSDT(summary.kpis.month?.tx_breakdown_usdt?.slip_time)} />
-                </CollapsibleContent>
-              </Collapsible>
-
-              <Collapsible>
-                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
-                  <ChevronDown className="h-4 w-4" />
-                  Timelags
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-2 space-y-2">
-                  <MetricRow label="Ingress" value={formatTimelag(summary.kpis.month?.timelag_ms?.ingress_ms_avg)} />
-                  <MetricRow label="Engine" value={formatTimelag(summary.kpis.month?.timelag_ms?.engine_ms_avg)} />
-                  <MetricRow label="TV → Send" value={formatTimelag(summary.kpis.month?.timelag_ms?.tv_to_send_ms_avg)} />
-                  <MetricRow label="TV → Fill" value={formatTimelag(summary.kpis.month?.timelag_ms?.tv_to_fill_ms_avg)} />
-                </CollapsibleContent>
-              </Collapsible>
-            </CardContent>
-          </Card>
 
           {/* Letzte 30 Tage */}
           <Card>
@@ -329,24 +361,29 @@ export default function Dashboard() {
                   Transaktionskosten
                 </CollapsibleTrigger>
                 <CollapsibleContent className="mt-2 space-y-2">
-                  <MetricRow label="Total %" value={formatPercent(summary.kpis.last_30d?.tx_costs_pct)} />
-                  <MetricRow label="Fees USDT" value={formatUSDT(summary.kpis.last_30d?.tx_breakdown_usdt?.fees)} />
-                  <MetricRow label="Funding USDT" value={formatUSDT(summary.kpis.last_30d?.tx_breakdown_usdt?.funding)} />
-                  <MetricRow label="Liq. Slippage USDT" value={formatUSDT(summary.kpis.last_30d?.tx_breakdown_usdt?.slip_liquidity)} />
-                  <MetricRow label="Time Slippage USDT" value={formatUSDT(summary.kpis.last_30d?.tx_breakdown_usdt?.slip_time)} />
+                  {txCostsMode === 'percent' ? (
+                    <>
+                      <MetricRow label="Total" value={formatPercent(summary.kpis.last_30d?.tx_costs_pct)} />
+                    </>
+                  ) : (
+                    <>
+                      <MetricRow label="Fees" value={formatUSDT(summary.kpis.last_30d?.tx_breakdown_usdt?.fees)} />
+                      <MetricRow label="Slippage (Liquidität)" value={formatUSDT(summary.kpis.last_30d?.tx_breakdown_usdt?.slip_liquidity)} />
+                      <MetricRow label="Slippage (Timelag)" value={formatUSDT(summary.kpis.last_30d?.tx_breakdown_usdt?.slip_time)} />
+                    </>
+                  )}
                 </CollapsibleContent>
               </Collapsible>
 
               <Collapsible>
                 <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
                   <ChevronDown className="h-4 w-4" />
-                  Timelags
+                  Timelag
                 </CollapsibleTrigger>
                 <CollapsibleContent className="mt-2 space-y-2">
-                  <MetricRow label="Ingress" value={formatTimelag(summary.kpis.last_30d?.timelag_ms?.ingress_ms_avg)} />
-                  <MetricRow label="Engine" value={formatTimelag(summary.kpis.last_30d?.timelag_ms?.engine_ms_avg)} />
-                  <MetricRow label="TV → Send" value={formatTimelag(summary.kpis.last_30d?.timelag_ms?.tv_to_send_ms_avg)} />
-                  <MetricRow label="TV → Fill" value={formatTimelag(summary.kpis.last_30d?.timelag_ms?.tv_to_fill_ms_avg)} />
+                  <MetricRow label="Entry" value={formatTimelag(summary.kpis.last_30d?.timelag_ms?.ingress_ms_avg)} />
+                  <MetricRow label="Processing time" value={formatTimelag(summary.kpis.last_30d?.timelag_ms?.engine_ms_avg)} />
+                  <MetricRow label="Exit" value={formatTimelag(summary.kpis.last_30d?.timelag_ms?.egress_ms_avg)} />
                 </CollapsibleContent>
               </Collapsible>
             </CardContent>
