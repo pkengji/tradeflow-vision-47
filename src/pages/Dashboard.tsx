@@ -449,134 +449,152 @@ export default function Dashboard() {
           </Card>
 
           {/* Heute */}
-          {!hasDateFilters && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base font-semibold">Heute</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <MetricRow label="Realized P&L" value={formatUSDT(summary.kpis.today?.realized_pnl)} />
-                <MetricRow label="Portfoliowert" value={formatUSDT(summary.portfolio_total_equity)} />
-                <MetricRow label="Win Rate" value={formatWinRate(summary.kpis.today?.win_rate, summary.kpis.today?.wins, summary.kpis.today?.total_trades)} />
-                <MetricRow label="Anzahl Signale" value={formatNumber(0)} />
-                
-                <div className="pt-2">
-                  <div className="text-sm font-medium mb-2">Transaktionskosten</div>
-                  <div className="space-y-2 pl-4">
-                    {txCostsMode === 'percent' ? (
-                      <>
-                        <MetricRow label="Fees" value={formatPercent(summary.kpis.today?.fee_pct)} />
-                        <MetricRow label="Slippage (Liquidität)" value={formatPercent(summary.kpis.today?.slip_liq_pct)} />
-                        <MetricRow label="Slippage (Timelag)" value={formatPercent(summary.kpis.today?.slip_time_pct)} />
-                      </>
-                    ) : (
-                      <>
-                        <MetricRow label="Fees" value={formatUSDT(summary.kpis.today?.fee_usdt)} />
-                        <MetricRow label="Slippage (Liquidität)" value={formatUSDT(summary.kpis.today?.slip_liq_usdt)} />
-                        <MetricRow label="Slippage (Timelag)" value={formatUSDT(summary.kpis.today?.slip_time_usdt)} />
-                      </>
-                    )}
-                  </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base font-semibold">Heute</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <MetricRow label="Realized P&L" value={formatUSDT(summary.kpis.today?.realized_pnl)} />
+              <MetricRow label="Win Rate" value={formatWinRate(summary.kpis.today?.win_rate, summary.kpis.today?.trade_count)} />
+              <MetricRow label="Anzahl Trades" value={formatNumber(summary.kpis.today?.trade_count)} />
+              
+              <div className="pt-2">
+                <div className="text-sm font-medium mb-2">Transaktionskosten</div>
+                <div className="space-y-2 pl-4">
+                  {txCostsMode === 'percent' ? (
+                    <>
+                      <MetricRow label="Gesamt" value={formatPercent(summary.kpis.today?.tx_costs_pct)} />
+                      <MetricRow label="Fees" value={formatPercent((summary.kpis.today?.tx_breakdown_usdt.fees ?? 0) / (summary.kpis.today?.realized_pnl ?? 1) * 100)} />
+                      <MetricRow label="Funding" value={formatPercent((summary.kpis.today?.tx_breakdown_usdt.funding ?? 0) / (summary.kpis.today?.realized_pnl ?? 1) * 100)} />
+                      <MetricRow label="Slippage (Liquidität)" value={formatPercent((summary.kpis.today?.tx_breakdown_usdt.slip_liquidity ?? 0) / (summary.kpis.today?.realized_pnl ?? 1) * 100)} />
+                      <MetricRow label="Slippage (Timelag)" value={formatPercent((summary.kpis.today?.tx_breakdown_usdt.slip_time ?? 0) / (summary.kpis.today?.realized_pnl ?? 1) * 100)} />
+                    </>
+                  ) : (
+                    <>
+                      <MetricRow label="Gesamt" value={formatUSDT(
+                        (summary.kpis.today?.tx_breakdown_usdt.fees ?? 0) +
+                        (summary.kpis.today?.tx_breakdown_usdt.funding ?? 0) +
+                        (summary.kpis.today?.tx_breakdown_usdt.slip_liquidity ?? 0) +
+                        (summary.kpis.today?.tx_breakdown_usdt.slip_time ?? 0)
+                      )} />
+                      <MetricRow label="Fees" value={formatUSDT(summary.kpis.today?.tx_breakdown_usdt.fees)} />
+                      <MetricRow label="Funding" value={formatUSDT(summary.kpis.today?.tx_breakdown_usdt.funding)} />
+                      <MetricRow label="Slippage (Liquidität)" value={formatUSDT(summary.kpis.today?.tx_breakdown_usdt.slip_liquidity)} />
+                      <MetricRow label="Slippage (Timelag)" value={formatUSDT(summary.kpis.today?.tx_breakdown_usdt.slip_time)} />
+                    </>
+                  )}
                 </div>
+              </div>
 
-                <div className="pt-2">
-                  <div className="text-sm font-medium mb-2">Timelag</div>
-                  <div className="space-y-2 pl-4">
-                    <MetricRow label="Entry" value={formatTimelag(summary.kpis.today?.entry_ms_avg)} />
-                    <MetricRow label="Processing time" value={formatTimelag(summary.kpis.today?.engine_ms_avg)} />
-                    <MetricRow label="Exit" value={formatTimelag(summary.kpis.today?.exit_ms_avg)} />
-                  </div>
+              <div className="pt-2">
+                <div className="text-sm font-medium mb-2">Timelag</div>
+                <div className="space-y-2 pl-4">
+                  <MetricRow label="Entry" value={formatTimelag(summary.kpis.today?.timelag_ms.entry_ms_avg)} />
+                  <MetricRow label="Processing time" value={formatTimelag(summary.kpis.today?.timelag_ms.engine_ms_avg)} />
+                  <MetricRow label="Exit" value={formatTimelag(summary.kpis.today?.timelag_ms.exit_ms_avg)} />
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              </div>
+            </CardContent>
+          </Card>
 
 
           {/* Aktueller Monat */}
-          {!hasDateFilters && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base font-semibold">Aktueller Monat</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <MetricRow label="Realized P&L" value={formatUSDT(summary.kpis.month?.realized_pnl)} />
-                <MetricRow label="Portfoliowert" value={formatUSDT(summary.portfolio_total_equity)} />
-                <MetricRow label="Win Rate" value={formatWinRate(summary.kpis.month?.win_rate, summary.kpis.month?.wins, summary.kpis.month?.total_trades)} />
-                <MetricRow label="Anzahl Signale" value={formatNumber(0)} />
-                
-                <div className="pt-2">
-                  <div className="text-sm font-medium mb-2">Transaktionskosten</div>
-                  <div className="space-y-2 pl-4">
-                    {txCostsMode === 'percent' ? (
-                      <>
-                        <MetricRow label="Fees" value={formatPercent(summary.kpis.month?.fee_pct)} />
-                        <MetricRow label="Slippage (Liquidität)" value={formatPercent(summary.kpis.month?.slip_liq_pct)} />
-                        <MetricRow label="Slippage (Timelag)" value={formatPercent(summary.kpis.month?.slip_time_pct)} />
-                      </>
-                    ) : (
-                      <>
-                        <MetricRow label="Fees" value={formatUSDT(summary.kpis.month?.fee_usdt)} />
-                        <MetricRow label="Slippage (Liquidität)" value={formatUSDT(summary.kpis.month?.slip_liq_usdt)} />
-                        <MetricRow label="Slippage (Timelag)" value={formatUSDT(summary.kpis.month?.slip_time_usdt)} />
-                      </>
-                    )}
-                  </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base font-semibold">Aktueller Monat</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <MetricRow label="Realized P&L" value={formatUSDT(summary.kpis.month?.realized_pnl)} />
+              <MetricRow label="Win Rate" value={formatWinRate(summary.kpis.month?.win_rate, summary.kpis.month?.trade_count)} />
+              <MetricRow label="Anzahl Trades" value={formatNumber(summary.kpis.month?.trade_count)} />
+              
+              <div className="pt-2">
+                <div className="text-sm font-medium mb-2">Transaktionskosten</div>
+                <div className="space-y-2 pl-4">
+                  {txCostsMode === 'percent' ? (
+                    <>
+                      <MetricRow label="Gesamt" value={formatPercent(summary.kpis.month?.tx_costs_pct)} />
+                      <MetricRow label="Fees" value={formatPercent((summary.kpis.month?.tx_breakdown_usdt.fees ?? 0) / (summary.kpis.month?.realized_pnl ?? 1) * 100)} />
+                      <MetricRow label="Funding" value={formatPercent((summary.kpis.month?.tx_breakdown_usdt.funding ?? 0) / (summary.kpis.month?.realized_pnl ?? 1) * 100)} />
+                      <MetricRow label="Slippage (Liquidität)" value={formatPercent((summary.kpis.month?.tx_breakdown_usdt.slip_liquidity ?? 0) / (summary.kpis.month?.realized_pnl ?? 1) * 100)} />
+                      <MetricRow label="Slippage (Timelag)" value={formatPercent((summary.kpis.month?.tx_breakdown_usdt.slip_time ?? 0) / (summary.kpis.month?.realized_pnl ?? 1) * 100)} />
+                    </>
+                  ) : (
+                    <>
+                      <MetricRow label="Gesamt" value={formatUSDT(
+                        (summary.kpis.month?.tx_breakdown_usdt.fees ?? 0) +
+                        (summary.kpis.month?.tx_breakdown_usdt.funding ?? 0) +
+                        (summary.kpis.month?.tx_breakdown_usdt.slip_liquidity ?? 0) +
+                        (summary.kpis.month?.tx_breakdown_usdt.slip_time ?? 0)
+                      )} />
+                      <MetricRow label="Fees" value={formatUSDT(summary.kpis.month?.tx_breakdown_usdt.fees)} />
+                      <MetricRow label="Funding" value={formatUSDT(summary.kpis.month?.tx_breakdown_usdt.funding)} />
+                      <MetricRow label="Slippage (Liquidität)" value={formatUSDT(summary.kpis.month?.tx_breakdown_usdt.slip_liquidity)} />
+                      <MetricRow label="Slippage (Timelag)" value={formatUSDT(summary.kpis.month?.tx_breakdown_usdt.slip_time)} />
+                    </>
+                  )}
                 </div>
+              </div>
 
-                <div className="pt-2">
-                  <div className="text-sm font-medium mb-2">Timelag</div>
-                  <div className="space-y-2 pl-4">
-                    <MetricRow label="Entry" value={formatTimelag(summary.kpis.month?.entry_ms_avg)} />
-                    <MetricRow label="Processing time" value={formatTimelag(summary.kpis.month?.engine_ms_avg)} />
-                    <MetricRow label="Exit" value={formatTimelag(summary.kpis.month?.exit_ms_avg)} />
-                  </div>
+              <div className="pt-2">
+                <div className="text-sm font-medium mb-2">Timelag</div>
+                <div className="space-y-2 pl-4">
+                  <MetricRow label="Entry" value={formatTimelag(summary.kpis.month?.timelag_ms.entry_ms_avg)} />
+                  <MetricRow label="Processing time" value={formatTimelag(summary.kpis.month?.timelag_ms.engine_ms_avg)} />
+                  <MetricRow label="Exit" value={formatTimelag(summary.kpis.month?.timelag_ms.exit_ms_avg)} />
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Letzte 30 Tage */}
-          {!hasDateFilters && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base font-semibold">Letzte 30 Tage</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <MetricRow label="Realized P&L" value={formatUSDT(summary.kpis.last_30d?.realized_pnl)} />
-                <MetricRow label="Portfoliowert" value={formatUSDT(summary.portfolio_total_equity)} />
-                <MetricRow label="Win Rate" value={formatWinRate(summary.kpis.last_30d?.win_rate, summary.kpis.last_30d?.wins, summary.kpis.last_30d?.total_trades)} />
-                <MetricRow label="Anzahl Signale" value={formatNumber(0)} />
-                
-                <div className="pt-2">
-                  <div className="text-sm font-medium mb-2">Transaktionskosten</div>
-                  <div className="space-y-2 pl-4">
-                    {txCostsMode === 'percent' ? (
-                      <>
-                        <MetricRow label="Fees" value={formatPercent(summary.kpis.last_30d?.fee_pct)} />
-                        <MetricRow label="Slippage (Liquidität)" value={formatPercent(summary.kpis.last_30d?.slip_liq_pct)} />
-                        <MetricRow label="Slippage (Timelag)" value={formatPercent(summary.kpis.last_30d?.slip_time_pct)} />
-                      </>
-                    ) : (
-                      <>
-                        <MetricRow label="Fees" value={formatUSDT(summary.kpis.last_30d?.fee_usdt)} />
-                        <MetricRow label="Slippage (Liquidität)" value={formatUSDT(summary.kpis.last_30d?.slip_liq_usdt)} />
-                        <MetricRow label="Slippage (Timelag)" value={formatUSDT(summary.kpis.last_30d?.slip_time_usdt)} />
-                      </>
-                    )}
-                  </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base font-semibold">Letzte 30 Tage</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <MetricRow label="Realized P&L" value={formatUSDT(summary.kpis.last_30d?.realized_pnl)} />
+              <MetricRow label="Win Rate" value={formatWinRate(summary.kpis.last_30d?.win_rate, summary.kpis.last_30d?.trade_count)} />
+              <MetricRow label="Anzahl Trades" value={formatNumber(summary.kpis.last_30d?.trade_count)} />
+              
+              <div className="pt-2">
+                <div className="text-sm font-medium mb-2">Transaktionskosten</div>
+                <div className="space-y-2 pl-4">
+                  {txCostsMode === 'percent' ? (
+                    <>
+                      <MetricRow label="Gesamt" value={formatPercent(summary.kpis.last_30d?.tx_costs_pct)} />
+                      <MetricRow label="Fees" value={formatPercent((summary.kpis.last_30d?.tx_breakdown_usdt.fees ?? 0) / (summary.kpis.last_30d?.realized_pnl ?? 1) * 100)} />
+                      <MetricRow label="Funding" value={formatPercent((summary.kpis.last_30d?.tx_breakdown_usdt.funding ?? 0) / (summary.kpis.last_30d?.realized_pnl ?? 1) * 100)} />
+                      <MetricRow label="Slippage (Liquidität)" value={formatPercent((summary.kpis.last_30d?.tx_breakdown_usdt.slip_liquidity ?? 0) / (summary.kpis.last_30d?.realized_pnl ?? 1) * 100)} />
+                      <MetricRow label="Slippage (Timelag)" value={formatPercent((summary.kpis.last_30d?.tx_breakdown_usdt.slip_time ?? 0) / (summary.kpis.last_30d?.realized_pnl ?? 1) * 100)} />
+                    </>
+                  ) : (
+                    <>
+                      <MetricRow label="Gesamt" value={formatUSDT(
+                        (summary.kpis.last_30d?.tx_breakdown_usdt.fees ?? 0) +
+                        (summary.kpis.last_30d?.tx_breakdown_usdt.funding ?? 0) +
+                        (summary.kpis.last_30d?.tx_breakdown_usdt.slip_liquidity ?? 0) +
+                        (summary.kpis.last_30d?.tx_breakdown_usdt.slip_time ?? 0)
+                      )} />
+                      <MetricRow label="Fees" value={formatUSDT(summary.kpis.last_30d?.tx_breakdown_usdt.fees)} />
+                      <MetricRow label="Funding" value={formatUSDT(summary.kpis.last_30d?.tx_breakdown_usdt.funding)} />
+                      <MetricRow label="Slippage (Liquidität)" value={formatUSDT(summary.kpis.last_30d?.tx_breakdown_usdt.slip_liquidity)} />
+                      <MetricRow label="Slippage (Timelag)" value={formatUSDT(summary.kpis.last_30d?.tx_breakdown_usdt.slip_time)} />
+                    </>
+                  )}
                 </div>
+              </div>
 
-                <div className="pt-2">
-                  <div className="text-sm font-medium mb-2">Timelag</div>
-                  <div className="space-y-2 pl-4">
-                    <MetricRow label="Entry" value={formatTimelag(summary.kpis.last_30d?.entry_ms_avg)} />
-                    <MetricRow label="Processing time" value={formatTimelag(summary.kpis.last_30d?.engine_ms_avg)} />
-                    <MetricRow label="Exit" value={formatTimelag(summary.kpis.last_30d?.exit_ms_avg)} />
-                  </div>
+              <div className="pt-2">
+                <div className="text-sm font-medium mb-2">Timelag</div>
+                <div className="space-y-2 pl-4">
+                  <MetricRow label="Entry" value={formatTimelag(summary.kpis.last_30d?.timelag_ms.entry_ms_avg)} />
+                  <MetricRow label="Processing time" value={formatTimelag(summary.kpis.last_30d?.timelag_ms.engine_ms_avg)} />
+                  <MetricRow label="Exit" value={formatTimelag(summary.kpis.last_30d?.timelag_ms.exit_ms_avg)} />
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Equity Chart - at the bottom */}
           <Card>
