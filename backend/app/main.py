@@ -25,7 +25,7 @@ from . import models, schemas
 from .schemas import (
     UserOut, CreateUserBody, UpdateUserBody, UpdatePasswordBody, WebhookSecretOut, LoginBody,
     BotCreate, BotOut, BotUpdate, BotExchangeKeysIn, BotExchangeKeysOut, BotSymbolSettingIn, BotSymbolSettingOut, SymbolOut,
-    PositionOut, PositionsResponse, OutboxOut, DailyPnlPoint
+    PositionOut, PositionsResponse, OutboxOut, DailyPnlPoint, UpdateSlTpIn
 )
 from . import crud
 from starlette.staticfiles import StaticFiles
@@ -34,6 +34,9 @@ import requests
 app = FastAPI(title="TradingBot Backend (User Scope Patch)", version="0.3.0")
 
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
+position_cache: Dict[tuple[int, str], dict] = {}
+ws_threads: Dict[int, Any] = {}
+
 
 ALLOWED_ORIGINS = [
     "https://lovable.dev",
@@ -170,8 +173,8 @@ def login(body: LoginBody, response: Response, db: Session = Depends(get_db)):
         key="uid",
         value=str(u.id),
         httponly=True,
-        samesite="none",
-        secure=True,
+        samesite="none",     #lax für lokales Testen, none online
+        secure=True,         #False für lokales Testen, True online
         path="/",
     )
 
@@ -274,9 +277,57 @@ def put_bot_symbols(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
+    from .bybit_v5 import BybitRest
+
     rows = crud.replace_bot_symbols(db, user_id=user_id, bot_id=bot_id, items=[i.model_dump() for i in items])
     if rows is None:
         raise HTTPException(404, "Bot not found or not owned by current user")
+
+    # Bot + API-Keys holen
+    bot = (
+        db.query(models.Bot)
+        .filter(models.Bot.id == bot_id, models.Bot.user_id == user_id, models.Bot.is_deleted == False)
+        .first()
+    )
+    if not bot:
+        raise HTTPException(404, "Bot not found or not owned by current user")
+
+    api_key = bot.api_key or ""
+    api_secret = bot.api_secret
+    # Wenn keine Keys gesetzt sind → nur DB speichern, kein Bybit-Call
+    if api_key and api_secret:
+        rest = BybitRest(os.getenv("BYBIT_REST_URL", "https://api.bybit.com"))
+
+        for bss in rows:
+            if not bss.enabled:
+                continue  # Leverage nur für aktiv verwendete Symbole setzen
+
+            sym = db.query(models.Symbol).filter(models.Symbol.symbol == bss.symbol).first()
+            if not sym:
+                continue
+
+            # gewünschte Leverage = Override oder Bot-Default
+            lev = bss.leverage_override if bss.leverage_override is not None else bot.default_leverage
+            if not lev or lev <= 0:
+                continue
+
+            # auf max_leverage der Exchange clampen
+            max_lev = sym.max_leverage or lev
+            lev_eff = min(lev, max_lev)
+
+            try:
+                rest.set_leverage(
+                    api_key=api_key,
+                    api_secret=api_secret,
+                    category="linear",
+                    symbol=bss.symbol,
+                    buy_leverage=lev_eff,
+                    sell_leverage=lev_eff,
+                )
+            except Exception as e:
+                # Kein Crash, nur loggen – sonst wäre das Speichern im UI kaputt
+                print(f"[LEVERAGE] Failed to set leverage for bot {bot.id} {bss.symbol} to {lev_eff}: {e}")
+
     return [BotSymbolSettingOut.model_validate(r, from_attributes=True) for r in rows]
 
 
@@ -534,6 +585,8 @@ def list_funding(
 
 @app.post("/api/v1/positions/{position_id}/close")
 def api_close_position(position_id: int, db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
+    from .bybit_v5 import BybitRest
+
     pos = (
         db.query(models.Position)
           .filter(models.Position.id == position_id)
@@ -542,9 +595,154 @@ def api_close_position(position_id: int, db: Session = Depends(get_db), user_id:
     )
     if not pos:
         raise HTTPException(status_code=404, detail="Position not found")
+    if pos.status != "open" or not pos.qty:
+        raise HTTPException(status_code=400, detail="Position is not open or qty is zero")
 
-    pos = handle_position_close(db, position_id)
-    return {"ok": True, "item": pos}
+    bot = db.get(models.Bot, pos.bot_id)
+    if not bot or bot.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Bot not found")
+    api_key = bot.api_key or ""
+    api_secret = bot.api_secret
+    if not api_key or not api_secret:
+        raise HTTPException(status_code=400, detail="Bot has no API keys")
+
+    rest = BybitRest(os.getenv("BYBIT_REST_URL", "https://api.bybit.com"))
+
+    # 1) Alle offenen Orders für dieses Symbol canceln
+    cancel_resp = rest.cancel_all_orders(api_key, api_secret, category="linear", symbol=pos.symbol)
+
+    # 2) Market-ReduceOnly-Order zum Schließen
+    qty = abs(float(pos.qty or 0.0))
+    if qty <= 0:
+        raise HTTPException(status_code=400, detail="Position qty is zero")
+    side_close = "Sell" if (pos.side or "").lower() == "long" else "Buy"
+
+    close_payload = {
+        "category": "linear",
+        "symbol": pos.symbol,
+        "side": side_close,
+        "orderType": "Market",
+        "qty": f"{qty}",
+        "timeInForce": "IOC",
+        "reduceOnly": True,
+        "closeOnTrigger": True,
+        "positionIdx": 0,
+    }
+    close_resp = rest.place_order(api_key, api_secret, close_payload)
+
+    # 3) Kurz danach Positions-/Execution-Sync anstoßen
+    try:
+        sync_symbol_recent(db, bot.id, pos.symbol, hours=2)
+    except Exception as e:
+        print(f"[CLOSE] sync_symbol_recent failed for {pos.symbol}: {e}")
+
+    # Position neu laden (kann je nach Timing noch open sein)
+    db.refresh(pos)
+
+    return {"ok": True, "cancel_all": cancel_resp, "close_order": close_resp, "position_status": pos.status}
+
+@app.post("/api/v1/positions/{position_id}/update-sl-tp")
+def api_update_sl_tp(
+    position_id: int,
+    body: UpdateSlTpIn,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    from .bybit_v5 import BybitRest
+
+    pos = (
+        db.query(models.Position)
+          .filter(models.Position.id == position_id)
+          .filter(models.Position.user_id == user_id)
+          .first()
+    )
+    if not pos:
+        raise HTTPException(status_code=404, detail="Position not found")
+    if pos.status != "open" or not pos.qty:
+        raise HTTPException(status_code=400, detail="Position is not open or qty is zero")
+
+    bot = db.get(models.Bot, pos.bot_id)
+    if not bot or bot.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Bot not found")
+    api_key = bot.api_key or ""
+    api_secret = bot.api_secret
+    if not api_key or not api_secret:
+        raise HTTPException(status_code=400, detail="Bot has no API keys")
+
+    sym = db.query(models.Symbol).filter(models.Symbol.symbol == pos.symbol).first()
+    if not sym:
+        raise HTTPException(status_code=400, detail="unknown symbol")
+
+    rest = BybitRest(os.getenv("BYBIT_REST_URL", "https://api.bybit.com"))
+
+    # Alle bestehenden SL/TP/Conditional-Orders für dieses Symbol löschen
+    rest.cancel_all_orders(api_key, api_secret, category="linear", symbol=pos.symbol)
+
+    # gleiche Offsets wie bei ingest_tv_signal
+    off_mkt = 0.00015
+    off_lim = 0.00030
+
+    sl_trigger = _round_to_tick(body.stop_loss, sym.tick_size)
+    tp_trigger = _round_to_tick(body.take_profit, sym.tick_size)
+
+    side = (pos.side or "").lower()
+    if side == "long":
+        side_exit = "Sell"
+        trig_dir = 2
+        sl_market = _round_to_tick(sl_trigger * (1 - off_mkt), sym.tick_size)
+        sl_limit  = _round_to_tick(sl_trigger * (1 - off_lim), sym.tick_size)
+    else:
+        side_exit = "Buy"
+        trig_dir = 1
+        sl_market = _round_to_tick(sl_trigger * (1 + off_mkt), sym.tick_size)
+        sl_limit  = _round_to_tick(sl_trigger * (1 + off_lim), sym.tick_size)
+
+    qty = abs(float(pos.qty or 0.0))
+    qty = max(_round_to_step(qty, sym.step_size), sym.step_size)
+
+    # 1) TP/SL an der bestehenden Position via trading-stop setzen (OCO Market)
+    tpsl_payload = {
+        "category": "linear",
+        "symbol": pos.symbol,
+        "positionIdx": 0,
+        "takeProfit": f"{tp_trigger}",
+        "tpOrderType": "Market",
+        "tpTriggerBy": "LastPrice",
+        "stopLoss": f"{sl_market}",
+        "slOrderType": "Market",
+        "slTriggerBy": "LastPrice",
+    }
+    tpsl_resp = rest.set_trading_stop(api_key, api_secret, tpsl_payload)
+
+    # 2) Backup-SL als Limit-Order (wie bei ingest_tv_signal)
+    # optional: vorhandene SL/TP-Conditionals löschen
+    backup_link_id = f"slsl-update-{position_id}-{int(time.time()*1000)}"
+    sl_limit_payload = {
+        "category": "linear",
+        "symbol": pos.symbol,
+        "side": side_exit,
+        "orderType": "Limit",
+        "price": f"{sl_limit}",
+        "qty": f"{qty}",
+        "timeInForce": "GTC",
+        "reduceOnly": True,
+        "closeOnTrigger": True,
+        "triggerPrice": f"{sl_trigger}",
+        "triggerDirection": trig_dir,
+        "orderLinkId": backup_link_id,
+        "positionIdx": 0,
+    }
+    sl_limit_resp = rest.place_order(api_key, api_secret, sl_limit_payload)
+
+    # optional kurz syncen
+    try:
+        sync_symbol_recent(db, bot.id, pos.symbol, hours=2)
+    except Exception as e:
+        print(f"[UPDATE SLTP] sync_symbol_recent failed for {pos.symbol}: {e}")
+
+    db.refresh(pos)
+    return {"ok": True, "tpsl": tpsl_resp, "sl_limit": sl_limit_resp, "position_status": pos.status}
+
 
 
 # ---------- Outbox ----------
@@ -1129,7 +1327,6 @@ def api_outbox_tick(db: Session = Depends(get_db), user_id: int = Depends(get_cu
 # WS / Tasks (unverändert) ...
 # ============================================================
 
-ws_threads = {}
 
 def _on_exec(row, ctx):
     db = SessionLocal()
@@ -1312,6 +1509,16 @@ def debug_rebuild(bot_id: int = Query(...),
                   db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
     created = rebuild_positions_orderlink(db, bot_id=bot_id)
     return {"ok": True, "positions_created": created}
+
+@app.post("/api/v1/debug/positions/clear")
+def debug_clear_positions(
+    bot_id: int = Query(...),
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    db.query(models.Position).filter(models.Position.bot_id == bot_id).delete()
+    db.commit()
+    return {"ok": True}
 
 
 @app.post("/api/v1/debug/backfill-slippage")

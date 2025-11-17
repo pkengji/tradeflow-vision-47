@@ -164,6 +164,10 @@ class DailyPnlPoint(BaseModel):
     pnl: float
     equity: float
 
+class UpdateSlTpIn(BaseModel):
+    stop_loss: float
+    take_profit: float
+
 
 # ---------- Cashflows / Portfolio (ADDED) ----------
 

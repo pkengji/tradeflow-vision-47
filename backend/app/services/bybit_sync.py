@@ -293,15 +293,16 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
     # 0/1/NULL is_consumed robust filtern
     q = (
         db.query(models.Execution)
-          .filter(models.Execution.bot_id == bot_id)
-          .filter(
-              (models.Execution.is_consumed == False) |
-              (models.Execution.is_consumed == 0) |
-              (models.Execution.is_consumed.is_(None))
-          )
-          .order_by(models.Execution.symbol.asc(),
-                    models.Execution.ts.asc(),
-                    models.Execution.id.asc())
+        .filter(models.Execution.bot_id == bot_id)
+        .filter(
+            or_(
+                models.Execution.is_consumed.is_(False),
+                models.Execution.is_consumed.is_(None),
+            )
+        )
+        .order_by(models.Execution.symbol.asc(),
+                models.Execution.ts.asc(),
+                models.Execution.id.asc())
     )
     execs = q.all()
     if not execs:

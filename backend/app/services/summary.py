@@ -76,36 +76,55 @@ def _sum_usdt_tx(positions: Iterable[models.Position]) -> Dict[str, float]:
         funding += float(p.funding_usdt or 0.0)
         slip_liq += float(p.slippage_entry_usdt or 0.0) + float(p.slippage_exit_usdt or 0.0)
         slip_time += float(p.slippage_timelag_usdt or 0.0)
+
+    total_cost = fees + funding + slip_liq + slip_time
+
     return {
         "fees": fees,
         "funding": funding,
         "slip_liquidity": slip_liq,
         "slip_time": slip_time,
+        "total": total_cost,
     }
 
-def _avg_tx_cost_pct(positions: Iterable[models.Position]) -> float:
+def _tx_breakdown_pct(positions: Iterable[models.Position]) -> Dict[str, float]:
     """
-    Durchschnittliche Transaktionskosten in % des Risikos.
-    Für jede Position: (Fees + Funding + Slippage) / risk_amount_usdt.
-    Positionen ohne risk_amount_usdt oder mit risk <= 0 werden ignoriert.
+    Break-Down der Transaktionskosten in % des gesamten risk_amount_usdt.
+    Gewichtung über Risk-Summe: Sum(component) / Sum(risk_amount_usdt) * 100.
     """
-    values: List[float] = []
+    total_risk = 0.0
+    fees = 0.0
+    funding = 0.0
+    slip_liq = 0.0
+    slip_time = 0.0
+
     for p in positions:
         risk = getattr(p, "risk_amount_usdt", None)
         if not risk or risk <= 0.0:
             continue
+        total_risk += float(risk)
+        fees += float(p.fee_open_usdt or 0.0) + float(p.fee_close_usdt or 0.0)
+        funding += float(p.funding_usdt or 0.0)
+        slip_liq += float(p.slippage_entry_usdt or 0.0) + float(p.slippage_exit_usdt or 0.0)
+        slip_time += float(p.slippage_timelag_usdt or 0.0)
 
-        fees = float(p.fee_open_usdt or 0.0) + float(p.fee_close_usdt or 0.0)
-        funding = float(p.funding_usdt or 0.0)
-        slip_liq = float(p.slippage_entry_usdt or 0.0) + float(p.slippage_exit_usdt or 0.0)
-        slip_time = float(p.slippage_timelag_usdt or 0.0)
+    if total_risk <= 0.0:
+        return {
+            "fees": 0.0,
+            "funding": 0.0,
+            "slip_liquidity": 0.0,
+            "slip_time": 0.0,
+            "total": 0.0,
+        }
 
-        cost = fees + funding + slip_liq + slip_time
-        values.append(cost / risk * 100.0)
-
-    if not values:
-        return 0.0
-    return sum(values) / len(values)
+    total_cost = fees + funding + slip_liq + slip_time
+    return {
+        "fees": fees / total_risk * 100.0,
+        "funding": funding / total_risk * 100.0,
+        "slip_liquidity": slip_liq / total_risk * 100.0,
+        "slip_time": slip_time / total_risk * 100.0,
+        "total": total_cost / total_risk * 100.0,
+    }
 
 
 def _timelag_kpis_for_range(
@@ -336,11 +355,11 @@ def compute_dashboard_summary(db: Session, user_id: int, f: SummaryFilters) -> D
     tx_last30 = _sum_usdt_tx(last30_pos)
     tx_overall = _sum_usdt_tx(overall_pos)
 
-    # Tx-Kosten in % (gewichteter Durchschnitt über Trades mit risk_amount)
-    tx_costs_today_pct = _avg_tx_cost_pct(today_pos)
-    tx_costs_month_pct = _avg_tx_cost_pct(month_pos)
-    tx_costs_last30_pct = _avg_tx_cost_pct(last30_pos)
-    tx_costs_overall_pct = _avg_tx_cost_pct(overall_pos)
+    # Tx-Breakdown in % pro Faktor
+    tx_today_pct = _tx_breakdown_pct(today_pos)
+    tx_month_pct = _tx_breakdown_pct(month_pos)
+    tx_last30_pct = _tx_breakdown_pct(last30_pos)
+    tx_overall_pct = _tx_breakdown_pct(overall_pos)
 
     # Timelag-KPIs
     tl_today = _timelag_kpis_for_range(db, user_id, kpi_today_from, kpi_today_to, f.bot_ids, f.symbols, f.direction, f.open_hour_range, f.close_hour_range)
@@ -393,32 +412,32 @@ def compute_dashboard_summary(db: Session, user_id: int, f: SummaryFilters) -> D
                 "realized_pnl": overall_realized,
                 "win_rate": safe_rate(overall_wins, overall_total),
                 "trade_count": overall_total,
-                "tx_costs_pct": tx_costs_overall_pct,
                 "tx_breakdown_usdt": tx_overall,
+                "tx_breakdown_pct": tx_overall_pct, 
                 "timelag_ms": tl_overall,
             },
             "today": {
                 "realized_pnl": today_realized,
                 "win_rate": safe_rate(today_wins, today_total),
                 "trade_count": today_total, 
-                "tx_costs_pct": tx_costs_today_pct,
                 "tx_breakdown_usdt": tx_today,
+                "tx_breakdown_pct": tx_today_pct, 
                 "timelag_ms": tl_today,
             },
             "month": {
                 "realized_pnl": month_realized,
                 "win_rate": safe_rate(month_wins, month_total),
                 "trade_count": month_total,
-                "tx_costs_pct": tx_costs_month_pct,
                 "tx_breakdown_usdt": tx_month,
+                "tx_breakdown_pct": tx_month_pct, 
                 "timelag_ms": tl_month,
             },
             "last_30d": {
                 "realized_pnl": last30_realized,
                 "win_rate": safe_rate(last30_wins, last30_total),
                 "trade_count": last30_total,
-                "tx_costs_pct": tx_costs_last30_pct,
                 "tx_breakdown_usdt": tx_last30,
+                "tx_breakdown_pct": tx_last30_pct, 
                 "timelag_ms": tl_last30,
             },
             "current": {

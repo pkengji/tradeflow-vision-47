@@ -133,7 +133,107 @@ class BybitRest:
         if isinstance(data, dict) and str(data.get("retCode", "0")) not in ("0", 0):
             raise requests.HTTPError(f"Bybit error {data.get('retCode')}: {data.get('retMsg')}", response=resp)
         return data
+    
+    def set_leverage(
+        self,
+        api_key: str,
+        api_secret: str,
+        category: str,
+        symbol: str,
+        buy_leverage: float,
+        sell_leverage: float,
+    ) -> Dict[str, Any]:
+        """
+        /v5/position/set-leverage – Leverage pro Symbol setzen.
+        category: "linear" für USDT Perps
+        """
+        path = "/v5/position/set-leverage"
+        url = self.base_url + path
+        ts = str(int(time.time() * 1000))
+        recv_window = "5000"
 
+        body_dict = {
+            "category": category,
+            "symbol": symbol,
+            "buyLeverage": str(buy_leverage),
+            "sellLeverage": str(sell_leverage),
+        }
+        body = json.dumps(body_dict, separators=(",", ":"))
+        sign_msg = ts + api_key + recv_window + body
+        sign = self._sign(api_secret, sign_msg)
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-BAPI-API-KEY": api_key,
+            "X-BAPI-SIGN": sign,
+            "X-BAPI-TIMESTAMP": ts,
+            "X-BAPI-RECV-WINDOW": recv_window,
+        }
+
+        resp = requests.post(url, headers=headers, data=body, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, dict) and str(data.get("retCode", "0")) not in ("0", 0):
+            raise requests.HTTPError(
+                f"Bybit error {data.get('retCode')}: {data.get('retMsg')}", response=resp
+            )
+        return data
+
+    def cancel_all_orders(self, api_key: str, api_secret: str, category: str, symbol: str) -> Dict[str, Any]:
+        """
+        Cancel ALL offenen Orders (active + conditional) für ein Symbol in einer Kategorie.
+        Wird genutzt, um vor/bei Close alles frei zu räumen.
+        """
+        path = "/v5/order/cancel-all"
+        url = self.base_url + path
+        ts = str(int(time.time() * 1000))
+        recv_window = "5000"
+        body_dict = {"category": category, "symbol": symbol}
+        body = json.dumps(body_dict, separators=(",", ":"))
+        sign_msg = ts + api_key + recv_window + body
+        sign = self._sign(api_secret, sign_msg)
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-BAPI-API-KEY": api_key,
+            "X-BAPI-SIGN": sign,
+            "X-BAPI-TIMESTAMP": ts,
+            "X-BAPI-RECV-WINDOW": recv_window,
+        }
+
+        resp = requests.post(url, headers=headers, data=body, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, dict) and str(data.get("retCode", "0")) not in ("0", 0):
+            raise requests.HTTPError(f"Bybit error {data.get('retCode')}: {data.get('retMsg')}", response=resp)
+        return data
+
+    def set_trading_stop(self, api_key: str, api_secret: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Wrapper für /v5/position/trading-stop (TP/SL an bestehender Position anpassen).
+        """
+        path = "/v5/position/trading-stop"
+        url = self.base_url + path
+        ts = str(int(time.time() * 1000))
+        recv_window = "5000"
+        body = json.dumps(payload, separators=(",", ":"))
+        sign_msg = ts + api_key + recv_window + body
+        sign = self._sign(api_secret, sign_msg)
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-BAPI-API-KEY": api_key,
+            "X-BAPI-SIGN": sign,
+            "X-BAPI-TIMESTAMP": ts,
+            "X-BAPI-RECV-WINDOW": recv_window,
+        }
+
+        resp = requests.post(url, headers=headers, data=body, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, dict) and str(data.get("retCode", "0")) not in ("0", 0):
+            raise requests.HTTPError(f"Bybit error {data.get('retCode')}: {data.get('retMsg')}", response=resp)
+        return data
 
 # ============================================================
 # WebSocket-Client für privateExecution.v5 + position
