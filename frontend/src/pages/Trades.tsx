@@ -1,7 +1,7 @@
 // ==============================
 // 1) IMPORTS
 // ==============================
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api, { type PositionListItem, type Bot } from '@/lib/api';
 import TradesFiltersBar, { type TradesFilters } from '@/components/app/TradesFiltersBar';
@@ -67,7 +67,13 @@ export default function Trades() {
     timeMode: 'opened',
   });
 
-  const [positions, setPositions] = useState<PositionListItem[]>([]);
+  const [positionsOpen, setPositionsOpen] = useState<PositionListItem[]>([]);
+  const [positionsClosed, setPositionsClosed] = useState<PositionListItem[]>([]);
+  const PAGE_SIZE = 50;
+  const [pageByTab, setPageByTab] = useState<{ open: number; closed: number }>({ open: 0, closed: 0 });
+  const [hasMoreByTab, setHasMoreByTab] = useState<{ open: boolean; closed: boolean }>({ open: true, closed: true });
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
 
@@ -76,14 +82,69 @@ export default function Trades() {
 
   const [showFilters, setShowFilters] = useState(false);
 
+  // Pagination + Infinite Scroll
+  const fetchMore = async (tab: TabKey) => {
+    if (loadingMore || !hasMoreByTab[tab]) return;
+    setLoadingMore(true);
+    try {
+      const currentList = tab === 'open' ? positionsOpen : positionsClosed;
+      const res = await api.getPositions({ status: tab, skip: currentList.length, limit: PAGE_SIZE });
+      const newItems = Array.isArray(res?.items) ? res.items : [];
+      if (tab === 'open') {
+        setPositionsOpen((prev) => [...prev, ...newItems]);
+      } else {
+        setPositionsClosed((prev) => [...prev, ...newItems]);
+      }
+      setHasMoreByTab((prev) => ({ ...prev, [tab]: newItems.length === PAGE_SIZE }));
+      setPageByTab((prev) => ({ ...prev, [tab]: prev[tab] + 1 }));
+    } catch (e: any) {
+      setError(e?.message ?? 'Unbekannter Fehler');
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  useEffect(() => {
+    // Set up intersection observer for infinite scroll
+    if (!loadMoreRef.current) return;
+    const el = loadMoreRef.current;
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (entry.isIntersecting) {
+        fetchMore(activeTab);
+      }
+    }, { rootMargin: '200px' });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [activeTab, hasMoreByTab.open, hasMoreByTab.closed]);
+
   // ---- 4.2 EFFECTS: Daten laden ----
   useEffect(() => {
     let cancel = false;
     (async () => {
       try {
         setLoading(true); setError(null);
-        const res = await api.getPositions();
-        if (!cancel) setPositions(Array.isArray(res?.items) ? res.items : []);
+        if (activeTab === 'open') {
+          if (positionsOpen.length === 0) {
+            const res = await api.getPositions({ status: 'open', skip: 0, limit: PAGE_SIZE });
+            if (!cancel) {
+              const items = Array.isArray(res?.items) ? res.items : [];
+              setPositionsOpen(items);
+              setHasMoreByTab((prev) => ({ ...prev, open: items.length === PAGE_SIZE }));
+              setPageByTab((prev) => ({ ...prev, open: 1 }));
+            }
+          }
+        } else {
+          if (positionsClosed.length === 0) {
+            const res = await api.getPositions({ status: 'closed', skip: 0, limit: PAGE_SIZE });
+            if (!cancel) {
+              const items = Array.isArray(res?.items) ? res.items : [];
+              setPositionsClosed(items);
+              setHasMoreByTab((prev) => ({ ...prev, closed: items.length === PAGE_SIZE }));
+              setPageByTab((prev) => ({ ...prev, closed: 1 }));
+            }
+          }
+        }
       } catch (e: any) {
         if (!cancel) setError(e?.message ?? 'Unbekannter Fehler');
       } finally {
@@ -91,7 +152,7 @@ export default function Trades() {
       }
     })();
     return () => { cancel = true; };
-  }, []);
+  }, [activeTab, positionsOpen.length, positionsClosed.length]);
 
   useEffect(() => {
     let cancel = false;
@@ -116,7 +177,7 @@ export default function Trades() {
   }, []);
 
   // ---- 4.3 SELECTORS/DERIVATES ----
-  const byTab = useMemo(() => positions.filter(p => (activeTab === 'open' ? p.status === 'open' : p.status === 'closed')), [positions, activeTab]);
+  const byTab = useMemo(() => (activeTab === 'open' ? positionsOpen : positionsClosed), [positionsOpen, positionsClosed, activeTab]);
 
   const afterBasicFilters = useMemo(() => {
     return byTab.filter(p => {
@@ -291,6 +352,7 @@ export default function Trades() {
                 />
               </div>
             ))}
+            <div ref={loadMoreRef} className="h-6" />
           </div>
         </section>
       ) : (
@@ -326,6 +388,7 @@ export default function Trades() {
                 />
               </div>
             ))}
+            <div ref={loadMoreRef} className="h-6" />
           </div>
         </section>
       )}
