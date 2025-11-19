@@ -1,28 +1,28 @@
 // ==============================
 // 1) IMPORTS
 // ==============================
-import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { useNavigate, useSearchParams, useLocation, useNavigationType } from 'react-router-dom';
-import api, { type PositionListItem, type Bot } from '@/lib/api';
-import TradesFiltersBar, { type TradesFilters } from '@/components/app/TradesFiltersBar';
-import TradeCardCompact from '@/components/app/TradeCardCompact';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import MiniRange from '@/components/app/MiniRange';
-import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import { SlidersHorizontal } from 'lucide-react';
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { useNavigate, useSearchParams, useLocation, useNavigationType } from "react-router-dom";
+import api, { type PositionListItem, type Bot } from "@/lib/api";
+import TradesFiltersBar, { type TradesFilters } from "@/components/app/TradesFiltersBar";
+import TradeCardCompact from "@/components/app/TradeCardCompact";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import MiniRange from "@/components/app/MiniRange";
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { SlidersHorizontal } from "lucide-react";
 
 // ==============================
 // 2) LOCAL TYPES
 // ==============================
-type TabKey = 'open' | 'closed';
+type TabKey = "open" | "closed";
 
 // ==============================
 // 3) HELPERS (klein & testbar)
 // ==============================
 function safeNumber(n: number | null | undefined, fallback = 0): number {
-  return typeof n === 'number' && Number.isFinite(n) ? n : fallback;
+  return typeof n === "number" && Number.isFinite(n) ? n : fallback;
 }
 
 function toDateOrNull(value?: string | null): Date | null {
@@ -33,15 +33,19 @@ function toDateOrNull(value?: string | null): Date | null {
 
 function combineDateTime(dateStr?: string, timeStr?: string): Date | null {
   if (!dateStr && !timeStr) return null;
-  const [yy, mm, dd] = (dateStr ?? '').split('-');
-  const [HH, MM] = (timeStr ?? '').split(':');
-  const y = Number(yy), m = Number(mm), d = Number(dd), h = Number(HH), min = Number(MM);
+  const [yy, mm, dd] = (dateStr ?? "").split("-");
+  const [HH, MM] = (timeStr ?? "").split(":");
+  const y = Number(yy),
+    m = Number(mm),
+    d = Number(dd),
+    h = Number(HH),
+    min = Number(MM);
   const hasDate = Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d);
   const hasTime = Number.isFinite(h) && Number.isFinite(min);
   if (!hasDate && !hasTime) return null;
   const now = new Date();
   const year = hasDate ? y : now.getFullYear();
-  const month = hasDate ? (m - 1) : now.getMonth();
+  const month = hasDate ? m - 1 : now.getMonth();
   const day = hasDate ? d : now.getDate();
   const hour = hasTime ? h : 0;
   const minute = hasTime ? min : 0;
@@ -50,20 +54,20 @@ function combineDateTime(dateStr?: string, timeStr?: string): Date | null {
 }
 
 function formatDateHeader(dateStr: string | null): string {
-  if (!dateStr) return '—';
+  if (!dateStr) return "—";
   const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return '—';
-  
+  if (isNaN(d.getTime())) return "—";
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
-  
+
   const compareDate = new Date(d);
   compareDate.setHours(0, 0, 0, 0);
-  
-  const formatted = d.toLocaleDateString('de-CH', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  
+
+  const formatted = d.toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" });
+
   if (compareDate.getTime() === today.getTime()) {
     return `Heute, ${formatted}`;
   } else if (compareDate.getTime() === yesterday.getTime()) {
@@ -72,14 +76,17 @@ function formatDateHeader(dateStr: string | null): string {
   return formatted;
 }
 
-function groupTradesByDate(trades: PositionListItem[], dateField: 'opened_at' | 'closed_at'): Map<string, PositionListItem[]> {
+function groupTradesByDate(
+  trades: PositionListItem[],
+  dateField: "opened_at" | "closed_at",
+): Map<string, PositionListItem[]> {
   const groups = new Map<string, PositionListItem[]>();
   for (const trade of trades) {
     const dateStr = trade[dateField];
     if (!dateStr) continue;
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) continue;
-    const key = date.toISOString().split('T')[0]; // YYYY-MM-DD
+    const key = date.toISOString().split("T")[0]; // YYYY-MM-DD
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(trade);
   }
@@ -92,24 +99,24 @@ function groupTradesByDate(trades: PositionListItem[], dateField: 'opened_at' | 
 export default function Trades() {
   const navigate = useNavigate();
   const location = useLocation();
-  const navigationType = useNavigationType();   // <--- NEU
+  const navigationType = useNavigationType(); // <--- NEU
   const [searchParams, setSearchParams] = useSearchParams();
   const [isLoadingMore, setIsLoadingMore] = useState(false);
- 
+
   // ---- 4.1 STATE (UI & Daten) ----
   const [activeTab, setActiveTab] = useState<TabKey>(() => {
-    const tab = searchParams.get('tab');
-    return (tab === 'open' || tab === 'closed') ? tab : 'open';
+    const tab = searchParams.get("tab");
+    return tab === "open" || tab === "closed" ? tab : "open";
   });
   const [filters, setFilters] = useState<TradesFilters>({
     botIds: [],
     symbols: [],
-    side: 'all',
+    side: "all",
     dateFrom: undefined,
     dateTo: undefined,
     timeFrom: undefined,
     timeTo: undefined,
-    timeMode: 'opened',
+    timeMode: "opened",
   });
 
   const [positions, setPositions] = useState<PositionListItem[]>([]);
@@ -118,15 +125,15 @@ export default function Trades() {
   const [totalCount, setTotalCount] = useState<number>(0);
   const [displayLimit, setDisplayLimit] = useState<number>(() => {
     // Nur beim History-Back (POP) Restore nutzen
-    if (navigationType !== 'POP') {
+    if (navigationType !== "POP") {
       // Alte Restore-Werte verwerfen, wenn man von einer anderen Seite kommt
-      sessionStorage.removeItem('trades-scroll-position');
-      sessionStorage.removeItem('trades-display-limit');
-      sessionStorage.removeItem('trades-tab');
+      sessionStorage.removeItem("trades-scroll-position");
+      sessionStorage.removeItem("trades-display-limit");
+      sessionStorage.removeItem("trades-tab");
       return 50;
     }
 
-    const saved = sessionStorage.getItem('trades-display-limit');
+    const saved = sessionStorage.getItem("trades-display-limit");
     if (!saved) return 50;
     const parsed = parseInt(saved, 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 50;
@@ -142,7 +149,8 @@ export default function Trades() {
     let cancel = false;
     (async () => {
       try {
-        setLoading(true); setError(null);
+        setLoading(true);
+        setError(null);
         setIsLoadingMore(true);
         const res = await api.getPositions({ limit: displayLimit });
         if (!cancel) {
@@ -150,7 +158,7 @@ export default function Trades() {
           setTotalCount(res?.total ?? 0);
         }
       } catch (e: any) {
-        if (!cancel) setError(e?.message ?? 'Unbekannter Fehler');
+        if (!cancel) setError(e?.message ?? "Unbekannter Fehler");
       } finally {
         if (!cancel) {
           setLoading(false);
@@ -158,24 +166,26 @@ export default function Trades() {
         }
       }
     })();
-    return () => { cancel = true; };
+    return () => {
+      cancel = true;
+    };
   }, [displayLimit]);
 
   // Restore scroll position and displayLimit on mount
   useEffect(() => {
-    if (navigationType !== 'POP') return;
+    if (navigationType !== "POP") return;
 
-    const savedScrollY = sessionStorage.getItem('trades-scroll-position');
-    const savedTab = sessionStorage.getItem('trades-tab');
+    const savedScrollY = sessionStorage.getItem("trades-scroll-position");
+    const savedTab = sessionStorage.getItem("trades-tab");
 
-    if (savedTab && (savedTab === 'open' || savedTab === 'closed')) {
+    if (savedTab && (savedTab === "open" || savedTab === "closed")) {
       setActiveTab(savedTab as TabKey);
     }
 
     if (savedScrollY) {
       setTimeout(() => {
         window.scrollTo(0, parseInt(savedScrollY, 10));
-        sessionStorage.removeItem('trades-scroll-position');
+        sessionStorage.removeItem("trades-scroll-position");
       }, 100);
     }
   }, [navigationType]);
@@ -184,14 +194,14 @@ export default function Trades() {
   useEffect(() => {
     const handleBeforeUnload = () => {
       const currentPath = location.pathname;
-      if (!currentPath.startsWith('/trades') && !currentPath.startsWith('/trade/')) {
-        sessionStorage.removeItem('trades-display-limit');
-        sessionStorage.removeItem('trades-tab');
+      if (!currentPath.startsWith("/trades") && !currentPath.startsWith("/trade/")) {
+        sessionStorage.removeItem("trades-display-limit");
+        sessionStorage.removeItem("trades-tab");
       }
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -199,10 +209,12 @@ export default function Trades() {
     (async () => {
       try {
         const list = await api.getBots();
-        if (!cancel) setBots((list as Bot[]).map(b => ({ id: b.id, name: b.name })));
+        if (!cancel) setBots((list as Bot[]).map((b) => ({ id: b.id, name: b.name })));
       } catch {}
     })();
-    return () => { cancel = true; };
+    return () => {
+      cancel = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -213,15 +225,20 @@ export default function Trades() {
         if (!cancel) setSymbols(Array.isArray(list) ? list : []);
       } catch {}
     })();
-    return () => { cancel = true; };
+    return () => {
+      cancel = true;
+    };
   }, []);
 
   // ---- 4.3 SELECTORS/DERIVATES ----
-  const byTab = useMemo(() => positions.filter(p => (activeTab === 'open' ? p.status === 'open' : p.status === 'closed')), [positions, activeTab]);
+  const byTab = useMemo(
+    () => positions.filter((p) => (activeTab === "open" ? p.status === "open" : p.status === "closed")),
+    [positions, activeTab],
+  );
 
   const afterBasicFilters = useMemo(() => {
-    return byTab.filter(p => {
-      if (filters.side && filters.side !== 'all' && p.side !== filters.side) return false;
+    return byTab.filter((p) => {
+      if (filters.side && filters.side !== "all" && p.side !== filters.side) return false;
       if (filters.symbols && filters.symbols.length > 0 && !filters.symbols.includes(p.symbol)) return false;
       return true;
     });
@@ -233,7 +250,7 @@ export default function Trades() {
     // Datumsfilter
     if (filters.dateFrom || filters.dateTo) {
       list = list.filter((p) => {
-        const date = toDateOrNull(activeTab === 'closed' ? p.closed_at : p.opened_at);
+        const date = toDateOrNull(activeTab === "closed" ? p.closed_at : p.opened_at);
         if (!date) return false;
         if (filters.dateFrom && date < filters.dateFrom) return false;
         if (filters.dateTo && date > filters.dateTo) return false;
@@ -244,7 +261,7 @@ export default function Trades() {
     // Tageszeitfilter
     if (filters.timeFrom || filters.timeTo) {
       list = list.filter((p) => {
-        const dateStr = filters.timeMode === 'closed' ? p.closed_at : p.opened_at;
+        const dateStr = filters.timeMode === "closed" ? p.closed_at : p.opened_at;
         const date = toDateOrNull(dateStr);
         if (!date) return false;
         const hours = date.getHours();
@@ -255,11 +272,11 @@ export default function Trades() {
         let toMinutes = 24 * 60;
 
         if (filters.timeFrom) {
-          const [h, m] = filters.timeFrom.split(':').map(Number);
+          const [h, m] = filters.timeFrom.split(":").map(Number);
           fromMinutes = h * 60 + m;
         }
         if (filters.timeTo) {
-          const [h, m] = filters.timeTo.split(':').map(Number);
+          const [h, m] = filters.timeTo.split(":").map(Number);
           toMinutes = h * 60 + m;
         }
 
@@ -275,7 +292,7 @@ export default function Trades() {
   }, [afterBasicFilters, filters, activeTab]);
 
   const openTrades = useMemo(() => {
-    const trades = filtered.filter(t => t.status === 'open');
+    const trades = filtered.filter((t) => t.status === "open");
     // Sortiere nach opened_at (neueste zuerst)
     return trades.sort((a, b) => {
       const dateA = a.opened_at ? new Date(a.opened_at).getTime() : 0;
@@ -285,7 +302,7 @@ export default function Trades() {
   }, [filtered]);
 
   const closedTrades = useMemo(() => {
-    const trades = filtered.filter(t => t.status === 'closed');
+    const trades = filtered.filter((t) => t.status === "closed");
     // Sortiere nach closed_at (neueste zuerst)
     return trades.sort((a, b) => {
       const dateA = a.closed_at ? new Date(a.closed_at).getTime() : 0;
@@ -299,9 +316,9 @@ export default function Trades() {
   // Save scroll position and displayLimit before navigating
   const saveScrollPosition = useCallback(() => {
     const scrollY = window.scrollY;
-    sessionStorage.setItem('trades-scroll-position', String(scrollY));
-    sessionStorage.setItem('trades-tab', activeTab);
-    sessionStorage.setItem('trades-display-limit', String(displayLimit));
+    sessionStorage.setItem("trades-scroll-position", String(scrollY));
+    sessionStorage.setItem("trades-tab", activeTab);
+    sessionStorage.setItem("trades-display-limit", String(displayLimit));
   }, [activeTab, displayLimit]);
 
   // ---- 4.4 HANDLER ----
@@ -313,36 +330,31 @@ export default function Trades() {
   const handleTabChange = (newTab: TabKey) => {
     setActiveTab(newTab);
     setSearchParams({ tab: newTab });
-    sessionStorage.setItem('trades-tab', newTab);
+    sessionStorage.setItem("trades-tab", newTab);
   };
 
   const handleLoadMore = () => {
     if (!isLoadingMore && hasMoreToLoad) {
-      setDisplayLimit(prev => prev + 50);
+      setDisplayLimit((prev) => prev + 50);
     }
   };
 
   // Gruppiere Trades nach Datum
-  const openTradesGrouped = useMemo(() => groupTradesByDate(openTrades, 'opened_at'), [openTrades]);
-  const closedTradesGrouped = useMemo(() => groupTradesByDate(closedTrades, 'closed_at'), [closedTrades]);
+  const openTradesGrouped = useMemo(() => groupTradesByDate(openTrades, "opened_at"), [openTrades]);
+  const closedTradesGrouped = useMemo(() => groupTradesByDate(closedTrades, "closed_at"), [closedTrades]);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (filters.botIds.length > 0) count++;
     if (filters.symbols.length > 0) count++;
-    if (filters.side && filters.side !== 'all') count++;
+    if (filters.side && filters.side !== "all") count++;
     if (filters.dateFrom || filters.dateTo) count++;
     if (filters.timeFrom || filters.timeTo) count++;
     return count;
   }, [filters]);
 
   const FilterButton = (
-    <Button 
-      variant="ghost" 
-      size="icon"
-      onClick={() => setShowFilters(!showFilters)}
-      className="relative"
-    >
+    <Button variant="ghost" size="icon" onClick={() => setShowFilters(!showFilters)} className="relative">
       <SlidersHorizontal className="h-5 w-5" />
       {activeFilterCount > 0 && (
         <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-medium">
@@ -358,20 +370,25 @@ export default function Trades() {
       {/* Filter-Modal - Mobile */}
       {showFilters && (
         <div className="fixed inset-0 bg-background/80 z-50 lg:hidden" onClick={() => setShowFilters(false)}>
-          <div className="fixed inset-x-0 top-14 bottom-16 bg-background flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="fixed inset-x-0 top-14 bottom-16 bg-background flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="overflow-auto">
               <TradesFiltersBar
                 value={filters}
                 onChange={setFilters}
                 availableBots={bots}
                 availableSymbols={symbols}
-                showDateRange={activeTab === 'closed'}
-                showTimeRange={activeTab === 'closed'}
+                showDateRange={activeTab === "closed"}
+                showTimeRange={activeTab === "closed"}
                 showSignalKind={false}
               />
             </div>
             <div className="border-t p-3">
-              <Button className="w-full" onClick={() => setShowFilters(false)}>Fertig</Button>
+              <Button className="w-full" onClick={() => setShowFilters(false)}>
+                Fertig
+              </Button>
             </div>
           </div>
         </div>
@@ -381,173 +398,175 @@ export default function Trades() {
       <div className="sticky top-0 z-10 bg-background border-b">
         <Tabs value={activeTab} onValueChange={(v) => handleTabChange(v as TabKey)}>
           <TabsList className="grid w-full grid-cols-2 h-10 rounded-none border-0 bg-transparent p-0">
-            <TabsTrigger value="open" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary">Offen</TabsTrigger>
-            <TabsTrigger value="closed" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary">Geschlossen</TabsTrigger>
+            <TabsTrigger
+              value="open"
+              className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary"
+            >
+              Offen
+            </TabsTrigger>
+            <TabsTrigger
+              value="closed"
+              className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary"
+            >
+              Geschlossen
+            </TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
 
       <div className="overflow-auto flex-1">
         <div className="space-y-4 p-4 pb-24">
-
-        {/* Filter Button - Desktop */}
-        <div className="hidden lg:flex justify-end gap-2">
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => setShowFilters(!showFilters)}
-            className="relative"
-          >
-            <SlidersHorizontal className="h-4 w-4 mr-2" />
-            Filter
-            {activeFilterCount > 0 && (
-              <span className="ml-2 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-medium">
-                {activeFilterCount}
-              </span>
-            )}
-          </Button>
-        </div>
-
-        {/* Filter - Desktop (collapsible) */}
-        {showFilters && (
-          <div className="hidden lg:block border rounded-lg p-4 bg-muted/30">
-            <TradesFiltersBar
-              value={filters}
-              onChange={setFilters}
-              availableBots={bots}
-              availableSymbols={symbols}
-              showDateRange={activeTab === 'closed'}
-              showTimeRange={activeTab === 'closed'}
-              showSignalKind={false}
-            />
-            <div className="flex justify-end mt-4">
-              <Button size="sm" onClick={() => setShowFilters(false)}>Fertig</Button>
-            </div>
+          {/* Filter Button - Desktop */}
+          <div className="hidden lg:flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="relative">
+              <SlidersHorizontal className="h-4 w-4 mr-2" />
+              Filter
+              {activeFilterCount > 0 && (
+                <span className="ml-2 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-medium">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
           </div>
-        )}
 
-      {/* Liste: Offene oder Geschlossene */}
-      {activeTab === 'open' ? (
-        <section>
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-sm text-muted-foreground">
-              {loading ? 'Lade…' : `${openTrades.length} von ${totalCount} Einträgen`}
-            </div>
-            {error && <div className="text-sm text-red-500">{error}</div>}
-          </div>
-          <div className="space-y-4">
-            {openTrades.length === 0 && !loading && (<div className="text-sm text-muted-foreground py-4">Keine offenen Trades.</div>)}
-            {Array.from(openTradesGrouped.entries())
-              .sort(([dateA], [dateB]) => dateB.localeCompare(dateA)) // Neueste zuerst
-              .map(([dateKey, trades], groupIndex) => (
-                <div key={dateKey}>
-                  {groupIndex > 0 && <Separator className="my-4" />}
-                  <div className="text-xs text-muted-foreground font-medium mb-2 px-1">
-                    {formatDateHeader(dateKey)}
-                  </div>
-                  <div className="divide-y divide-border">
-                    {trades.map((t) => (
-                      <div
-                        key={t.id}
-                        onClick={() => handleCardClick(t)}
-                        className="cursor-pointer hover:bg-muted/30 transition-colors py-2"
-                      >
-                        <TradeCardCompact
-                          symbol={t.symbol}
-                          side={t.side as 'long' | 'short'}
-                          pnl={safeNumber(t.unrealized_pnl ?? t.pnl, 0)}
-                          botName={t.bot_name ?? undefined}
-                          deltaPct={t.pnl_pct ?? undefined}
-                          onClick={() => {}}
-                          variant="plain"
-                        />
-                        <MiniRange
-                          labelEntry={t.side === 'short' ? 'Sell' : 'Buy'}
-                          entry={t.entry_price_vwap ?? t.entry_price ?? null}
-                          sl={t.sl ?? null}
-                          tp={t.tp ?? null}
-                          mark={t.mark_price ?? null}
-                          side={t.side as 'long' | 'short'}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-          </div>
-          {hasMoreToLoad && (
-            <div className="mt-6 flex justify-center">
-              <Button 
-                variant="outline" 
-                onClick={handleLoadMore}
-                disabled={isLoadingMore}
-              >
-                {isLoadingMore ? 'Lädt...' : 'Weitere 50 Trades laden'}
-              </Button>
+          {/* Filter - Desktop (collapsible) */}
+          {showFilters && (
+            <div className="hidden lg:block border rounded-lg p-4 bg-muted/30">
+              <TradesFiltersBar
+                value={filters}
+                onChange={setFilters}
+                availableBots={bots}
+                availableSymbols={symbols}
+                showDateRange={activeTab === "closed"}
+                showTimeRange={activeTab === "closed"}
+                showSignalKind={false}
+              />
+              <div className="flex justify-end mt-4">
+                <Button size="sm" onClick={() => setShowFilters(false)}>
+                  Fertig
+                </Button>
+              </div>
             </div>
           )}
-        </section>
-      ) : (
-        <section>
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-sm text-muted-foreground">
-              {loading ? 'Lade…' : `${closedTrades.length} von ${totalCount} Einträgen`}
-            </div>
-            {error && <div className="text-sm text-red-500">{error}</div>}
-          </div>
-          <div className="space-y-4">
-            {closedTrades.length === 0 && !loading && (<div className="text-sm text-muted-foreground py-4">Keine geschlossenen Trades.</div>)}
-            {Array.from(closedTradesGrouped.entries())
-              .sort(([dateA], [dateB]) => dateB.localeCompare(dateA)) // Neueste zuerst
-              .map(([dateKey, trades], groupIndex) => (
-                <div key={dateKey}>
-                  {groupIndex > 0 && <Separator className="my-4" />}
-                  <div className="text-xs text-muted-foreground font-medium mb-2 px-1">
-                    {formatDateHeader(dateKey)}
-                  </div>
-                  <div className="divide-y divide-border">
-                    {trades.map((t) => (
-                      <div
-                        key={t.id}
-                        onClick={() => handleCardClick(t)}
-                        className="cursor-pointer hover:bg-muted/30 transition-colors py-2"
-                      >
-                        <TradeCardCompact
-                          symbol={t.symbol}
-                          side={t.side as 'long' | 'short'}
-                          pnl={safeNumber(t.pnl, 0)}
-                          botName={t.bot_name ?? undefined}
-                          deltaPct={t.pnl_pct ?? undefined}
-                          onClick={() => {}}
-                          variant="plain"
-                        />
-                        <MiniRange
-                          labelEntry={t.side === 'short' ? 'Sell' : 'Buy'}
-                          entry={t.entry_price_vwap ?? t.entry_price ?? null}
-                          sl={t.sl ?? null}
-                          tp={t.tp ?? null}
-                          mark={t.exit_price ?? null}
-                          side={t.side as 'long' | 'short'}
-                        />
-                      </div>
-                    ))}
-                  </div>
+
+          {/* Liste: Offene oder Geschlossene */}
+          {activeTab === "open" ? (
+            <section>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm text-muted-foreground">
+                  {loading ? "Lade…" : `${openTrades.length} von ${totalCount} Einträgen`}
                 </div>
-              ))}
-          </div>
-          {hasMoreToLoad && (
-            <div className="mt-6 flex justify-center">
-              <Button 
-                variant="outline" 
-                onClick={handleLoadMore}
-                disabled={isLoadingMore}
-              >
-                {isLoadingMore ? 'Lädt...' : 'Weitere 50 Trades laden'}
-              </Button>
-            </div>
+                {error && <div className="text-sm text-red-500">{error}</div>}
+              </div>
+              <div className="space-y-4">
+                {openTrades.length === 0 && !loading && (
+                  <div className="text-sm text-muted-foreground py-4">Keine offenen Trades.</div>
+                )}
+                {Array.from(openTradesGrouped.entries())
+                  .sort(([dateA], [dateB]) => dateB.localeCompare(dateA)) // Neueste zuerst
+                  .map(([dateKey, trades], groupIndex) => (
+                    <div key={dateKey}>
+                      {groupIndex > 0 && <Separator className="my-4" />}
+                      <div className="text-xs text-muted-foreground font-medium mb-2 px-1">
+                        {formatDateHeader(dateKey)}
+                      </div>
+                      <div className="divide-y divide-border">
+                        {trades.map((t) => (
+                          <div
+                            key={t.id}
+                            onClick={() => handleCardClick(t)}
+                            className="cursor-pointer hover:bg-muted/30 transition-colors py-2"
+                          >
+                            <TradeCardCompact
+                              symbol={t.symbol}
+                              side={t.side as "long" | "short"}
+                              pnl={safeNumber(t.unrealized_pnl ?? t.pnl, 0)}
+                              botName={t.bot_name ?? undefined}
+                              deltaPct={t.pnl_pct ?? undefined}
+                              onClick={() => {}}
+                              variant="plain"
+                            />
+                            <MiniRange
+                              labelEntry={t.side === "short" ? "Sell" : "Buy"}
+                              entry={t.entry_price_vwap ?? t.entry_price ?? null}
+                              sl={t.sl ?? null}
+                              tp={t.tp ?? null}
+                              mark={t.mark_price ?? null}
+                              side={t.side as "long" | "short"}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+              {hasMoreToLoad && (
+                <div className="mt-6 flex justify-center">
+                  <Button variant="outline" onClick={handleLoadMore} disabled={isLoadingMore}>
+                    {isLoadingMore ? "Lädt..." : "Weitere 50 Trades laden"}
+                  </Button>
+                </div>
+              )}
+            </section>
+          ) : (
+            <section>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm text-muted-foreground">
+                  {loading ? "Lade…" : `${closedTrades.length} von ${totalCount} Einträgen`}
+                </div>
+                {error && <div className="text-sm text-red-500">{error}</div>}
+              </div>
+              <div className="space-y-4">
+                {closedTrades.length === 0 && !loading && (
+                  <div className="text-sm text-muted-foreground py-4">Keine geschlossenen Trades.</div>
+                )}
+                {Array.from(closedTradesGrouped.entries())
+                  .sort(([dateA], [dateB]) => dateB.localeCompare(dateA)) // Neueste zuerst
+                  .map(([dateKey, trades], groupIndex) => (
+                    <div key={dateKey}>
+                      {groupIndex > 0 && <Separator className="my-4" />}
+                      <div className="text-xs text-muted-foreground font-medium mb-2 px-1">
+                        {formatDateHeader(dateKey)}
+                      </div>
+                      <div className="divide-y divide-border">
+                        {trades.map((t) => (
+                          <div
+                            key={t.id}
+                            onClick={() => handleCardClick(t)}
+                            className="cursor-pointer hover:bg-muted/30 transition-colors py-2"
+                          >
+                            <TradeCardCompact
+                              symbol={t.symbol}
+                              side={t.side as "long" | "short"}
+                              pnl={safeNumber(t.pnl, 0)}
+                              botName={t.bot_name ?? undefined}
+                              deltaPct={t.pnl_pct ?? undefined}
+                              onClick={() => {}}
+                              variant="plain"
+                            />
+                            <MiniRange
+                              labelEntry={t.side === "short" ? "Sell" : "Buy"}
+                              entry={t.entry_price_vwap ?? t.entry_price ?? null}
+                              sl={t.sl ?? null}
+                              tp={t.tp ?? null}
+                              mark={t.exit_price ?? null}
+                              side={t.side as "long" | "short"}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+              {hasMoreToLoad && (
+                <div className="mt-6 flex justify-center">
+                  <Button variant="outline" onClick={handleLoadMore} disabled={isLoadingMore}>
+                    {isLoadingMore ? "Lädt..." : "Weitere 50 Trades laden"}
+                  </Button>
+                </div>
+              )}
+            </section>
           )}
-        </section>
-      )}
         </div>
       </div>
     </DashboardLayout>
