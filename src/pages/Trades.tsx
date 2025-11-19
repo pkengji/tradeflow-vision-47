@@ -152,7 +152,12 @@ export default function Trades() {
         setLoading(true);
         setError(null);
         setIsLoadingMore(true);
-        const res = await api.getPositions({ limit: displayLimit });
+
+        const res = await api.getPositions({
+          limit: displayLimit,
+          status: activeTab === "open" ? "open" : "closed", // <-- NEU
+        });
+
         if (!cancel) {
           setPositions(Array.isArray(res?.items) ? res.items : []);
           setTotalCount(res?.total ?? 0);
@@ -169,7 +174,7 @@ export default function Trades() {
     return () => {
       cancel = true;
     };
-  }, [displayLimit]);
+  }, [displayLimit, activeTab]); // <-- activeTab als Dependency ergänzen
 
   // Restore scroll position and displayLimit on mount
   useEffect(() => {
