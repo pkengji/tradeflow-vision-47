@@ -93,11 +93,7 @@ export default function Trades() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const loadMoreObserverRef = useRef<IntersectionObserver | null>(null);
-  const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
   
   // ---- 4.1 STATE (UI & Daten) ----
   const [activeTab, setActiveTab] = useState<TabKey>(() => {
@@ -132,11 +128,11 @@ export default function Trades() {
     (async () => {
       try {
         setLoading(true); setError(null);
+        setIsLoadingMore(true);
         const res = await api.getPositions({ limit: displayLimit });
         if (!cancel) {
           setPositions(Array.isArray(res?.items) ? res.items : []);
           setTotalCount(res?.total ?? 0);
-          setHasMore((res?.items?.length || 0) >= 50);
         }
       } catch (e: any) {
         if (!cancel) setError(e?.message ?? 'Unbekannter Fehler');
@@ -150,13 +146,18 @@ export default function Trades() {
     return () => { cancel = true; };
   }, [displayLimit]);
 
-  // Restore scroll position on mount
+  // Restore scroll position and displayLimit on mount
   useEffect(() => {
     const savedScrollY = sessionStorage.getItem('trades-scroll-position');
     const savedTab = sessionStorage.getItem('trades-tab');
+    const savedDisplayLimit = sessionStorage.getItem('trades-display-limit');
     
     if (savedTab && (savedTab === 'open' || savedTab === 'closed')) {
       setActiveTab(savedTab as TabKey);
+    }
+    
+    if (savedDisplayLimit) {
+      setDisplayLimit(parseInt(savedDisplayLimit, 10));
     }
     
     if (savedScrollY) {
@@ -167,28 +168,19 @@ export default function Trades() {
     }
   }, []);
 
-  // Infinite scroll with Intersection Observer
+  // Reset displayLimit when leaving trades pages
   useEffect(() => {
-    if (!loadMoreTriggerRef.current || isLoadingMore || !hasMore) return;
-
-    loadMoreObserverRef.current = new IntersectionObserver(
-      (entries) => {
-        const target = entries[0];
-        if (target.isIntersecting && !isLoadingMore && hasMore) {
-          setDisplayLimit(prev => prev + 50);
-        }
-      },
-      { threshold: 0.1 }
-    );
-
-    loadMoreObserverRef.current.observe(loadMoreTriggerRef.current);
-
-    return () => {
-      if (loadMoreObserverRef.current) {
-        loadMoreObserverRef.current.disconnect();
+    const handleBeforeUnload = () => {
+      const currentPath = location.pathname;
+      if (!currentPath.startsWith('/trades') && !currentPath.startsWith('/trade/')) {
+        sessionStorage.removeItem('trades-display-limit');
+        sessionStorage.removeItem('trades-tab');
       }
     };
-  }, [isLoadingMore, hasMore, displayLimit]);
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [location.pathname]);
 
   useEffect(() => {
     let cancel = false;
@@ -292,12 +284,13 @@ export default function Trades() {
 
   const hasMoreToLoad = positions.length < totalCount;
 
-  // Save scroll position before navigating
+  // Save scroll position and displayLimit before navigating
   const saveScrollPosition = useCallback(() => {
     const scrollY = window.scrollY;
     sessionStorage.setItem('trades-scroll-position', String(scrollY));
     sessionStorage.setItem('trades-tab', activeTab);
-  }, [activeTab]);
+    sessionStorage.setItem('trades-display-limit', String(displayLimit));
+  }, [activeTab, displayLimit]);
 
   // ---- 4.4 HANDLER ----
   const handleCardClick = (t: PositionListItem) => {
@@ -308,6 +301,13 @@ export default function Trades() {
   const handleTabChange = (newTab: TabKey) => {
     setActiveTab(newTab);
     setSearchParams({ tab: newTab });
+    sessionStorage.setItem('trades-tab', newTab);
+  };
+
+  const handleLoadMore = () => {
+    if (!isLoadingMore && hasMoreToLoad) {
+      setDisplayLimit(prev => prev + 50);
+    }
   };
 
   // Gruppiere Trades nach Datum
@@ -375,7 +375,7 @@ export default function Trades() {
         </Tabs>
       </div>
 
-      <div ref={scrollContainerRef} className="overflow-auto flex-1">
+      <div className="overflow-auto flex-1">
         <div className="space-y-4 p-4 pb-24">
 
         {/* Filter Button - Desktop */}
@@ -463,15 +463,15 @@ export default function Trades() {
                 </div>
               ))}
           </div>
-          {isLoadingMore && (
-            <div className="mt-4 text-center text-sm text-muted-foreground">
-              Lädt weitere Trades...
-            </div>
-          )}
-          {/* Infinite Scroll Trigger */}
-          {hasMore && (
-            <div ref={loadMoreTriggerRef} className="py-4 text-center">
-              {isLoadingMore && <div className="text-muted-foreground">Lädt mehr...</div>}
+          {hasMoreToLoad && (
+            <div className="mt-6 flex justify-center">
+              <Button 
+                variant="outline" 
+                onClick={handleLoadMore}
+                disabled={isLoadingMore}
+              >
+                {isLoadingMore ? 'Lädt...' : 'Weitere 50 Trades laden'}
+              </Button>
             </div>
           )}
         </section>
@@ -523,15 +523,15 @@ export default function Trades() {
                 </div>
               ))}
           </div>
-          {isLoadingMore && (
-            <div className="mt-4 text-center text-sm text-muted-foreground">
-              Lädt weitere Trades...
-            </div>
-          )}
-          {/* Infinite Scroll Trigger */}
-          {hasMore && (
-            <div ref={loadMoreTriggerRef} className="py-4 text-center">
-              {isLoadingMore && <div className="text-muted-foreground">Lädt mehr...</div>}
+          {hasMoreToLoad && (
+            <div className="mt-6 flex justify-center">
+              <Button 
+                variant="outline" 
+                onClick={handleLoadMore}
+                disabled={isLoadingMore}
+              >
+                {isLoadingMore ? 'Lädt...' : 'Weitere 50 Trades laden'}
+              </Button>
             </div>
           )}
         </section>
