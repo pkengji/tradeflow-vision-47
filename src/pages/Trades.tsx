@@ -123,6 +123,9 @@ export default function Trades() {
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
   const [totalCount, setTotalCount] = useState<number>(0);
+
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
   const [displayLimit, setDisplayLimit] = useState<number>(() => {
     // Nur beim History-Back (POP) Restore nutzen
     if (navigationType !== "POP") {
@@ -189,7 +192,15 @@ export default function Trades() {
 
     if (savedScrollY) {
       setTimeout(() => {
-        window.scrollTo(0, parseInt(savedScrollY, 10));
+        const y = parseInt(savedScrollY, 10);
+        const container = scrollContainerRef.current;
+
+        if (container) {
+          container.scrollTo({ top: y, behavior: "auto" });
+        } else {
+          window.scrollTo(0, y);
+        }
+
         sessionStorage.removeItem("trades-scroll-position");
       }, 100);
     }
@@ -320,7 +331,9 @@ export default function Trades() {
 
   // Save scroll position and displayLimit before navigating
   const saveScrollPosition = useCallback(() => {
-    const scrollY = window.scrollY;
+    const container = scrollContainerRef.current;
+    const scrollY = container ? container.scrollTop : window.scrollY;
+
     sessionStorage.setItem("trades-scroll-position", String(scrollY));
     sessionStorage.setItem("trades-tab", activeTab);
     sessionStorage.setItem("trades-display-limit", String(displayLimit));
@@ -419,7 +432,7 @@ export default function Trades() {
         </Tabs>
       </div>
 
-      <div className="overflow-auto flex-1">
+      <div className="overflow-auto flex-1" ref={scrollContainerRef}>
         <div className="space-y-4 p-4 pb-24">
           {/* Filter Button - Desktop */}
           <div className="hidden lg:flex justify-end gap-2">
