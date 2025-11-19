@@ -400,7 +400,7 @@ export default function Trades() {
       )}
 
       {/* Tabs integrated into header area - sticky */}
-      <div className="sticky top-0 z-10 bg-background border-b">
+      <div className="sticky top-12 z-10 bg-background border-b">
         <Tabs value={activeTab} onValueChange={(v) => handleTabChange(v as TabKey)}>
           <TabsList className="grid w-full grid-cols-2 h-10 rounded-none border-0 bg-transparent p-0">
             <TabsTrigger
