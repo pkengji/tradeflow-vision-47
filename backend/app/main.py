@@ -11,7 +11,7 @@ import secrets
 from .models import Bot, Position, PushSubscription
 from .auth import authenticate_user
 from sqlalchemy import or_, select, func
-from .services.bybit_sync import sync_backfill_since, sync_recent_closures, quick_sync_symbol, sync_full_history,rebuild_positions_orderlink, sync_symbol_recent, sync_recent_all_bots, reconcile_symbol
+from .services.bybit_sync import sync_backfill_since, sync_recent_closures, quick_sync_symbol, sync_full_history,rebuild_positions_orderlink, sync_symbol_recent, sync_recent_all_bots, reconcile_symbol, _persist_execution, _dt_ms, _f
 from .services.symbols import sync_symbols_linear_usdt, list_pairs_payload, ensure_symbol_icon
 from collections import defaultdict
 from datetime import datetime, timezone, date, timedelta
@@ -1331,26 +1331,42 @@ def api_outbox_tick(db: Session = Depends(get_db), user_id: int = Depends(get_cu
 def _on_exec(row, ctx):
     db = SessionLocal()
     try:
-        from .models import Execution
-        from datetime import datetime as dt
         bot_id = ctx["bot_id"]
-        symbol = row.get("symbol") or row.get("s") or ""
+        symbol = (row.get("symbol") or row.get("s") or "").upper()
+        if not symbol:
+            return
+
         side_raw = row.get("side") or row.get("S") or ""
         side = side_raw.lower() if isinstance(side_raw, str) else ""
-        price = float(row.get("execPrice") or row.get("p") or 0.0)
-        qty   = float(row.get("execQty") or row.get("q") or 0.0)
-        fee   = float(row.get("execFee") or row.get("fe") or 0.0)
-        is_maker = bool(row.get("isMaker", False))
-        reduce_only = bool(row.get("reduceOnly", False))
-        ts_ms = int(row.get("execTime") or row.get("T") or 0)
-        if ts_ms <= 0:
-            import time as _t; ts_ms = int(_t.time()*1000)
-        ts = dt.utcfromtimestamp(ts_ms/1000.0)
-        ex = Execution(
-            bot_id=bot_id, symbol=symbol, side=side,
-            price=price, qty=qty, fee_usdt=fee, is_maker=is_maker, reduce_only=reduce_only, ts=ts
+
+        price = _f(row.get("execPrice") or row.get("p"))
+        qty   = _f(row.get("execQty")   or row.get("q"))
+        fee   = _f(row.get("execFee")   or row.get("fe"))
+
+        is_maker = str(row.get("isMaker") or row.get("m")).lower() in ("true", "1")
+        liq = "maker" if is_maker else "taker"
+
+        reduce_only = str(row.get("isReduceOnly") or row.get("reduceOnly") or row.get("r")).lower() in ("true", "1")
+
+        ts = _dt_ms(row.get("execTime") or row.get("T"))
+
+        # zentrale Persistenz + Dedupe + Funding-Filter nutzen
+        _persist_execution(
+            db,
+            bot_id,
+            symbol,
+            side,
+            price,
+            qty,
+            fee,
+            reduce_only,  # is_closing
+            liq,
+            ts,
+            row,
         )
-        db.add(ex); db.commit()
+        db.commit()
+
+        # danach wie gehabt das Symbol kurz recent-syncen
         sync_symbol_recent(db, bot_id, symbol, hours=2)
     finally:
         db.close()

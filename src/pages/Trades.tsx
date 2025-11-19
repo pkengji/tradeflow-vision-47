@@ -2,7 +2,7 @@
 // 1) IMPORTS
 // ==============================
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation, useNavigationType } from 'react-router-dom';
 import api, { type PositionListItem, type Bot } from '@/lib/api';
 import TradesFiltersBar, { type TradesFilters } from '@/components/app/TradesFiltersBar';
 import TradeCardCompact from '@/components/app/TradeCardCompact';
@@ -92,9 +92,10 @@ function groupTradesByDate(trades: PositionListItem[], dateField: 'opened_at' | 
 export default function Trades() {
   const navigate = useNavigate();
   const location = useLocation();
+  const navigationType = useNavigationType();   // <--- NEU
   const [searchParams, setSearchParams] = useSearchParams();
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  
+ 
   // ---- 4.1 STATE (UI & Daten) ----
   const [activeTab, setActiveTab] = useState<TabKey>(() => {
     const tab = searchParams.get('tab');
@@ -115,7 +116,21 @@ export default function Trades() {
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
   const [totalCount, setTotalCount] = useState<number>(0);
-  const [displayLimit, setDisplayLimit] = useState<number>(50);
+  const [displayLimit, setDisplayLimit] = useState<number>(() => {
+    // Nur beim History-Back (POP) Restore nutzen
+    if (navigationType !== 'POP') {
+      // Alte Restore-Werte verwerfen, wenn man von einer anderen Seite kommt
+      sessionStorage.removeItem('trades-scroll-position');
+      sessionStorage.removeItem('trades-display-limit');
+      sessionStorage.removeItem('trades-tab');
+      return 50;
+    }
+
+    const saved = sessionStorage.getItem('trades-display-limit');
+    if (!saved) return 50;
+    const parsed = parseInt(saved, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 50;
+  });
 
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -148,25 +163,22 @@ export default function Trades() {
 
   // Restore scroll position and displayLimit on mount
   useEffect(() => {
+    if (navigationType !== 'POP') return;
+
     const savedScrollY = sessionStorage.getItem('trades-scroll-position');
     const savedTab = sessionStorage.getItem('trades-tab');
-    const savedDisplayLimit = sessionStorage.getItem('trades-display-limit');
-    
+
     if (savedTab && (savedTab === 'open' || savedTab === 'closed')) {
       setActiveTab(savedTab as TabKey);
     }
-    
-    if (savedDisplayLimit) {
-      setDisplayLimit(parseInt(savedDisplayLimit, 10));
-    }
-    
+
     if (savedScrollY) {
       setTimeout(() => {
         window.scrollTo(0, parseInt(savedScrollY, 10));
         sessionStorage.removeItem('trades-scroll-position');
       }, 100);
     }
-  }, []);
+  }, [navigationType]);
 
   // Reset displayLimit when leaving trades pages
   useEffect(() => {

@@ -207,7 +207,17 @@ def _persist_execution(
     """
     Speichert eine Execution, aber nur wenn wir sie noch nicht haben.
     Schlüssel: (bot_id, exchange_exec_id)
+
+    Funding-Executions (execType enthält 'funding') werden hier ignoriert,
+    da sie separat als FundingEvent gespeichert werden.
     """
+    # --- execType aus Payload holen ---
+    exec_type_raw = (payload.get("execType") or payload.get("exec_type") or "").lower()
+
+    # Funding-Zeilen NICHT als Execution speichern
+    if exec_type_raw and "funding" in exec_type_raw:
+        return
+
     exec_id = payload.get("execId") or payload.get("executionId")
     if exec_id:
         exists = (
@@ -230,6 +240,7 @@ def _persist_execution(
     ex = models.Execution(
         bot_id=bot_id,
         symbol=symbol,
+        exec_type=(payload.get("execType") or payload.get("exec_type")),  # <--- NEU    
         side=side,
         price=price,
         qty=qty,
