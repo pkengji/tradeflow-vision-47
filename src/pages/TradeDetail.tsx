@@ -1,19 +1,19 @@
-import { useEffect, useState } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronRight, ArrowLeft } from 'lucide-react';
-import MiniRange from '@/components/app/MiniRange';
-import { formatPrice, formatCurrency, formatMs, formatPriceByTickSize } from '@/lib/formatters';
-import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { getAllSymbols, getSymbolInfo, type SymbolInfo } from '@/lib/symbols';
+import { useEffect, useState } from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import api from "@/lib/api";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ChevronDown, ChevronRight, ArrowLeft } from "lucide-react";
+import MiniRange from "@/components/app/MiniRange";
+import { formatPrice, formatCurrency, formatMs, formatPriceByTickSize } from "@/lib/formatters";
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { getAllSymbols, getSymbolInfo, type SymbolInfo } from "@/lib/symbols";
 
 export default function TradeDetail() {
   const { id } = useParams<{ id: string }>();
@@ -21,11 +21,11 @@ export default function TradeDetail() {
   const [searchParams] = useSearchParams();
   const pid = Number(id);
   const qc = useQueryClient();
-  
+
   const [symbolInfo, setSymbolInfo] = useState<SymbolInfo | null>(null);
 
   const { data: position, isLoading: posLoading } = useQuery({
-    queryKey: ['position', pid],
+    queryKey: ["position", pid],
     queryFn: () => api.getPosition(pid),
     enabled: Number.isFinite(pid),
   });
@@ -43,18 +43,18 @@ export default function TradeDetail() {
   }, [position?.symbol]);
 
   const { data: orders } = useQuery({
-    queryKey: ['orders', pid],
+    queryKey: ["orders", pid],
     queryFn: () => api.getOrders(pid),
     enabled: Number.isFinite(pid),
   });
 
-  const isOpen = position?.status === 'open';
+  const isOpen = position?.status === "open";
 
   // --- Modal state
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [action, setAction] = useState<'close' | 'sltp'>('sltp');
-  const [sl, setSl] = useState<string>('');
-  const [tp, setTp] = useState<string>('');
+  const [action, setAction] = useState<"close" | "sltp">("sltp");
+  const [sl, setSl] = useState<string>("");
+  const [tp, setTp] = useState<string>("");
 
   // Collapsible states
   const [positionOpen, setPositionOpen] = useState(false);
@@ -63,70 +63,69 @@ export default function TradeDetail() {
   // --- Mutations
   const closeMutation = useMutation({
     mutationFn: async () => {
-      await api.logAction('UI_CLICK_CLOSE', { position_id: pid });
+      await api.logAction("UI_CLICK_CLOSE", { position_id: pid });
       return api.closePosition(pid);
     },
     onSuccess: async (res) => {
-      await api.logAction('API_SENT_CLOSE', { position_id: pid, response: res });
+      await api.logAction("API_SENT_CLOSE", { position_id: pid, response: res });
       await Promise.all([
-        qc.invalidateQueries({ queryKey: ['position', pid] }),
-        qc.invalidateQueries({ queryKey: ['positions'] }),
-        qc.invalidateQueries({ queryKey: ['orders', pid] }),
+        qc.invalidateQueries({ queryKey: ["position", pid] }),
+        qc.invalidateQueries({ queryKey: ["positions"] }),
+        qc.invalidateQueries({ queryKey: ["orders", pid] }),
       ]);
       setDialogOpen(false);
     },
     onError: async (err: any) => {
-      await api.logAction('API_ERROR_CLOSE', { position_id: pid, error: String(err?.message ?? err) });
-      alert(err?.message ?? 'Close fehlgeschlagen');
+      await api.logAction("API_ERROR_CLOSE", { position_id: pid, error: String(err?.message ?? err) });
+      alert(err?.message ?? "Close fehlgeschlagen");
     },
   });
 
   const sltpMutation = useMutation({
     mutationFn: async () => {
       const payload: { sl?: number; tp?: number } = {};
-      if (sl.trim() !== '') payload.sl = Number(sl);
-      if (tp.trim() !== '') payload.tp = Number(tp);
-      await api.logAction('UI_CLICK_SLTP', { position_id: pid, payload });
+      if (sl.trim() !== "") payload.sl = Number(sl);
+      if (tp.trim() !== "") payload.tp = Number(tp);
+      await api.logAction("UI_CLICK_SLTP", { position_id: pid, payload });
       return api.setPositionSlTp(pid, payload);
     },
     onSuccess: async (res) => {
-      await api.logAction('API_SENT_SLTP', { position_id: pid, response: res });
+      await api.logAction("API_SENT_SLTP", { position_id: pid, response: res });
       await Promise.all([
-        qc.invalidateQueries({ queryKey: ['position', pid] }),
-        qc.invalidateQueries({ queryKey: ['orders', pid] }),
-        qc.invalidateQueries({ queryKey: ['positions'] }),
+        qc.invalidateQueries({ queryKey: ["position", pid] }),
+        qc.invalidateQueries({ queryKey: ["orders", pid] }),
+        qc.invalidateQueries({ queryKey: ["positions"] }),
       ]);
       setDialogOpen(false);
     },
     onError: async (err: any) => {
-      await api.logAction('API_ERROR_SLTP', { position_id: pid, error: String(err?.message ?? err) });
-      alert(err?.message ?? 'SL/TP Update fehlgeschlagen');
+      await api.logAction("API_ERROR_SLTP", { position_id: pid, error: String(err?.message ?? err) });
+      alert(err?.message ?? "SL/TP Update fehlgeschlagen");
     },
   });
 
   const submit = () => {
-    if (action === 'close') {
+    if (action === "close") {
       closeMutation.mutate();
     } else {
-      if (sl.trim() !== '' && Number.isNaN(Number(sl))) return alert('SL ist keine Zahl');
-      if (tp.trim() !== '' && Number.isNaN(Number(tp))) return alert('TP ist keine Zahl');
+      if (sl.trim() !== "" && Number.isNaN(Number(sl))) return alert("SL ist keine Zahl");
+      if (tp.trim() !== "" && Number.isNaN(Number(tp))) return alert("TP ist keine Zahl");
       sltpMutation.mutate();
     }
   };
 
-  const isLong = position?.side === 'long';
+  const isLong = position?.side === "long";
 
   const handleBack = () => {
-    const fromTab = searchParams.get('from');
-    navigate(fromTab ? `/trades?tab=${fromTab}` : '/trades');
+    if (window.history.length > 1) {
+      navigate(-1); // History-Back -> navigationType === 'POP' -> Restore greift
+    } else {
+      navigate("/trades"); // direkter Aufruf -> frische Trades-Ansicht
+    }
   };
 
   const BackButton = (
-    <Button 
-      variant="ghost" 
-      size="icon"
-      onClick={handleBack}
-    >
+    <Button variant="ghost" size="icon" onClick={handleBack}>
       <ArrowLeft className="h-5 w-5" />
     </Button>
   );
@@ -139,7 +138,7 @@ export default function TradeDetail() {
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <CardTitle className="text-base">Position #{pid}</CardTitle>
             {position?.status && (
-              <Badge variant={isOpen ? 'default' : 'secondary'} className="uppercase text-xs">
+              <Badge variant={isOpen ? "default" : "secondary"} className="uppercase text-xs">
                 {position.status}
               </Badge>
             )}
@@ -153,19 +152,21 @@ export default function TradeDetail() {
                     <div className="text-muted-foreground mb-0.5">Symbol</div>
                     <div className="font-semibold flex items-center gap-1.5">
                       {position.symbol}
-                      <Badge 
+                      <Badge
                         variant={isLong ? "default" : "destructive"}
-                        className={`${isLong ? 'bg-[#0D3512] hover:bg-[#0D3512]/80 text-[#2DFB68]' : 'bg-[#641812] hover:bg-[#641812]/80 text-[#EA3A10]'} text-[10px] px-1.5 py-0 h-4`}
+                        className={`${isLong ? "bg-[#0D3512] hover:bg-[#0D3512]/80 text-[#2DFB68]" : "bg-[#641812] hover:bg-[#641812]/80 text-[#EA3A10]"} text-[10px] px-1.5 py-0 h-4`}
                       >
-                        {position.side === 'long' ? 'Long' : 'Short'}
+                        {position.side === "long" ? "Long" : "Short"}
                       </Badge>
                     </div>
                   </div>
                   <div>
                     <div className="text-muted-foreground mb-0.5">PnL</div>
-                    <div className={`font-semibold ${(position.pnl || position.unrealized_pnl || 0) >= 0 ? 'text-success' : 'text-danger'}`}>
+                    <div
+                      className={`font-semibold ${(position.pnl || position.unrealized_pnl || 0) >= 0 ? "text-success" : "text-danger"}`}
+                    >
                       {formatCurrency(position.pnl || position.unrealized_pnl || 0, true)}
-                      {position.pnl_pct && ` (${position.pnl_pct > 0 ? '+' : ''}${position.pnl_pct.toFixed(2)}%)`}
+                      {position.pnl_pct && ` (${position.pnl_pct > 0 ? "+" : ""}${position.pnl_pct.toFixed(2)}%)`}
                     </div>
                   </div>
                 </div>
@@ -174,31 +175,51 @@ export default function TradeDetail() {
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
                     <div className="text-muted-foreground mb-0.5">Geöffnet am</div>
-                    <div className="font-semibold">{new Date(position.opened_at).toLocaleString('de-DE')}</div>
+                    <div className="font-semibold">{new Date(position.opened_at).toLocaleString("de-DE")}</div>
                   </div>
                   {position.closed_at && (
                     <div>
                       <div className="text-muted-foreground mb-0.5">Geschlossen am</div>
-                      <div className="font-semibold">{new Date(position.closed_at).toLocaleString('de-DE')}</div>
+                      <div className="font-semibold">{new Date(position.closed_at).toLocaleString("de-DE")}</div>
                     </div>
                   )}
                   <div>
                     <div className="text-muted-foreground mb-0.5">Entry Price (VWAP)</div>
-                    <div className="font-semibold">{position.entry_price_vwap ? formatPriceByTickSize(position.entry_price_vwap, symbolInfo?.tick_size) : (position.entry_price ? formatPriceByTickSize(position.entry_price, symbolInfo?.tick_size) : '—')}</div>
+                    <div className="font-semibold">
+                      {position.entry_price_vwap
+                        ? formatPriceByTickSize(position.entry_price_vwap, symbolInfo?.tick_size)
+                        : position.entry_price
+                          ? formatPriceByTickSize(position.entry_price, symbolInfo?.tick_size)
+                          : "—"}
+                    </div>
                   </div>
                   <div>
                     <div className="text-muted-foreground mb-0.5">Entry Price (Best)</div>
-                    <div className="font-semibold">{position.entry_price_best ? formatPriceByTickSize(position.entry_price_best, symbolInfo?.tick_size) : '—'}</div>
+                    <div className="font-semibold">
+                      {position.entry_price_best
+                        ? formatPriceByTickSize(position.entry_price_best, symbolInfo?.tick_size)
+                        : "—"}
+                    </div>
                   </div>
                   {position.exit_price && (
                     <>
                       <div>
                         <div className="text-muted-foreground mb-0.5">Exit Price (VWAP)</div>
-                        <div className="font-semibold">{position.exit_price_vwap ? formatPriceByTickSize(position.exit_price_vwap, symbolInfo?.tick_size) : (position.exit_price ? formatPriceByTickSize(position.exit_price, symbolInfo?.tick_size) : '—')}</div>
+                        <div className="font-semibold">
+                          {position.exit_price_vwap
+                            ? formatPriceByTickSize(position.exit_price_vwap, symbolInfo?.tick_size)
+                            : position.exit_price
+                              ? formatPriceByTickSize(position.exit_price, symbolInfo?.tick_size)
+                              : "—"}
+                        </div>
                       </div>
                       <div>
                         <div className="text-muted-foreground mb-0.5">Exit Price (Best)</div>
-                        <div className="font-semibold">{position.exit_price_best ? formatPriceByTickSize(position.exit_price_best, symbolInfo?.tick_size) : '—'}</div>
+                        <div className="font-semibold">
+                          {position.exit_price_best
+                            ? formatPriceByTickSize(position.exit_price_best, symbolInfo?.tick_size)
+                            : "—"}
+                        </div>
                       </div>
                     </>
                   )}
@@ -212,22 +233,24 @@ export default function TradeDetail() {
                   </div>
                   <div>
                     <div className="text-muted-foreground mb-0.5">Positionsgröße</div>
-                    <div className="font-semibold">{formatPrice((position.entry_price_vwap || position.entry_price) * position.qty)} USDT</div>
+                    <div className="font-semibold">
+                      {formatPrice((position.entry_price_vwap || position.entry_price) * position.qty)} USDT
+                    </div>
                   </div>
                   <div>
                     <div className="text-muted-foreground mb-0.5">Leverage</div>
-                    <div className="font-semibold">{position.leverage || '—'}x</div>
+                    <div className="font-semibold">{position.leverage || "—"}x</div>
                   </div>
                 </div>
 
                 <div className="pt-1">
                   <MiniRange
-                    labelEntry={position.side === 'short' ? 'Sell' : 'Buy'}
+                    labelEntry={position.side === "short" ? "Sell" : "Buy"}
                     entry={position.entry_price_vwap || position.entry_price}
                     sl={position.sl ?? null}
                     tp={position.tp ?? null}
                     mark={position.mark_price ?? position.exit_price ?? null}
-                    side={position.side as 'long' | 'short'}
+                    side={position.side as "long" | "short"}
                   />
                 </div>
               </>
@@ -254,9 +277,7 @@ export default function TradeDetail() {
                 </div>
                 <div>
                   <div className="text-muted-foreground mb-0.5">Funding Fees</div>
-                  <div className="font-semibold">
-                    {formatCurrency(position.funding_usdt || 0)}
-                  </div>
+                  <div className="font-semibold">{formatCurrency(position.funding_usdt || 0)}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground mb-0.5">Slippage Liquidität</div>
@@ -264,7 +285,8 @@ export default function TradeDetail() {
                     {formatCurrency((position.slippage_liquidity_open || 0) + (position.slippage_liquidity_close || 0))}
                   </div>
                   <div className="text-[10px] text-muted-foreground mt-0.5">
-                    Open: {formatCurrency(position.slippage_liquidity_open)} • Close: {formatCurrency(position.slippage_liquidity_close)}
+                    Open: {formatCurrency(position.slippage_liquidity_open)} • Close:{" "}
+                    {formatCurrency(position.slippage_liquidity_close)}
                   </div>
                 </div>
                 <div>
@@ -302,7 +324,7 @@ export default function TradeDetail() {
         )}
 
         {/* Timelag Close */}
-        {position && position.status === 'closed' && (
+        {position && position.status === "closed" && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">Timelag Close</CardTitle>
@@ -381,25 +403,27 @@ export default function TradeDetail() {
 
                 <div className="flex gap-2">
                   <Button
-                    variant={action === 'sltp' ? 'default' : 'outline'}
-                    onClick={() => setAction('sltp')}
+                    variant={action === "sltp" ? "default" : "outline"}
+                    onClick={() => setAction("sltp")}
                     className="flex-1"
                   >
                     SL / TP setzen
                   </Button>
                   <Button
-                    variant={action === 'close' ? 'default' : 'outline'}
-                    onClick={() => setAction('close')}
+                    variant={action === "close" ? "default" : "outline"}
+                    onClick={() => setAction("close")}
                     className="flex-1"
                   >
                     Position schließen
                   </Button>
                 </div>
 
-                {action === 'sltp' && (
+                {action === "sltp" && (
                   <div className="grid gap-3">
                     <div className="grid gap-1.5">
-                      <Label htmlFor="sl" className="text-sm">SL-Trigger-Preis (optional)</Label>
+                      <Label htmlFor="sl" className="text-sm">
+                        SL-Trigger-Preis (optional)
+                      </Label>
                       <Input
                         id="sl"
                         placeholder="z.B. 2.45"
@@ -409,7 +433,9 @@ export default function TradeDetail() {
                       />
                     </div>
                     <div className="grid gap-1.5">
-                      <Label htmlFor="tp" className="text-sm">TP-Preis (optional)</Label>
+                      <Label htmlFor="tp" className="text-sm">
+                        TP-Preis (optional)
+                      </Label>
                       <Input
                         id="tp"
                         placeholder="z.B. 2.48"
@@ -428,17 +454,16 @@ export default function TradeDetail() {
                   <Button
                     onClick={submit}
                     disabled={
-                      (action === 'close' && closeMutation.isPending) ||
-                      (action === 'sltp' && sltpMutation.isPending)
+                      (action === "close" && closeMutation.isPending) || (action === "sltp" && sltpMutation.isPending)
                     }
                   >
-                    {action === 'close'
+                    {action === "close"
                       ? closeMutation.isPending
-                        ? 'Schließe…'
-                        : 'Schließen'
+                        ? "Schließe…"
+                        : "Schließen"
                       : sltpMutation.isPending
-                      ? 'Speichere…'
-                      : 'Speichern'}
+                        ? "Speichere…"
+                        : "Speichern"}
                   </Button>
                 </DialogFooter>
               </DialogContent>
