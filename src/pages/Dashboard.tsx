@@ -9,6 +9,7 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/formatters";
 import EquityChart from "@/components/ui/EquityChart";
+import { Link } from "react-router-dom";
 
 function zurichToUTC(localHourMin: string): string {
   const [hours, minutes] = localHourMin.split(":").map(Number);
@@ -160,7 +161,7 @@ export default function Dashboard() {
     value: string | number;
     highlight?: boolean;
   }) => (
-    <div className="flex justify-between items-center py-1">
+    <div className="flex justify-between items-center py-0.5">
       <span className="text-sm text-muted-foreground">{label}</span>
       <span className={`text-sm font-medium ${highlight ? "text-foreground" : ""}`}>{value}</span>
     </div>
@@ -177,22 +178,29 @@ export default function Dashboard() {
       (kpi.timelag_ms?.ingress_ms_avg || 0) +
       (kpi.timelag_ms?.engine_ms_avg || 0) +
       (kpi.timelag_ms?.tv_to_fill_ms_avg || 0);
+    const overallTotalFeesUsdt =
+      (summary?.kpis.overall.tx_breakdown_usdt?.fees || 0) +
+      (summary?.kpis.overall.tx_breakdown_usdt?.funding || 0) +
+      (summary?.kpis.overall.tx_breakdown_usdt?.slip_liquidity || 0) +
+      (summary?.kpis.overall.tx_breakdown_usdt?.slip_time || 0);
 
     return (
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-2">
           <CardTitle className="text-base">{title}</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-1">
           <MetricRow label="Realisierter P&L" value={formatCurrency(kpi.realized_pnl)} highlight />
           <MetricRow label="Anzahl Trades" value={kpi.trade_count} />
           <MetricRow label="Win Rate" value={`${(kpi.win_rate * 100).toFixed(1)}%`} />
 
           <div className="pt-2 border-t">
-            <div className="text-sm font-medium mb-1">
-              Transaktionskosten value={`${(kpi.tx_costs_pct * 100).toFixed(2)}%`}
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-sm font-medium">Transaktionskosten</span>
+              <span className="text-sm font-semibold">
+                {formatCurrency(totalFeesUsdt)} ({(kpi.tx_costs_pct * 100).toFixed(2)}%)
+              </span>
             </div>
-            <MetricRow label="Gesamt" value={`${(kpi.tx_costs_pct * 100).toFixed(2)}%`} />
             <MetricRow label="Fees" value={formatCurrency(kpi.tx_breakdown_usdt?.fees || 0)} />
             <MetricRow label="Funding" value={formatCurrency(kpi.tx_breakdown_usdt?.funding || 0)} />
             <MetricRow
@@ -356,11 +364,21 @@ export default function Dashboard() {
               />
               <MetricRow label="Realisierter P&L" value={formatCurrency(summary.kpis.overall.realized_pnl)} highlight />
               <MetricRow label="Anzahl Trades" value={summary.kpis.overall.trade_count} />
+              <div className="flex justify-between items-center py-0.5">
+                <span className="text-sm text-muted-foreground">Offene Trades</span>
+                <Link to="/trades" className="text-sm font-medium text-primary hover:underline">
+                  ansehen
+                </Link>
+              </div>
               <MetricRow label="Win Rate" value={`${(summary.kpis.overall.win_rate * 100).toFixed(1)}%`} />
 
               <div className="pt-2 border-t">
-                <div className="text-sm font-medium mb-1">Transaktionskosten</div>
-                <MetricRow label="Gesamt" value={`${(summary.kpis.overall.tx_costs_pct * 100).toFixed(2)}%`} />
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-sm font-medium">Transaktionskosten</span>
+                  <span className="text-sm font-semibold">
+                    {formatCurrency(overallTotalFeesUsdt)} ({(summary.kpis.overall.tx_costs_pct * 100).toFixed(2)}%)
+                  </span>
+                </div>
                 <MetricRow label="Fees" value={formatCurrency(summary.kpis.overall.tx_breakdown_usdt?.fees || 0)} />
                 <MetricRow
                   label="Funding"
