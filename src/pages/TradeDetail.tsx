@@ -230,10 +230,10 @@ export default function TradeDetail() {
                       <div>
                         <div className="text-muted-foreground mb-0.5">Exit Price (VWAP)</div>
                         <div className="font-semibold">
-                          {position.exit_price_vwap
+                          {position.exit_price_vwap != null || position.exit_price != null
                             ? formatWithBestDecimals(
                                 position.exit_price_vwap ?? position.exit_price,
-                                position.exit_price ?? null,
+                                position.entry_price_best ?? position.exit_price_best ?? position.exit_price ?? null,
                               )
                             : "—"}
                         </div>
