@@ -505,7 +505,6 @@ async function getDailyPnl(params?: {
 
   return result;
 }
-}
 
 async function getOutbox(params?: { status?: string; limit?: number }): Promise<OutboxItem[]> {
   return http<OutboxItem[]>("/api/v1/outbox", { query: params });
