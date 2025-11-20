@@ -15,6 +15,26 @@ import { formatPrice, formatCurrency, formatMs, formatPriceByTickSize } from "@/
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { getAllSymbols, getSymbolInfo, type SymbolInfo } from "@/lib/symbols";
 
+function formatWithBestDecimals(value: number | null | undefined, best: number | null | undefined): string {
+  if (value == null || Number.isNaN(Number(value))) return "—";
+
+  // Wenn kein "best"-Wert da ist → normal mit max. 8 Nachkommastellen
+  if (best == null || Number.isNaN(Number(best))) {
+    return Number(value).toLocaleString(undefined, {
+      maximumFractionDigits: 8,
+    });
+  }
+
+  const refStr = String(best);
+  const dot = refStr.indexOf(".");
+  const decimals = dot >= 0 ? refStr.length - dot - 1 : 0;
+
+  return Number(value).toLocaleString(undefined, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
 export default function TradeDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -183,21 +203,25 @@ export default function TradeDetail() {
                       <div className="font-semibold">{new Date(position.closed_at).toLocaleString("de-DE")}</div>
                     </div>
                   )}
+
+                  {/* Entry Price (VWAP) */}
                   <div>
                     <div className="text-muted-foreground mb-0.5">Entry Price (VWAP)</div>
                     <div className="font-semibold">
-                      {position.entry_price_vwap
-                        ? formatPriceByTickSize(position.entry_price_vwap, symbolInfo?.tick_size)
-                        : position.entry_price
-                          ? formatPriceByTickSize(position.entry_price, symbolInfo?.tick_size)
-                          : "—"}
+                      {position.entry_price_vwap != null || position.entry_price != null
+                        ? formatWithBestDecimals(
+                            position.entry_price_vwap ?? position.entry_price,
+                            position.entry_price_best ?? position.entry_price ?? null,
+                          )
+                        : "—"}
                     </div>
                   </div>
+                  {/* Entry Price (Best) */}
                   <div>
                     <div className="text-muted-foreground mb-0.5">Entry Price (Best)</div>
                     <div className="font-semibold">
-                      {position.entry_price_best
-                        ? formatPriceByTickSize(position.entry_price_best, symbolInfo?.tick_size)
+                      {position.entry_price_best != null
+                        ? formatWithBestDecimals(position.entry_price_best, position.entry_price_best)
                         : "—"}
                     </div>
                   </div>
@@ -207,17 +231,21 @@ export default function TradeDetail() {
                         <div className="text-muted-foreground mb-0.5">Exit Price (VWAP)</div>
                         <div className="font-semibold">
                           {position.exit_price_vwap
-                            ? formatPriceByTickSize(position.exit_price_vwap, symbolInfo?.tick_size)
-                            : position.exit_price
-                              ? formatPriceByTickSize(position.exit_price, symbolInfo?.tick_size)
-                              : "—"}
+                            ? formatWithBestDecimals(
+                                position.exit_price_vwap ?? position.exit_price,
+                                position.exit_price ?? null,
+                              )
+                            : "—"}
                         </div>
                       </div>
                       <div>
                         <div className="text-muted-foreground mb-0.5">Exit Price (Best)</div>
                         <div className="font-semibold">
                           {position.exit_price_best
-                            ? formatPriceByTickSize(position.exit_price_best, symbolInfo?.tick_size)
+                            ? formatWithBestDecimals(
+                                position.exit_price_best,
+                                position.entry_price_best ?? position.exit_price_best,
+                              )
                             : "—"}
                         </div>
                       </div>
