@@ -9,7 +9,6 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/formatters";
 import EquityChart from "@/components/ui/EquityChart";
-import { Link } from "react-router-dom";
 
 function zurichToUTC(localHourMin: string): string {
   const [hours, minutes] = localHourMin.split(":").map(Number);
