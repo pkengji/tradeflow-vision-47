@@ -177,11 +177,6 @@ export default function Dashboard() {
       (kpi.timelag_ms?.ingress_ms_avg || 0) +
       (kpi.timelag_ms?.engine_ms_avg || 0) +
       (kpi.timelag_ms?.tv_to_fill_ms_avg || 0);
-    const overallTotalFeesUsdt =
-      (summary?.kpis.overall.tx_breakdown_usdt?.fees || 0) +
-      (summary?.kpis.overall.tx_breakdown_usdt?.funding || 0) +
-      (summary?.kpis.overall.tx_breakdown_usdt?.slip_liquidity || 0) +
-      (summary?.kpis.overall.tx_breakdown_usdt?.slip_time || 0);
 
     return (
       <Card>
@@ -231,6 +226,12 @@ export default function Dashboard() {
       </DashboardLayout>
     );
   }
+
+  const overallTotalFeesUsdt =
+    (summary?.kpis.overall.tx_breakdown_usdt?.fees || 0) +
+    (summary?.kpis.overall.tx_breakdown_usdt?.funding || 0) +
+    (summary?.kpis.overall.tx_breakdown_usdt?.slip_liquidity || 0) +
+    (summary?.kpis.overall.tx_breakdown_usdt?.slip_time || 0);
 
   return (
     <DashboardLayout
