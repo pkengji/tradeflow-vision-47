@@ -192,7 +192,7 @@ export default function Dashboard() {
             <div className="flex justify-between items-center mb-1">
               <span className="text-sm font-medium">Transaktionskosten</span>
               <span className="text-sm font-semibold">
-                {formatCurrency(totalFeesUsdt)} ({(kpi.tx_costs_pct * 100).toFixed(2)}%)
+                {formatCurrency(totalFeesUsdt)}
               </span>
             </div>
             <MetricRow label="Fees" value={formatCurrency(kpi.tx_breakdown_usdt?.fees || 0)} />
@@ -364,19 +364,14 @@ export default function Dashboard() {
               />
               <MetricRow label="Realisierter P&L" value={formatCurrency(summary.kpis.overall.realized_pnl)} highlight />
               <MetricRow label="Anzahl Trades" value={summary.kpis.overall.trade_count} />
-              <div className="flex justify-between items-center py-0.5">
-                <span className="text-sm text-muted-foreground">Offene Trades</span>
-                <Link to="/trades" className="text-sm font-medium text-primary hover:underline">
-                  ansehen
-                </Link>
-              </div>
+              <MetricRow label="Offene Trades" value={summary.kpis.current.open_trades} />
               <MetricRow label="Win Rate" value={`${(summary.kpis.overall.win_rate * 100).toFixed(1)}%`} />
 
               <div className="pt-2 border-t">
                 <div className="flex justify-between items-center mb-1">
                   <span className="text-sm font-medium">Transaktionskosten</span>
                   <span className="text-sm font-semibold">
-                    {formatCurrency(overallTotalFeesUsdt)} ({(summary.kpis.overall.tx_costs_pct * 100).toFixed(2)}%)
+                    {formatCurrency(overallTotalFeesUsdt)}
                   </span>
                 </div>
                 <MetricRow label="Fees" value={formatCurrency(summary.kpis.overall.tx_breakdown_usdt?.fees || 0)} />
