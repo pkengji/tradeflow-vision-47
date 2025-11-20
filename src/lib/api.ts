@@ -105,11 +105,6 @@ type PositionsResponseRaw = {
   items: any[];
 };
 
-type PnlDailyRowRaw = {
-  day: string;
-  pnl_net_usdt: number;
-  equity?: number | null;
-};
 
 // ---------- Frontend-Typen (stabil) ----------
 
@@ -424,10 +419,92 @@ async function getDailyPnl(params?: {
   open_hour?: string;
   close_hour?: string;
 }): Promise<PnlDailyPoint[]> {
-  const rows = await http<Array<{ day: string; pnl_net_usdt: number; equity: number }>>("/api/v1/dashboard/daily-pnl", {
-    query: params,
-  });
-  return rows.map((r) => ({ date: r.day, pnl: r.pnl_net_usdt ?? 0, equity: r.equity ?? 0 }));
+  // Backend liefert inzwischen { date, pnl, equity } – zur Sicherheit auch alte Keys unterstützen
+  const rows = await http<
+    Array<{
+      date?: string;
+      day?: string;
+      pnl?: number;
+      pnl_net_usdt?: number;
+      equity?: number;
+    }>
+  >("/api/v1/dashboard/daily-pnl", { query: params });
+
+  if (!rows || rows.length === 0) return [];
+
+  // Helper für Datums-Handling in UTC, um Off-by-one zu vermeiden
+  const parseISODateUTC = (dateStr: string): Date => {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    return new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1));
+  };
+
+  const formatISODateUTC = (d: Date): string => {
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(d.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
+  const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+  // 1) Normalisieren: Backend → { date, pnl, equity }
+  const normalized = rows
+    .map((r) => {
+      const date = r.date ?? r.day;
+      if (!date) return null;
+
+      const rawPnl = r.pnl ?? r.pnl_net_usdt ?? 0;
+      const rawEquity = r.equity ?? 0;
+
+      return {
+        date,
+        pnl: typeof rawPnl === "number" ? rawPnl : Number(rawPnl) || 0,
+        equity: typeof rawEquity === "number" ? rawEquity : Number(rawEquity) || 0,
+      };
+    })
+    .filter((r): r is { date: string; pnl: number; equity: number } => r !== null);
+
+  if (normalized.length === 0) return [];
+
+  // 2) Nach Datum sortieren
+  normalized.sort((a, b) => a.date.localeCompare(b.date));
+
+  // 3) Lücken füllen: vom ersten bis zum letzten Datum durchiterieren
+  const start = parseISODateUTC(normalized[0].date);
+  const end = parseISODateUTC(normalized[normalized.length - 1].date);
+
+  const result: PnlDailyPoint[] = [];
+  let idx = 0;
+  let prevEquity = 0;
+
+  for (let d = new Date(start.getTime()); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    const dayStr = formatISODateUTC(d);
+    const current = normalized[idx] && normalized[idx].date === dayStr ? normalized[idx] : null;
+
+    if (current) {
+      const pnlRounded = round2(current.pnl);
+      const equityRounded = round2(current.equity);
+      prevEquity = equityRounded;
+
+      result.push({
+        date: dayStr,
+        pnl: pnlRounded,
+        equity: equityRounded,
+      });
+
+      idx += 1;
+    } else {
+      // Kein Eintrag für diesen Tag → Equity carry-forward, PnL = 0
+      result.push({
+        date: dayStr,
+        pnl: 0,
+        equity: round2(prevEquity),
+      });
+    }
+  }
+
+  return result;
+}
 }
 
 async function getOutbox(params?: { status?: string; limit?: number }): Promise<OutboxItem[]> {
