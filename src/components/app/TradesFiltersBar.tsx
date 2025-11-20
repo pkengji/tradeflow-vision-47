@@ -191,7 +191,7 @@ export default function TradesFiltersBar({
               className="w-full justify-between"
               onClick={() => toggleDropdown('bot')}
             >
-              Bot {value.botIds.length > 0 && `(${value.botIds.length})`}
+              Bot {currentBots.length > 0 && `(${currentBots.length})`}
             </Button>
             {openDropdown === 'bot' && (
               <div className="absolute top-full mt-1 z-10 bg-card border rounded shadow-md p-2 space-y-2 min-w-[250px] max-h-64 overflow-auto">
@@ -203,7 +203,7 @@ export default function TradesFiltersBar({
                 />
                 {filteredBots.map((b) => (
                   <label key={b.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted px-2 py-1 rounded">
-                    <input type="checkbox" checked={value.botIds.includes(b.id)} onChange={() => toggleBot(b.id)} />
+                    <input type="checkbox" checked={currentBots.includes(b.id)} onChange={() => toggleBot(b.id)} />
                     <span className="text-sm">{b.name}</span>
                   </label>
                 ))}
@@ -220,7 +220,7 @@ export default function TradesFiltersBar({
               className="w-full justify-between"
               onClick={() => toggleDropdown('symbol')}
             >
-              Symbol {value.symbols.length > 0 && `(${value.symbols.length})`}
+              Symbol {currentSymbols.length > 0 && `(${currentSymbols.length})`}
             </Button>
             {openDropdown === 'symbol' && (
               <div className="absolute top-full mt-1 z-10 bg-card border rounded shadow-md p-2 space-y-2 min-w-[250px] max-h-64 overflow-auto">
@@ -232,7 +232,7 @@ export default function TradesFiltersBar({
                 />
                 {filteredSymbols.map((s) => (
                   <label key={s} className="flex items-center gap-2 cursor-pointer hover:bg-muted px-2 py-1 rounded">
-                    <input type="checkbox" checked={value.symbols.includes(s)} onChange={() => toggleSymbol(s)} />
+                    <input type="checkbox" checked={currentSymbols.includes(s)} onChange={() => toggleSymbol(s)} />
                     <span className="text-sm">{s}</span>
                   </label>
                 ))}
@@ -243,69 +243,131 @@ export default function TradesFiltersBar({
 
           {/* Richtung */}
           <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant={value.side === 'all' ? 'default' : 'outline'}
-              className="flex-1"
-              onClick={() => onChange({ ...value, side: 'all' })}
-            >
-              Alle
-            </Button>
-            <Button
-              size="sm"
-              variant={value.side === 'long' ? 'default' : 'outline'}
-              className="flex-1"
-              onClick={() => onChange({ ...value, side: 'long' })}
-            >
-              Long
-            </Button>
-            <Button
-              size="sm"
-              variant={value.side === 'short' ? 'default' : 'outline'}
-              className="flex-1"
-              onClick={() => onChange({ ...value, side: 'short' })}
-            >
-              Short
-            </Button>
+            {isDashboardMode && onDirectionChange ? (
+              <>
+                <Button
+                  size="sm"
+                  variant={direction === 'both' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => onDirectionChange('both')}
+                >
+                  Alle
+                </Button>
+                <Button
+                  size="sm"
+                  variant={direction === 'long' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => onDirectionChange('long')}
+                >
+                  Long
+                </Button>
+                <Button
+                  size="sm"
+                  variant={direction === 'short' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => onDirectionChange('short')}
+                >
+                  Short
+                </Button>
+              </>
+            ) : value && onChange ? (
+              <>
+                <Button
+                  size="sm"
+                  variant={value.side === 'all' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => onChange({ ...value, side: 'all' })}
+                >
+                  Alle
+                </Button>
+                <Button
+                  size="sm"
+                  variant={value.side === 'long' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => onChange({ ...value, side: 'long' })}
+                >
+                  Long
+                </Button>
+                <Button
+                  size="sm"
+                  variant={value.side === 'short' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => onChange({ ...value, side: 'short' })}
+                >
+                  Short
+                </Button>
+              </>
+            ) : null}
           </div>
 
           {/* Datumsbereich */}
           {showDateRange && (
             <div className="space-y-2">
               <div className="text-xs font-medium">Datumsbereich</div>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="w-full justify-start">
-                    <CalendarIcon className="h-4 w-4 mr-2" />
-                    {value.dateFrom || value.dateTo
-                      ? `${value.dateFrom ? format(value.dateFrom, 'dd.MM.yyyy') : '...'} - ${value.dateTo ? format(value.dateTo, 'dd.MM.yyyy') : '...'}`
-                      : 'Datum wählen'}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <div className="p-3 space-y-2">
-                    <div className="text-xs font-medium">Von</div>
-                    <Calendar
-                      mode="single"
-                      selected={value.dateFrom}
-                      onSelect={(date) => onChange({ ...value, dateFrom: date })}
-                      className="pointer-events-auto"
-                    />
-                    <div className="text-xs font-medium mt-2">Bis</div>
-                    <Calendar
-                      mode="single"
-                      selected={value.dateTo}
-                      onSelect={(date) => onChange({ ...value, dateTo: date })}
-                      className="pointer-events-auto"
-                    />
-                  </div>
-                </PopoverContent>
-              </Popover>
+              {isDashboardMode ? (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="w-full justify-start">
+                      <CalendarIcon className="h-4 w-4 mr-2" />
+                      {currentDateFrom || currentDateTo
+                        ? `${currentDateFrom ? format(currentDateFrom, 'dd.MM.yyyy') : '...'} - ${currentDateTo ? format(currentDateTo, 'dd.MM.yyyy') : '...'}`
+                        : 'Datum wählen'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <div className="p-3 space-y-2">
+                      <div className="text-xs font-medium">Von</div>
+                      <Calendar
+                        mode="single"
+                        selected={currentDateFrom}
+                        onSelect={(date) => onDateFromChange?.(date)}
+                        className="pointer-events-auto"
+                      />
+                      <div className="text-xs font-medium mt-2">Bis</div>
+                      <Calendar
+                        mode="single"
+                        selected={currentDateTo}
+                        onSelect={(date) => onDateToChange?.(date)}
+                        className="pointer-events-auto"
+                      />
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              ) : value && onChange ? (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="w-full justify-start">
+                      <CalendarIcon className="h-4 w-4 mr-2" />
+                      {value.dateFrom || value.dateTo
+                        ? `${value.dateFrom ? format(value.dateFrom, 'dd.MM.yyyy') : '...'} - ${value.dateTo ? format(value.dateTo, 'dd.MM.yyyy') : '...'}`
+                        : 'Datum wählen'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <div className="p-3 space-y-2">
+                      <div className="text-xs font-medium">Von</div>
+                      <Calendar
+                        mode="single"
+                        selected={value.dateFrom}
+                        onSelect={(date) => onChange({ ...value, dateFrom: date })}
+                        className="pointer-events-auto"
+                      />
+                      <div className="text-xs font-medium mt-2">Bis</div>
+                      <Calendar
+                        mode="single"
+                        selected={value.dateTo}
+                        onSelect={(date) => onChange({ ...value, dateTo: date })}
+                        className="pointer-events-auto"
+                      />
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              ) : null}
             </div>
           )}
 
           {/* Tageszeitfilter */}
-          {showTimeRange && (
+          {showTimeRange && !isDashboardMode && value && onChange && (
             <div className="space-y-2">
               <div className="text-xs font-medium">Tageszeit</div>
               <div className="flex gap-2">
@@ -346,7 +408,7 @@ export default function TradesFiltersBar({
           )}
 
           {/* Signal-Art (nur für Signals-Seite) */}
-          {showSignalKind && (
+          {showSignalKind && value && onChange && (
             <div className="space-y-2">
               <div className="text-xs font-medium">Signal-Art</div>
               <div className="flex gap-2">
@@ -379,7 +441,7 @@ export default function TradesFiltersBar({
           )}
 
           {/* Signal-Status (nur für Signals-Seite) */}
-          {showSignalStatus && (
+          {showSignalStatus && value && onChange && (
             <div className="space-y-2 relative">
               <div className="text-xs font-medium">Status</div>
               <Button
