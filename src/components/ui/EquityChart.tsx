@@ -7,10 +7,16 @@ export default function EquityChart({ data }: { data: Point[] }) {
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number; point: Point } | null>(null);
   
   const width = 600, height = 180, pad = 24;
+  
+  // Debug log to check data
+  console.log('EquityChart data:', data);
+  
   if (!data || data.length === 0) return <div className="h-[180px] flex items-center justify-center text-sm text-muted-foreground">Keine Daten</div>;
   
   // Filter out invalid data points and parse dates safely
   const validData = data.filter(d => d && d.date && d.equity != null && d.pnl != null);
+  console.log('EquityChart validData:', validData);
+  
   if (validData.length === 0) return <div className="h-[180px] flex items-center justify-center text-sm text-muted-foreground">Keine gültigen Daten</div>;
   
   const xs = validData.map(d => {
