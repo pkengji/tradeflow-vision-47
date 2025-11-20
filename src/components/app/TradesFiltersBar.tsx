@@ -40,6 +40,8 @@ type Props = {
   onCloseHourFromChange?: (value: string) => void;
   onCloseHourToChange?: (value: string) => void;
   onResetFilters?: () => void;
+  showCostAsPercent?: boolean;
+  onShowCostAsPercentChange?: (value: boolean) => void;
   
   // For Trades/Signals page usage with TradesFilters object
   value?: TradesFilters;
@@ -74,6 +76,8 @@ export default function TradesFiltersBar({
   onCloseHourFromChange,
   onCloseHourToChange,
   onResetFilters,
+  showCostAsPercent,
+  onShowCostAsPercentChange,
   
   // Trades/Signals props
   value,
@@ -367,44 +371,85 @@ export default function TradesFiltersBar({
           )}
 
           {/* Tageszeitfilter */}
-          {showTimeRange && !isDashboardMode && value && onChange && (
-            <div className="space-y-2">
-              <div className="text-xs font-medium">Tageszeit</div>
-              <div className="flex gap-2">
-                <Input
-                  type="time"
-                  value={value.timeFrom || ''}
-                  onChange={(e) => onChange({ ...value, timeFrom: e.target.value })}
-                  className="text-sm"
-                  placeholder="Von"
-                />
-                <Input
-                  type="time"
-                  value={value.timeTo || ''}
-                  onChange={(e) => onChange({ ...value, timeTo: e.target.value })}
-                  className="text-sm"
-                  placeholder="Bis"
-                />
-              </div>
-              <div className="flex gap-2 mt-2">
-                <Button
-                  size="sm"
-                  variant={value.timeMode === 'opened' ? 'default' : 'outline'}
-                  className="flex-1"
-                  onClick={() => onChange({ ...value, timeMode: 'opened' })}
-                >
-                  Geöffnet
-                </Button>
-                <Button
-                  size="sm"
-                  variant={value.timeMode === 'closed' ? 'default' : 'outline'}
-                  className="flex-1"
-                  onClick={() => onChange({ ...value, timeMode: 'closed' })}
-                >
-                  Geschlossen
-                </Button>
-              </div>
-            </div>
+          {showTimeRange && (
+            <>
+              {isDashboardMode && onOpenHourFromChange && onOpenHourToChange && onCloseHourFromChange && onCloseHourToChange ? (
+                <div className="space-y-2">
+                  <div className="text-xs font-medium">Tageszeit (Opened)</div>
+                  <div className="flex gap-2">
+                    <Input
+                      type="time"
+                      value={openHourFrom || ''}
+                      onChange={(e) => onOpenHourFromChange(e.target.value)}
+                      className="text-sm"
+                      placeholder="Von"
+                    />
+                    <Input
+                      type="time"
+                      value={openHourTo || ''}
+                      onChange={(e) => onOpenHourToChange(e.target.value)}
+                      className="text-sm"
+                      placeholder="Bis"
+                    />
+                  </div>
+                  <div className="text-xs font-medium mt-2">Tageszeit (Closed)</div>
+                  <div className="flex gap-2">
+                    <Input
+                      type="time"
+                      value={closeHourFrom || ''}
+                      onChange={(e) => onCloseHourFromChange(e.target.value)}
+                      className="text-sm"
+                      placeholder="Von"
+                    />
+                    <Input
+                      type="time"
+                      value={closeHourTo || ''}
+                      onChange={(e) => onCloseHourToChange(e.target.value)}
+                      className="text-sm"
+                      placeholder="Bis"
+                    />
+                  </div>
+                </div>
+              ) : !isDashboardMode && value && onChange ? (
+                <div className="space-y-2">
+                  <div className="text-xs font-medium">Tageszeit</div>
+                  <div className="flex gap-2">
+                    <Input
+                      type="time"
+                      value={value.timeFrom || ''}
+                      onChange={(e) => onChange({ ...value, timeFrom: e.target.value })}
+                      className="text-sm"
+                      placeholder="Von"
+                    />
+                    <Input
+                      type="time"
+                      value={value.timeTo || ''}
+                      onChange={(e) => onChange({ ...value, timeTo: e.target.value })}
+                      className="text-sm"
+                      placeholder="Bis"
+                    />
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <Button
+                      size="sm"
+                      variant={value.timeMode === 'opened' ? 'default' : 'outline'}
+                      className="flex-1"
+                      onClick={() => onChange({ ...value, timeMode: 'opened' })}
+                    >
+                      Geöffnet
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={value.timeMode === 'closed' ? 'default' : 'outline'}
+                      className="flex-1"
+                      onClick={() => onChange({ ...value, timeMode: 'closed' })}
+                    >
+                      Geschlossen
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </>
           )}
 
           {/* Signal-Art (nur für Signals-Seite) */}
@@ -480,6 +525,29 @@ export default function TradesFiltersBar({
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Toggle für Kosten-Anzeige (nur Dashboard) */}
+          {isDashboardMode && onShowCostAsPercentChange && (
+            <div className="flex items-center justify-between pt-2 border-t">
+              <span className="text-xs font-medium">Kostenanzeige</span>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant={!showCostAsPercent ? 'default' : 'outline'}
+                  onClick={() => onShowCostAsPercentChange(false)}
+                >
+                  $
+                </Button>
+                <Button
+                  size="sm"
+                  variant={showCostAsPercent ? 'default' : 'outline'}
+                  onClick={() => onShowCostAsPercentChange(true)}
+                >
+                  %
+                </Button>
+              </div>
             </div>
           )}
 
