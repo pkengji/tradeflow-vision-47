@@ -6,7 +6,7 @@ import json
 import requests
 from typing import Optional, Dict, Any, List, Tuple, Callable
 import websocket
-from websocket import create_connection, WebSocketConnectionClosedException
+from websocket import create_connection, WebSocketTimeoutException,  WebSocketConnectionClosedException
 import threading
 from .database import SessionLocal
 from . import models
@@ -286,57 +286,84 @@ class BybitWS:
     def _sub_msg(self) -> Dict[str, Any]:
         return {
             "op": "subscribe",
-            "args": ["privateExecution.v5", "position"],
+            "args": ["execution", "position"],
         }
 
     # ---------- main loop ----------
 
     def _run(self):
-        while not self._stop:
-            try:
-                self.ws = create_connection(self.ws_url, timeout=10)
-                # auth
-                self.ws.send(json.dumps(self._auth_msg()))
-                # subscribe
-                self.ws.send(json.dumps(self._sub_msg()))
-
-                last_ping = time.time()
-                while not self._stop:
-                    # keep-alive alle 20s
-                    if time.time() - last_ping >= 20:
-                        try:
-                            self.ws.send(json.dumps({"op": "ping"}))
-                        except Exception:
-                            break
-                        last_ping = time.time()
-
-                    msg = self.ws.recv()
-                    if not msg:
-                        break
-                    data = json.loads(msg)
-                    topic = data.get("topic") or ""
-                    # executions
-                    if "execution" in topic.lower():
-                        for row in data.get("data", []):
-                            try:
-                                self.on_exec(row, self.ctx)
-                            except Exception:
-                                pass
-                    # positions
-                    if "position" in topic.lower():
-                        for row in data.get("data", []):
-                            try:
-                                self.on_position(row, self.ctx)
-                            except Exception:
-                                pass
-            except Exception:
-                time.sleep(3)
-            finally:
+            while not self._stop:
                 try:
-                    if self.ws:
-                        self.ws.close()
-                except Exception:
-                    pass
+                    print(f"[WS] Connecting to {self.ws_url} for bot {self.ctx.get('bot_id')}")
+                    self.ws = create_connection(self.ws_url, timeout=10)
+                    print(f"[WS] Connected to {self.ws_url} for bot {self.ctx.get('bot_id')}")
+
+                    # Auth
+                    self.ws.send(json.dumps(self._auth_msg()))
+
+                    # Subscribe
+                    sub_msg = self._sub_msg()
+                    self.ws.send(json.dumps(sub_msg))
+                    print(f"[WS] Subscribing for bot {self.ctx.get('bot_id')}: {sub_msg}")
+
+                    last_ping = time.time()
+
+                    while not self._stop:
+                        now = time.time()
+                        # Heartbeat alle 20s
+                        if now - last_ping >= 20:
+                            try:
+                                self.ws.send(json.dumps({"op": "ping"}))
+                            except Exception as e:
+                                print(f"[WS] ping failed for bot {self.ctx.get('bot_id')}: {e}")
+                                break
+                            last_ping = now
+
+                        try:
+                            msg = self.ws.recv()
+                        except WebSocketTimeoutException:
+                            # Kein Frame innerhalb des Timeouts → egal, einfach weiter,
+                            # unser Ping läuft oben.
+                            continue
+
+                        if not msg:
+                            # Verbindung sauber beendet
+                            break
+
+                        try:
+                            data = json.loads(msg)
+                        except json.JSONDecodeError:
+                            print(f"[WS] non-JSON message: {msg}")
+                            continue
+
+                        topic = data.get("topic") or ""
+
+                        # Execution-Events
+                        if "execution" in topic.lower():
+                            for row in data.get("data", []):
+                                try:
+                                    self.on_exec(row, self.ctx)
+                                except Exception as e:
+                                    print(f"[WS] on_exec error: {e}")
+
+                        # Positions-Events
+                        if "position" in topic.lower():
+                            for row in data.get("data", []):
+                                try:
+                                    self.on_position(row, self.ctx)
+                                except Exception as e:
+                                    print(f"[WS] on_position error: {e}")
+
+                except Exception as e:
+                    print(f"[WS] Error in WS loop for bot {self.ctx.get('bot_id')}: {e}")
+                    time.sleep(3)
+                finally:
+                    try:
+                        if self.ws:
+                            self.ws.close()
+                    except Exception:
+                        pass
+
 
     # ---------- public API ----------
 

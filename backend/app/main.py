@@ -441,7 +441,7 @@ def list_positions(
             if r.status == "open" and r.unrealized_pnl_usdt is not None
             else r.pnl_usdt
         )
-        entry_price = (r.entry_price_vwap or r.entry_price_best or r.entry_price_trigger)
+        entry_price = (r.entry_price_trigger or r.entry_price_vwap or r.entry_price_best)
 
         item = {
             "id": r.id,
@@ -455,6 +455,8 @@ def list_positions(
             "entry_price_trigger": r.entry_price_trigger,
             "entry_price_best": r.entry_price_best,
             "entry_price_vwap": r.entry_price_vwap,
+            "exit_price_vwap": r.exit_price_vwap,
+            "exit_price_best": r.exit_price_vwap,   
             "exit_price": r.exit_price_vwap,
             "mark_price": r.mark_price,
             "pnl": pnl_value,
@@ -495,16 +497,17 @@ def get_position(
         raise HTTPException(status_code=404, detail="Position not found")
 
     pnl_value = (r.unrealized_pnl_usdt if r.status == "open" and r.unrealized_pnl_usdt is not None else r.pnl_usdt)
-    entry_price = (r.entry_price_vwap or r.entry_price_best or r.entry_price_trigger)
+    entry_price = (r.entry_price_trigger or r.entry_price_vwap or r.entry_price_best)
 
-    # Overlay mit live cache
+    # Default immer DB-Mark-Price
+    mark_price = r.mark_price
+
+    # Overlay mit Live-Cache (nur wenn offen)
     if r.status == "open":
         live = position_cache.get((r.bot_id, r.symbol))
         if live:
-            mark_price = live.get("mark_price", r.mark_price)
+            mark_price = live.get("mark_price", mark_price)
             pnl_value = live.get("unrealised_pnl", pnl_value)
-    else:
-        mark_price = r.mark_price
 
     return {
         "id": r.id,
@@ -518,6 +521,8 @@ def get_position(
         "entry_price_trigger": r.entry_price_trigger,
         "entry_price_best": r.entry_price_best,
         "entry_price_vwap": r.entry_price_vwap,
+        "exit_price_vwap": r.exit_price_vwap,
+        "exit_price_best": r.exit_price_vwap,    
         "exit_price": r.exit_price_vwap,
         "mark_price": mark_price,
         "pnl": pnl_value,
@@ -1401,18 +1406,35 @@ def _on_position(row: dict, ctx: dict):
                 print(f"[WS ERROR] pos sync failed for {symbol}: {e}")
 
 def _start_ws_for_bot(bot):
-    if not bot.is_active: return
-    if bot.id in ws_threads: return
+    if not bot.is_active:
+        print(f"[WS] Bot {bot.id} ({bot.name}) is not active, skipping WS start")
+        return
+    if bot.id in ws_threads:
+        print(f"[WS] Bot {bot.id} ({bot.name}) already has a WS thread")
+        return
+
     from .bybit_v5 import BybitWS
     api_key = bot.api_key or ""
     api_secret = (bot.api_secret or "")
     ctx = {"user_id": bot.user_id, "bot_id": bot.id}
-    ws = BybitWS(os.getenv("BYBIT_WS_URL", "wss://stream.bybit.com/v5/private"), api_key, api_secret, _on_exec, _on_position, ctx)
-    ws.start(); ws_threads[bot.id] = ws
+
+    print(f"[WS] Starting WS for bot {bot.id} ({bot.name})")
+    ws = BybitWS(
+        os.getenv("BYBIT_WS_URL", "wss://stream.bybit.com/v5/private"),
+        api_key,
+        api_secret,
+        _on_exec,
+        _on_position,
+        ctx,
+    )
+    ws.start()
+    ws_threads[bot.id] = ws
 
 def _stop_ws_for_bot(bot_id: int):
     ws = ws_threads.pop(bot_id, None)
-    if ws: ws.stop()
+    if ws:
+        print(f"[WS] Stopping WS for bot {bot_id}")
+        ws.stop()
 
 def task_start_ws_for_active_bots():
     db = SessionLocal()
@@ -1569,6 +1591,38 @@ def backfill_slippage(db: Session = Depends(get_db)):
         "updated_positions": updated,
         "message": "Slippage-Werte erfolgreich nachgetragen."
     }
+
+
+@app.get("/api/v1/debug/position-cache")
+def debug_position_cache(
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    # Alle Bots des Users holen
+    bots = db.execute(select(Bot).where(Bot.user_id == user_id)).scalars().all()
+    allowed_bot_ids = {b.id for b in bots}
+
+    entries: list[dict] = []
+    for (bot_id, symbol), data in position_cache.items():
+        if bot_id not in allowed_bot_ids:
+            continue
+        entries.append(
+            {
+                "bot_id": bot_id,
+                "symbol": symbol,
+                "size": data.get("size"),
+                "avg_price": data.get("avg_price"),
+                "mark_price": data.get("mark_price"),
+                "unrealised_pnl": data.get("unrealised_pnl"),
+                "ts": data.get("ts"),
+            }
+        )
+
+    return {
+        "count": len(entries),
+        "entries": entries,
+    }
+
 
 
 # =========================
