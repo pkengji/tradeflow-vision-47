@@ -229,7 +229,11 @@ export default function TradeDetail() {
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
                     <div className="text-muted-foreground mb-0.5">QTY (Base)</div>
-                    <div className="font-semibold">{formatPrice(position.qty)}</div>
+                    <div className="font-semibold">
+                      {position.qty != null
+                        ? position.qty.toLocaleString(undefined, { maximumFractionDigits: 8 })
+                        : "—"}
+                    </div>
                   </div>
                   <div>
                     <div className="text-muted-foreground mb-0.5">Positionsgröße</div>
