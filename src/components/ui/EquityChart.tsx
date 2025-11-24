@@ -86,7 +86,14 @@ export default function EquityChart({ data }: { data: Point[] }) {
         }}
         onMouseLeave={() => setHoveredPoint(null)}
       >
-        <rect x={0} y={0} width={width} height={height} fill="transparent" />
+        {/* Background */}
+        <rect x={0} y={0} width={width} height={height} fill="hsl(var(--muted) / 0.3)" />
+        
+        {/* Grid lines */}
+        <line x1={pad} y1={height - pad} x2={width - pad} y2={height - pad} stroke="hsl(var(--border))" strokeWidth={1} />
+        <line x1={pad} y1={pad} x2={pad} y2={height - pad} stroke="hsl(var(--border))" strokeWidth={1} />
+        
+        {/* Chart line */}
         <path d={path} fill="none" stroke="currentColor" strokeWidth={1.5} />
         
         {hoveredPoint && !isNaN(hoveredPoint.x) && !isNaN(hoveredPoint.y) && (
