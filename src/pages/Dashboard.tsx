@@ -291,7 +291,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="p-4 pb-24 space-y-6">
+      <div className="sm:p-4 pb-24 space-y-6">
         {/* Filter Button - Desktop */}
         <div className="hidden lg:flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="relative">
