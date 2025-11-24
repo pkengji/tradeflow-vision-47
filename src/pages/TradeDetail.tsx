@@ -283,6 +283,8 @@ export default function TradeDetail() {
                     tp={position.tp ?? null}
                     mark={position.mark_price ?? position.exit_price ?? null}
                     side={position.side as "long" | "short"}
+                    entryBest={position.entry_price_best}
+                    exitBest={position.exit_price_best}
                   />
                 </div>
               </>

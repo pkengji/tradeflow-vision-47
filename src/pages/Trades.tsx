@@ -511,6 +511,8 @@ export default function Trades() {
                               tp={t.tp ?? null}
                               mark={t.mark_price ?? null}
                               side={t.side as "long" | "short"}
+                              entryBest={t.entry_price_best}
+                              exitBest={t.exit_price_best}
                             />
                           </div>
                         ))}
@@ -569,6 +571,8 @@ export default function Trades() {
                               tp={t.tp ?? null}
                               mark={t.exit_price ?? null}
                               side={t.side as "long" | "short"}
+                              entryBest={t.entry_price_best}
+                              exitBest={t.exit_price_best}
                             />
                           </div>
                         ))}
