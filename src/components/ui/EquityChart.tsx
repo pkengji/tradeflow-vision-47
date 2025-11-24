@@ -133,9 +133,9 @@ export default function EquityChart({ data }: { data: Point[] }) {
               y1={yPos} 
               x2={width - pad} 
               y2={yPos} 
-              stroke="hsl(var(--border) / 0.2)" 
-              strokeWidth={0.5}
-              strokeDasharray="3,3"
+              stroke="hsl(var(--border))" 
+              strokeWidth={1}
+              strokeDasharray="4,4"
             />
           );
         })}
@@ -144,13 +144,13 @@ export default function EquityChart({ data }: { data: Point[] }) {
         {yTickValues.map((value, i) => {
           const yPos = y(value);
           return (
-            <text 
+              <text 
               key={`label-${i}`}
               x={padLeft - 8} 
               y={yPos} 
               textAnchor="end" 
               alignmentBaseline="middle" 
-              className="text-[10px] fill-muted-foreground"
+              className="text-xs sm:text-sm fill-muted-foreground"
             >
               {formatCurrency(value)}
             </text>
@@ -167,7 +167,7 @@ export default function EquityChart({ data }: { data: Point[] }) {
               x={xPos} 
               y={height - padBottom + 20} 
               textAnchor="middle" 
-              className="text-[10px] fill-muted-foreground"
+              className="text-xs sm:text-sm fill-muted-foreground"
             >
               {formatDate(point.date)}
             </text>
@@ -189,11 +189,21 @@ export default function EquityChart({ data }: { data: Point[] }) {
       
       {hoveredPoint && (
         <div 
-          className="absolute bg-background border rounded-lg shadow-lg p-3 pointer-events-none z-10"
+          className="absolute bg-background border rounded-lg shadow-lg p-3 pointer-events-none z-10 whitespace-nowrap"
           style={{
-            left: `${((hoveredPoint.x - padLeft) / (width - padLeft - pad)) * 100}%`,
-            top: `${Math.max(10, ((hoveredPoint.y - pad) / (height - pad - padBottom)) * 100 - 20)}%`,
-            transform: 'translateX(-50%)'
+            left: (() => {
+              const relativeX = (hoveredPoint.x - padLeft) / (width - padLeft - pad);
+              if (relativeX < 0.25) return `${relativeX * 100}%`; // Links im Chart → Tooltip nach rechts
+              if (relativeX > 0.75) return `${relativeX * 100}%`; // Rechts im Chart → Tooltip nach links
+              return `${relativeX * 100}%`; // Mitte → zentriert
+            })(),
+            top: `${Math.max(5, ((hoveredPoint.y - pad) / (height - pad - padBottom)) * 100 - 35)}%`,
+            transform: (() => {
+              const relativeX = (hoveredPoint.x - padLeft) / (width - padLeft - pad);
+              if (relativeX < 0.25) return 'translateX(0)'; // Tooltip rechts vom Punkt
+              if (relativeX > 0.75) return 'translateX(-100%)'; // Tooltip links vom Punkt
+              return 'translateX(-50%)'; // Tooltip zentriert
+            })()
           }}
         >
           <div className="text-xs text-muted-foreground mb-1">
