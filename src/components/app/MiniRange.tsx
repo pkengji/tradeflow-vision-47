@@ -12,7 +12,30 @@ type Props = {
   mark?: number | null; // current or exit price
   labelEntry?: string; // default: 'ENTRY'
   side?: "long" | "short"; // trade side for orientation
+  entryBest?: number | null; // für präzise Dezimalstellen
+  exitBest?: number | null; // für präzise Dezimalstellen
 };
+
+// Formatierung mit gleicher Dezimalstellen-Logik wie in TradeDetail.tsx
+function formatWithBestDecimals(value: number | null | undefined, best: number | null | undefined): string {
+  if (value == null || Number.isNaN(Number(value))) return "—";
+
+  // Wenn kein "best"-Wert da ist → normal mit max. 8 Nachkommastellen
+  if (best == null || Number.isNaN(Number(best))) {
+    return Number(value).toLocaleString(undefined, {
+      maximumFractionDigits: 8,
+    });
+  }
+
+  const refStr = String(best);
+  const dot = refStr.indexOf(".");
+  const decimals = dot >= 0 ? refStr.length - dot - 1 : 0;
+
+  return Number(value).toLocaleString(undefined, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
 
 // Layout-Feinjustage (global)
 const TRACK_Y_ADJUST_PX = -6; // + runter, - rauf
@@ -25,7 +48,7 @@ function labelLeft(xPct: number, align: "left" | "center" | "right") {
   return `${xPct}%`;
 }
 
-export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", side = "long" }: Props) {
+export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", side = "long", entryBest, exitBest }: Props) {
   // Wenn kein TP und SL: Entry unten, Exit/Mark oben
   // Links = kleinerer Wert, Rechts = größerer Wert
   if ((sl == null || tp == null) && entry != null) {
@@ -87,7 +110,7 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
               >
                 <span className="text-zinc-400">{labelEntry}</span>
                 <span className="mx-[3px]" />
-                <span className="text-foreground tabular-nums">{minPrice.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
+                <span className="text-foreground tabular-nums">{formatWithBestDecimals(entry, entryBest)}</span>
               </div>
               
               {/* Mark tick - IMMER OBEN, Position rechts oder links (gegenteil von Entry) */}
@@ -116,7 +139,7 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
                       return (
                         <>
                           <span style={{ color }}>{`${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`}</span>
-                          <span className="ml-1 text-zinc-500 dark:text-zinc-400">{maxPrice.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
+                          <span className="ml-1 text-zinc-500 dark:text-zinc-400">{formatWithBestDecimals(mark, exitBest ?? entryBest)}</span>
                         </>
                       );
                     })()}
@@ -159,8 +182,8 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
   const alignEN: "left" | "right" = xEN > 85 ? "right" : "left";
   const alignMK: "left" | "right" = xMK == null ? "left" : xMK > 85 ? "right" : "left";
 
-  const fmt = (v: number | null | undefined) =>
-    v == null ? "—" : v.toLocaleString(undefined, { maximumFractionDigits: 6 });
+  const fmt = (v: number | null | undefined, best: number | null | undefined) =>
+    formatWithBestDecimals(v, best);
 
   const pct = mark != null && entry ? ((mark - entry) / entry) * 100 : null;
   const hasProfit =
@@ -202,7 +225,7 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
               barHeightPx={H_BAR}
               labelGapPx={LABEL_GAP_PX - 5}
               title={<span style={{ color: "#EA3A10" }}>SL</span>}
-              value={<span className="text-foreground tabular-nums">{fmt(sl)}</span>}
+              value={<span className="text-foreground tabular-nums">{fmt(sl, entryBest)}</span>}
             />
 
             {/* ENTRY tick - UNTEN, leicht erhöht */}
@@ -215,7 +238,7 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
               barHeightPx={H_BAR}
               labelGapPx={LABEL_GAP_PX}
               title={<span className="text-zinc-400">{labelEntry}</span>}
-              value={<span className="text-foreground tabular-nums">{fmt(entry)}</span>}
+              value={<span className="text-foreground tabular-nums">{fmt(entry, entryBest)}</span>}
             />
 
             {/* TP tick - UNTEN */}
@@ -228,7 +251,7 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
               barHeightPx={H_BAR}
               labelGapPx={LABEL_GAP_PX - 5}
               title={<span style={{ color: "#2DFB68" }}>TP</span>}
-              value={<span className="text-foreground tabular-nums">{fmt(tp)}</span>}
+              value={<span className="text-foreground tabular-nums">{fmt(tp, entryBest)}</span>}
             />
 
             {/* MARK tick - OBEN */}
@@ -252,6 +275,7 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
                   percent={pct}
                   price={mark}
                   percentColor={gainColor}
+                  priceBest={exitBest ?? entryBest}
                 />
               </>
             )}
@@ -341,6 +365,7 @@ function MarkLabel({
   percent,
   price,
   percentColor,
+  priceBest,
 }: {
   xPct: number;
   align: "left" | "center" | "right";
@@ -350,6 +375,7 @@ function MarkLabel({
   percent: number | null;
   price: number | null | undefined;
   percentColor: string;
+  priceBest?: number | null;
 }) {
   const getTransform = () => {
     if (align === "left") return "translateX(0)";
@@ -358,8 +384,6 @@ function MarkLabel({
   };
 
   const top = `calc(0px - ${tickHeightPx}px - ${labelGapPx}px)`;
-  const fmt = (v: number | null | undefined) =>
-    v == null ? "—" : v.toLocaleString(undefined, { maximumFractionDigits: 6 });
 
   return (
     <div
@@ -369,7 +393,7 @@ function MarkLabel({
       {percent != null && (
         <span style={{ color: percentColor }}>{`${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%`}</span>
       )}
-      {price != null && <span className="ml-1 text-zinc-500 dark:text-zinc-400">{fmt(price)}</span>}
+      {price != null && <span className="ml-1 text-zinc-500 dark:text-zinc-400">{formatWithBestDecimals(price, priceBest)}</span>}
     </div>
   );
 }
