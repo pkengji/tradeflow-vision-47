@@ -139,7 +139,7 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
                       return (
                         <>
                           <span style={{ color }}>{`${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`}</span>
-                          <span className="ml-1 text-zinc-500 dark:text-zinc-400">{formatWithBestDecimals(mark, exitBest ?? entryBest)}</span>
+                          <span className="ml-1 text-zinc-500 dark:text-zinc-400">{formatWithBestDecimals(mark, entryBest ?? exitBest)}</span>
                         </>
                       );
                     })()}
@@ -275,7 +275,8 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
                   percent={pct}
                   price={mark}
                   percentColor={gainColor}
-                  priceBest={exitBest ?? entryBest}
+                  entryBest={entryBest}
+                  exitBest={exitBest}
                 />
               </>
             )}
@@ -365,7 +366,8 @@ function MarkLabel({
   percent,
   price,
   percentColor,
-  priceBest,
+  entryBest,
+  exitBest,
 }: {
   xPct: number;
   align: "left" | "center" | "right";
@@ -375,7 +377,8 @@ function MarkLabel({
   percent: number | null;
   price: number | null | undefined;
   percentColor: string;
-  priceBest?: number | null;
+  entryBest?: number | null;
+  exitBest?: number | null;
 }) {
   const getTransform = () => {
     if (align === "left") return "translateX(0)";
@@ -393,7 +396,7 @@ function MarkLabel({
       {percent != null && (
         <span style={{ color: percentColor }}>{`${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%`}</span>
       )}
-      {price != null && <span className="ml-1 text-zinc-500 dark:text-zinc-400">{formatWithBestDecimals(price, priceBest)}</span>}
+      {price != null && <span className="ml-1 text-zinc-500 dark:text-zinc-400">{formatWithBestDecimals(price, entryBest ?? exitBest)}</span>}
     </div>
   );
 }
