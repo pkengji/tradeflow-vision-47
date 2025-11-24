@@ -6,8 +6,8 @@ type Point = { date: string; pnl: number; equity: number };
 export default function EquityChart({ data }: { data: Point[] }) {
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number; point: Point } | null>(null);
   
-  // Mobile gets wider chart for horizontal scrolling
-  const width = typeof window !== 'undefined' && window.innerWidth < 640 ? 1200 : 800;
+  // Fixed dimensions that work responsively
+  const width = 800;
   const height = 240;
   const pad = 40;
   const padBottom = 50;
@@ -49,7 +49,7 @@ export default function EquityChart({ data }: { data: Point[] }) {
   const path = ys.map((v, i) => (i === 0 ? `M ${x(xs[i])} ${y(v)}` : `L ${x(xs[i])} ${y(v)}`)).join(" ");
 
   const formatCurrency = (value: number) => {
-    return `$ ${value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, "'")}`;
+    return `$ ${value.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, "'")}`;
   };
 
   const formatDate = (dateStr: string | undefined) => {
@@ -95,14 +95,13 @@ export default function EquityChart({ data }: { data: Point[] }) {
   });
 
   return (
-    <div className="relative overflow-x-auto sm:overflow-visible">
+    <div className="relative">
       <svg 
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full sm:w-full"
+        className="w-full"
         style={{ 
           height: 'auto', 
-          maxHeight: '300px',
-          minWidth: typeof window !== 'undefined' && window.innerWidth < 640 ? '1200px' : 'auto'
+          maxHeight: '300px'
         }}
         preserveAspectRatio="none"
         onMouseMove={(e) => {
