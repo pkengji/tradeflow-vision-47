@@ -106,7 +106,7 @@ export default function EquityChart({ data }: { data: Point[] }) {
           maxHeight: isMobile ? '400px' : '300px',
           minHeight: isMobile ? '280px' : 'auto'
         }}
-        preserveAspectRatio="none"
+        preserveAspectRatio="xMidYMid meet"
         onMouseMove={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           const mouseX = e.clientX - rect.left;
