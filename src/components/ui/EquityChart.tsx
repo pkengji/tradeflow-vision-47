@@ -61,11 +61,27 @@ export default function EquityChart({ data }: { data: Point[] }) {
     });
   };
 
-  // Generate Y-axis labels (3-5 ticks)
-  const yTicks = 4;
-  const yTickValues = Array.from({ length: yTicks }, (_, i) => {
-    return scaledMinY + (i / (yTicks - 1)) * (scaledMaxY - scaledMinY);
-  });
+  // Generate Y-axis labels with rounded values
+  const range = maxY - minY;
+  const getNiceStep = (range: number): number => {
+    const rawStep = range / 4;
+    const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
+    const normalized = rawStep / magnitude;
+    
+    if (normalized <= 1) return magnitude;
+    if (normalized <= 2) return 2 * magnitude;
+    if (normalized <= 5) return 5 * magnitude;
+    return 10 * magnitude;
+  };
+  
+  const step = getNiceStep(range);
+  const startValue = Math.floor(minY / step) * step;
+  const yTickValues: number[] = [];
+  for (let value = startValue; value <= maxY + step; value += step) {
+    if (value >= minY - step * 0.5) {
+      yTickValues.push(value);
+    }
+  }
 
   // Generate X-axis labels (show ~5 dates evenly distributed)
   const xTickCount = Math.min(5, validData.length);
@@ -107,30 +123,37 @@ export default function EquityChart({ data }: { data: Point[] }) {
         <line x1={padLeft} y1={height - padBottom} x2={width - pad} y2={height - padBottom} stroke="hsl(var(--border))" strokeWidth={1.5} />
         <line x1={padLeft} y1={pad} x2={padLeft} y2={height - padBottom} stroke="hsl(var(--border))" strokeWidth={1.5} />
         
-        {/* Y-axis labels and grid lines */}
+        {/* Horizontal grid lines */}
         {yTickValues.map((value, i) => {
           const yPos = y(value);
           return (
-            <g key={i}>
-              <line 
-                x1={padLeft} 
-                y1={yPos} 
-                x2={width - pad} 
-                y2={yPos} 
-                stroke="hsl(var(--border) / 0.3)" 
-                strokeWidth={0.5}
-                strokeDasharray="2,2"
-              />
-              <text 
-                x={padLeft - 8} 
-                y={yPos} 
-                textAnchor="end" 
-                alignmentBaseline="middle" 
-                className="text-[10px] fill-muted-foreground"
-              >
-                {formatCurrency(value)}
-              </text>
-            </g>
+            <line 
+              key={`grid-${i}`}
+              x1={padLeft} 
+              y1={yPos} 
+              x2={width - pad} 
+              y2={yPos} 
+              stroke="hsl(var(--border) / 0.2)" 
+              strokeWidth={0.5}
+              strokeDasharray="3,3"
+            />
+          );
+        })}
+        
+        {/* Y-axis labels */}
+        {yTickValues.map((value, i) => {
+          const yPos = y(value);
+          return (
+            <text 
+              key={`label-${i}`}
+              x={padLeft - 8} 
+              y={yPos} 
+              textAnchor="end" 
+              alignmentBaseline="middle" 
+              className="text-[10px] fill-muted-foreground"
+            >
+              {formatCurrency(value)}
+            </text>
           );
         })}
         
