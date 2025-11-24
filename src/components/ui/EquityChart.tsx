@@ -13,6 +13,8 @@ export default function EquityChart({ data }: { data: Point[] }) {
   const padBottom = 50;
   const padLeft = 60;
   
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+  
   // Debug log to check data
   console.log('EquityChart data:', data);
   
@@ -101,7 +103,8 @@ export default function EquityChart({ data }: { data: Point[] }) {
         className="w-full"
         style={{ 
           height: 'auto', 
-          maxHeight: '300px'
+          maxHeight: isMobile ? '400px' : '300px',
+          minHeight: isMobile ? '280px' : 'auto'
         }}
         preserveAspectRatio="none"
         onMouseMove={(e) => {
@@ -158,7 +161,7 @@ export default function EquityChart({ data }: { data: Point[] }) {
               y={yPos} 
               textAnchor="end" 
               alignmentBaseline="middle" 
-              className="text-[10px] fill-muted-foreground"
+              className="text-xs sm:text-[10px] fill-muted-foreground"
             >
               {formatCurrency(value)}
             </text>
@@ -175,7 +178,7 @@ export default function EquityChart({ data }: { data: Point[] }) {
               x={xPos} 
               y={height - padBottom + 20} 
               textAnchor="middle" 
-              className="text-[10px] fill-muted-foreground"
+              className="text-xs sm:text-[10px] fill-muted-foreground"
             >
               {formatDate(point.date)}
             </text>
