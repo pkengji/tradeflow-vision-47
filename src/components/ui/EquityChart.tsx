@@ -6,7 +6,7 @@ type Point = { date: string; pnl: number; equity: number };
 export default function EquityChart({ data }: { data: Point[] }) {
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number; point: Point } | null>(null);
   
-  const width = 600, height = 180, pad = 24;
+  const width = 800, height = 240, pad = 40, padBottom = 50, padLeft = 60;
   
   // Debug log to check data
   console.log('EquityChart data:', data);
@@ -33,12 +33,12 @@ export default function EquityChart({ data }: { data: Point[] }) {
   const scaledMaxY = maxY + yPadding;
   
   const x = (t: number) => {
-    if (isNaN(t)) return pad;
-    return pad + ((t - minX) / (maxX - minX || 1)) * (width - 2 * pad);
+    if (isNaN(t)) return padLeft;
+    return padLeft + ((t - minX) / (maxX - minX || 1)) * (width - padLeft - pad);
   };
   const y = (v: number) => {
-    if (isNaN(v)) return height - pad;
-    return height - pad - ((v - scaledMinY) / (scaledMaxY - scaledMinY || 1)) * (height - 2 * pad);
+    if (isNaN(v)) return height - padBottom;
+    return height - padBottom - ((v - scaledMinY) / (scaledMaxY - scaledMinY || 1)) * (height - pad - padBottom);
   };
   
   const path = ys.map((v, i) => (i === 0 ? `M ${x(xs[i])} ${y(v)}` : `L ${x(xs[i])} ${y(v)}`)).join(" ");
@@ -61,17 +61,31 @@ export default function EquityChart({ data }: { data: Point[] }) {
     });
   };
 
+  // Generate Y-axis labels (3-5 ticks)
+  const yTicks = 4;
+  const yTickValues = Array.from({ length: yTicks }, (_, i) => {
+    return scaledMinY + (i / (yTicks - 1)) * (scaledMaxY - scaledMinY);
+  });
+
+  // Generate X-axis labels (show ~5 dates evenly distributed)
+  const xTickCount = Math.min(5, validData.length);
+  const xTickIndices = Array.from({ length: xTickCount }, (_, i) => {
+    return Math.floor((i / (xTickCount - 1)) * (validData.length - 1));
+  });
+
   return (
     <div className="relative">
       <svg 
-        width={width} 
-        height={height} 
-        className="w-full h-[180px]"
+        viewBox={`0 0 ${width} ${height}`}
+        className="w-full"
+        style={{ height: 'auto', maxHeight: '300px' }}
+        preserveAspectRatio="none"
         onMouseMove={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           const mouseX = e.clientX - rect.left;
-          const relativeX = (mouseX - pad) / (width - 2 * pad);
-          const dataIndex = Math.round(relativeX * (validData.length - 1));
+          const relativeX = (mouseX / rect.width) * width;
+          const dataRelativeX = (relativeX - padLeft) / (width - padLeft - pad);
+          const dataIndex = Math.round(dataRelativeX * (validData.length - 1));
           
           if (dataIndex >= 0 && dataIndex < validData.length) {
             const point = validData[dataIndex];
@@ -89,12 +103,56 @@ export default function EquityChart({ data }: { data: Point[] }) {
         {/* Background */}
         <rect x={0} y={0} width={width} height={height} fill="hsl(var(--muted) / 0.3)" />
         
-        {/* Grid lines */}
-        <line x1={pad} y1={height - pad} x2={width - pad} y2={height - pad} stroke="hsl(var(--border))" strokeWidth={1} />
-        <line x1={pad} y1={pad} x2={pad} y2={height - pad} stroke="hsl(var(--border))" strokeWidth={1} />
+        {/* X and Y Axes */}
+        <line x1={padLeft} y1={height - padBottom} x2={width - pad} y2={height - padBottom} stroke="hsl(var(--border))" strokeWidth={1.5} />
+        <line x1={padLeft} y1={pad} x2={padLeft} y2={height - padBottom} stroke="hsl(var(--border))" strokeWidth={1.5} />
+        
+        {/* Y-axis labels and grid lines */}
+        {yTickValues.map((value, i) => {
+          const yPos = y(value);
+          return (
+            <g key={i}>
+              <line 
+                x1={padLeft} 
+                y1={yPos} 
+                x2={width - pad} 
+                y2={yPos} 
+                stroke="hsl(var(--border) / 0.3)" 
+                strokeWidth={0.5}
+                strokeDasharray="2,2"
+              />
+              <text 
+                x={padLeft - 8} 
+                y={yPos} 
+                textAnchor="end" 
+                alignmentBaseline="middle" 
+                className="text-[10px] fill-muted-foreground"
+              >
+                {formatCurrency(value)}
+              </text>
+            </g>
+          );
+        })}
+        
+        {/* X-axis labels */}
+        {xTickIndices.map((idx) => {
+          const point = validData[idx];
+          const xPos = x(xs[idx]);
+          return (
+            <text 
+              key={idx}
+              x={xPos} 
+              y={height - padBottom + 20} 
+              textAnchor="middle" 
+              className="text-[10px] fill-muted-foreground"
+            >
+              {formatDate(point.date)}
+            </text>
+          );
+        })}
         
         {/* Chart line */}
-        <path d={path} fill="none" stroke="currentColor" strokeWidth={1.5} />
+        <path d={path} fill="none" stroke="currentColor" strokeWidth={2} />
         
         {hoveredPoint && !isNaN(hoveredPoint.x) && !isNaN(hoveredPoint.y) && (
           <circle 
@@ -110,8 +168,8 @@ export default function EquityChart({ data }: { data: Point[] }) {
         <div 
           className="absolute bg-background border rounded-lg shadow-lg p-3 pointer-events-none z-10"
           style={{
-            left: `${(hoveredPoint.x / width) * 100}%`,
-            top: `${Math.max(10, hoveredPoint.y - 80)}px`,
+            left: `${((hoveredPoint.x - padLeft) / (width - padLeft - pad)) * 100}%`,
+            top: `${Math.max(10, ((hoveredPoint.y - pad) / (height - pad - padBottom)) * 100 - 20)}%`,
             transform: 'translateX(-50%)'
           }}
         >
