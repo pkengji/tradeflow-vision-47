@@ -6,7 +6,12 @@ type Point = { date: string; pnl: number; equity: number };
 export default function EquityChart({ data }: { data: Point[] }) {
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number; point: Point } | null>(null);
   
-  const width = 800, height = 240, pad = 40, padBottom = 50, padLeft = 60;
+  // Mobile gets wider chart for horizontal scrolling
+  const width = typeof window !== 'undefined' && window.innerWidth < 640 ? 1200 : 800;
+  const height = 240;
+  const pad = 40;
+  const padBottom = 50;
+  const padLeft = 60;
   
   // Debug log to check data
   console.log('EquityChart data:', data);
@@ -90,11 +95,15 @@ export default function EquityChart({ data }: { data: Point[] }) {
   });
 
   return (
-    <div className="relative">
+    <div className="relative overflow-x-auto sm:overflow-visible">
       <svg 
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full"
-        style={{ height: 'auto', maxHeight: '300px' }}
+        className="w-full sm:w-full"
+        style={{ 
+          height: 'auto', 
+          maxHeight: '300px',
+          minWidth: typeof window !== 'undefined' && window.innerWidth < 640 ? '1200px' : 'auto'
+        }}
         preserveAspectRatio="none"
         onMouseMove={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
@@ -150,7 +159,7 @@ export default function EquityChart({ data }: { data: Point[] }) {
               y={yPos} 
               textAnchor="end" 
               alignmentBaseline="middle" 
-              className="text-xs sm:text-sm fill-muted-foreground"
+              className="text-sm sm:text-[10px] fill-muted-foreground"
             >
               {formatCurrency(value)}
             </text>
@@ -167,7 +176,7 @@ export default function EquityChart({ data }: { data: Point[] }) {
               x={xPos} 
               y={height - padBottom + 20} 
               textAnchor="middle" 
-              className="text-xs sm:text-sm fill-muted-foreground"
+              className="text-sm sm:text-[10px] fill-muted-foreground"
             >
               {formatDate(point.date)}
             </text>
