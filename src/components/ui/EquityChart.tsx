@@ -159,7 +159,7 @@ export default function EquityChart({ data }: { data: Point[] }) {
               y={yPos} 
               textAnchor="end" 
               alignmentBaseline="middle" 
-              className="text-sm sm:text-[10px] fill-muted-foreground"
+              className="text-[10px] fill-muted-foreground"
             >
               {formatCurrency(value)}
             </text>
@@ -176,7 +176,7 @@ export default function EquityChart({ data }: { data: Point[] }) {
               x={xPos} 
               y={height - padBottom + 20} 
               textAnchor="middle" 
-              className="text-sm sm:text-[10px] fill-muted-foreground"
+              className="text-[10px] fill-muted-foreground"
             >
               {formatDate(point.date)}
             </text>
