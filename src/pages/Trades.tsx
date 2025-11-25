@@ -3,6 +3,7 @@
 // ==============================
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams, useLocation, useNavigationType } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import api, { type PositionListItem, type Bot } from "@/lib/api";
 import TradesFiltersBar, { type TradesFilters } from "@/components/app/TradesFiltersBar";
 import TradeCardCompact from "@/components/app/TradeCardCompact";
@@ -146,6 +147,14 @@ export default function Trades() {
   const [error, setError] = useState<string | null>(null);
 
   const [showFilters, setShowFilters] = useState(false);
+
+  // Poll marks for open positions every 10 seconds
+  const { data: marks } = useQuery({
+    queryKey: ["position-marks"],
+    queryFn: () => api.getPositionMarks(),
+    refetchInterval: 10000,
+    enabled: activeTab === "open",
+  });
 
   // ---- 4.2 EFFECTS: Daten laden ----
   useEffect(() => {
@@ -309,13 +318,27 @@ export default function Trades() {
 
   const openTrades = useMemo(() => {
     const trades = filtered.filter((t) => t.status === "open");
+    
+    // Merge with live marks data
+    const enriched = trades.map((t) => {
+      const mark = marks?.[t.id];
+      if (mark) {
+        return {
+          ...t,
+          mark_price: mark.mark_price,
+          unrealized_pnl: mark.unrealized_pnl,
+        };
+      }
+      return t;
+    });
+    
     // Sortiere nach opened_at (neueste zuerst)
-    return trades.sort((a, b) => {
+    return enriched.sort((a, b) => {
       const dateA = a.opened_at ? new Date(a.opened_at).getTime() : 0;
       const dateB = b.opened_at ? new Date(b.opened_at).getTime() : 0;
       return dateB - dateA;
     });
-  }, [filtered]);
+  }, [filtered, marks]);
 
   const closedTrades = useMemo(() => {
     const trades = filtered.filter((t) => t.status === "closed");
