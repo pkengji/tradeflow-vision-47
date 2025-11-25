@@ -53,8 +53,10 @@ All colors MUST be HSL.
     /* Trading-specific colors */
     --long: 137 96% 58%;
     --long-foreground: 128 61% 13%;
+    --long-bg: 137 61% 13%;
     --short: 12 87% 49%;
     --short-foreground: 4 69% 23%;
+    --short-bg: 4 69% 23%;
   }
 }
 

@@ -65,10 +65,12 @@ export default {
         long: {
           DEFAULT: "hsl(var(--long))",
           foreground: "hsl(var(--long-foreground))",
+          bg: "hsl(var(--long-bg))",
         },
         short: {
           DEFAULT: "hsl(var(--short))",
           foreground: "hsl(var(--short-foreground))",
+          bg: "hsl(var(--short-bg))",
         },
       },
       borderRadius: {
