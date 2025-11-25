@@ -259,6 +259,7 @@ useMemo(() => {
           tvMultiplier: globalMultiplier !== '' ? globalMultiplier : p.tvMultiplier,
         };
       }));
+      toast.success('Globale Einstellungen übernommen');
     }
   };
 
