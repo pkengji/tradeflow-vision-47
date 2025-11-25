@@ -387,10 +387,6 @@ async function getPosition(id: number): Promise<any> {
   return await http<any>(`/api/v1/positions/${id}`);
 }
 
-async function getPositionMarks(): Promise<Record<number, { mark_price: number; unrealized_pnl: number }>> {
-  return await http<Record<number, { mark_price: number; unrealized_pnl: number }>>("/api/v1/positions/marks");
-}
-
 async function setPositionSlTp(position_id: number, params: { sl?: number; tp?: number }) {
   return http(`/api/v1/positions/${position_id}/set-sl-tp`, { method: "POST", body: params });
 }
@@ -633,7 +629,6 @@ export const api = {
   // Positions / Trades
   getPositions,
   getPosition,
-  getPositionMarks,
   setPositionSlTp,
   closePosition,
 
