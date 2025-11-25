@@ -48,27 +48,10 @@ export default function TradeDetail() {
     queryKey: ["position", pid],
     queryFn: () => api.getPosition(pid),
     enabled: Number.isFinite(pid),
+    refetchInterval: (query) => {
+      return query.state.data?.status === "open" ? 10000 : false;
+    },
   });
-
-  // Poll marks for live updates if position is open
-  const { data: marks } = useQuery({
-    queryKey: ["position-marks"],
-    queryFn: () => api.getPositionMarks(),
-    refetchInterval: position?.status === "open" ? 5000 : false,
-    enabled: position?.status === "open",
-  });
-
-  // Merge live marks into position
-  const enrichedPosition = useMemo(() => {
-    if (!position) return position;
-    if (position.status !== "open" || !marks?.[pid]) return position;
-    
-    return {
-      ...position,
-      mark_price: marks[pid].mark_price,
-      unrealized_pnl: marks[pid].unrealized_pnl,
-    };
-  }, [position, marks, pid]);
 
   // Load symbol info once on mount to populate cache
   useEffect(() => {
@@ -184,29 +167,29 @@ export default function TradeDetail() {
             )}
           </CardHeader>
           <CardContent className="space-y-3">
-            {!posLoading && enrichedPosition && (
+            {!posLoading && position && (
               <>
                 {/* Main Info Row */}
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
                     <div className="text-muted-foreground mb-0.5">Symbol</div>
                     <div className="font-semibold flex items-center gap-1.5">
-                      {enrichedPosition.symbol}
+                      {position.symbol}
                       <Badge
                         variant={isLong ? "default" : "destructive"}
                         className={`${isLong ? "bg-[#0D3512] hover:bg-[#0D3512]/80 text-[#2DFB68]" : "bg-[#641812] hover:bg-[#641812]/80 text-[#EA3A10]"} text-[10px] px-1.5 py-0 h-4`}
                       >
-                        {enrichedPosition.side === "long" ? "Long" : "Short"}
+                        {position.side === "long" ? "Long" : "Short"}
                       </Badge>
                     </div>
                   </div>
                   <div>
                     <div className="text-muted-foreground mb-0.5">PnL</div>
                     <div
-                      className={`font-semibold ${(enrichedPosition.pnl || enrichedPosition.unrealized_pnl || 0) >= 0 ? "text-success" : "text-danger"}`}
+                      className={`font-semibold ${(position.pnl || position.unrealized_pnl || 0) >= 0 ? "text-success" : "text-danger"}`}
                     >
-                      {formatCurrency(enrichedPosition.pnl || enrichedPosition.unrealized_pnl || 0, true)}
-                      {enrichedPosition.pnl_pct && ` (${enrichedPosition.pnl_pct > 0 ? "+" : ""}${enrichedPosition.pnl_pct.toFixed(2)}%)`}
+                      {formatCurrency(position.pnl || position.unrealized_pnl || 0, true)}
+                      {position.pnl_pct && ` (${position.pnl_pct > 0 ? "+" : ""}${position.pnl_pct.toFixed(2)}%)`}
                     </div>
                   </div>
                 </div>
@@ -215,12 +198,12 @@ export default function TradeDetail() {
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
                     <div className="text-muted-foreground mb-0.5">Geöffnet am</div>
-                    <div className="font-semibold">{new Date(enrichedPosition.opened_at).toLocaleString("de-DE")}</div>
+                    <div className="font-semibold">{new Date(position.opened_at).toLocaleString("de-DE")}</div>
                   </div>
-                  {enrichedPosition.closed_at && (
+                  {position.closed_at && (
                     <div>
                       <div className="text-muted-foreground mb-0.5">Geschlossen am</div>
-                      <div className="font-semibold">{new Date(enrichedPosition.closed_at).toLocaleString("de-DE")}</div>
+                      <div className="font-semibold">{new Date(position.closed_at).toLocaleString("de-DE")}</div>
                     </div>
                   )}
 
@@ -228,10 +211,10 @@ export default function TradeDetail() {
                   <div>
                     <div className="text-muted-foreground mb-0.5">Entry Price (VWAP)</div>
                     <div className="font-semibold">
-                      {enrichedPosition.entry_price_vwap != null || enrichedPosition.entry_price != null
+                      {position.entry_price_vwap != null || position.entry_price != null
                         ? formatWithBestDecimals(
-                            enrichedPosition.entry_price_vwap ?? enrichedPosition.entry_price,
-                            enrichedPosition.entry_price_best ?? enrichedPosition.entry_price ?? null,
+                            position.entry_price_vwap ?? position.entry_price,
+                            position.entry_price_best ?? position.entry_price ?? null,
                           )
                         : "—"}
                     </div>
@@ -240,20 +223,20 @@ export default function TradeDetail() {
                   <div>
                     <div className="text-muted-foreground mb-0.5">Entry Price (Best)</div>
                     <div className="font-semibold">
-                      {enrichedPosition.entry_price_best != null
-                        ? formatWithBestDecimals(enrichedPosition.entry_price_best, enrichedPosition.entry_price_best)
+                      {position.entry_price_best != null
+                        ? formatWithBestDecimals(position.entry_price_best, position.entry_price_best)
                         : "—"}
                     </div>
                   </div>
-                  {enrichedPosition.exit_price && (
+                  {position.exit_price && (
                     <>
                       <div>
                         <div className="text-muted-foreground mb-0.5">Exit Price (VWAP)</div>
                         <div className="font-semibold">
-                          {enrichedPosition.exit_price_vwap != null || enrichedPosition.exit_price != null
+                          {position.exit_price_vwap != null || position.exit_price != null
                             ? formatWithBestDecimals(
-                                enrichedPosition.exit_price_vwap ?? enrichedPosition.exit_price,
-                                enrichedPosition.entry_price_best ?? enrichedPosition.exit_price_best ?? enrichedPosition.exit_price ?? null,
+                                position.exit_price_vwap ?? position.exit_price,
+                                position.entry_price_best ?? position.exit_price_best ?? position.exit_price ?? null,
                               )
                             : "—"}
                         </div>
@@ -261,10 +244,10 @@ export default function TradeDetail() {
                       <div>
                         <div className="text-muted-foreground mb-0.5">Exit Price (Best)</div>
                         <div className="font-semibold">
-                          {enrichedPosition.exit_price_best
+                          {position.exit_price_best
                             ? formatWithBestDecimals(
-                                enrichedPosition.exit_price_best,
-                                enrichedPosition.entry_price_best ?? enrichedPosition.exit_price_best,
+                                position.exit_price_best,
+                                position.entry_price_best ?? position.exit_price_best,
                               )
                             : "—"}
                         </div>
@@ -278,33 +261,33 @@ export default function TradeDetail() {
                   <div>
                     <div className="text-muted-foreground mb-0.5">QTY (Base)</div>
                     <div className="font-semibold">
-                      {enrichedPosition.qty != null
-                        ? enrichedPosition.qty.toLocaleString(undefined, { maximumFractionDigits: 8 })
+                      {position.qty != null
+                        ? position.qty.toLocaleString(undefined, { maximumFractionDigits: 8 })
                         : "—"}
                     </div>
                   </div>
                   <div>
                     <div className="text-muted-foreground mb-0.5">Positionsgröße</div>
                     <div className="font-semibold">
-                      {formatPrice((enrichedPosition.entry_price_vwap || enrichedPosition.entry_price) * enrichedPosition.qty)} USDT
+                      {formatPrice((position.entry_price_vwap || position.entry_price) * position.qty)} USDT
                     </div>
                   </div>
                   <div>
                     <div className="text-muted-foreground mb-0.5">Leverage</div>
-                    <div className="font-semibold">{enrichedPosition.leverage || "—"}x</div>
+                    <div className="font-semibold">{position.leverage || "—"}x</div>
                   </div>
                 </div>
 
                 <div className="pt-1">
                   <MiniRange
-                    labelEntry={enrichedPosition.side === "short" ? "Sell" : "Buy"}
-                    entry={enrichedPosition.entry_price_vwap || enrichedPosition.entry_price}
-                    sl={enrichedPosition.sl ?? null}
-                    tp={enrichedPosition.tp ?? null}
-                    mark={enrichedPosition.mark_price ?? enrichedPosition.exit_price ?? null}
-                    side={enrichedPosition.side as "long" | "short"}
-                    entryBest={enrichedPosition.entry_price_best}
-                    exitBest={enrichedPosition.exit_price_best}
+                    labelEntry={position.side === "short" ? "Sell" : "Buy"}
+                    entry={position.entry_price_vwap || position.entry_price}
+                    sl={position.sl ?? null}
+                    tp={position.tp ?? null}
+                    mark={position.mark_price ?? position.exit_price ?? null}
+                    side={position.side as "long" | "short"}
+                    entryBest={position.entry_price_best}
+                    exitBest={position.exit_price_best}
                   />
                 </div>
               </>
@@ -313,7 +296,7 @@ export default function TradeDetail() {
         </Card>
 
         {/* Transaktionskosten */}
-        {enrichedPosition && (
+        {position && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">Transaktionskosten</CardTitle>
@@ -323,29 +306,29 @@ export default function TradeDetail() {
                 <div>
                   <div className="text-muted-foreground mb-0.5">Fees Total</div>
                   <div className="font-semibold">
-                    {formatCurrency((enrichedPosition.fee_open_usdt || 0) + (enrichedPosition.fee_close_usdt || 0))}
+                    {formatCurrency((position.fee_open_usdt || 0) + (position.fee_close_usdt || 0))}
                   </div>
                   <div className="text-[10px] text-muted-foreground mt-0.5">
-                    Open: {formatCurrency(enrichedPosition.fee_open_usdt)} • Close: {formatCurrency(enrichedPosition.fee_close_usdt)}
+                    Open: {formatCurrency(position.fee_open_usdt)} • Close: {formatCurrency(position.fee_close_usdt)}
                   </div>
                 </div>
                 <div>
                   <div className="text-muted-foreground mb-0.5">Funding Fees</div>
-                  <div className="font-semibold">{formatCurrency(enrichedPosition.funding_usdt || 0)}</div>
+                  <div className="font-semibold">{formatCurrency(position.funding_usdt || 0)}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground mb-0.5">Slippage Liquidität</div>
                   <div className="font-semibold">
-                    {formatCurrency((enrichedPosition.slippage_liquidity_open || 0) + (enrichedPosition.slippage_liquidity_close || 0))}
+                    {formatCurrency((position.slippage_liquidity_open || 0) + (position.slippage_liquidity_close || 0))}
                   </div>
                   <div className="text-[10px] text-muted-foreground mt-0.5">
-                    Open: {formatCurrency(enrichedPosition.slippage_liquidity_open)} • Close:{" "}
-                    {formatCurrency(enrichedPosition.slippage_liquidity_close)}
+                    Open: {formatCurrency(position.slippage_liquidity_open)} • Close:{" "}
+                    {formatCurrency(position.slippage_liquidity_close)}
                   </div>
                 </div>
                 <div>
                   <div className="text-muted-foreground mb-0.5">Slippage Timelag</div>
-                  <div className="font-semibold">{formatCurrency(enrichedPosition.slippage_timelag)}</div>
+                  <div className="font-semibold">{formatCurrency(position.slippage_timelag)}</div>
                 </div>
               </div>
             </CardContent>
@@ -353,7 +336,7 @@ export default function TradeDetail() {
         )}
 
         {/* Timelag Open */}
-        {enrichedPosition && (
+        {position && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">Timelag Open</CardTitle>
@@ -362,15 +345,15 @@ export default function TradeDetail() {
               <div className="grid grid-cols-3 gap-2 text-xs">
                 <div>
                   <div className="text-muted-foreground mb-0.5">Entry</div>
-                  <div className="font-semibold font-mono">{formatMs(enrichedPosition.timelag_tv_to_bot)}</div>
+                  <div className="font-semibold font-mono">{formatMs(position.timelag_tv_to_bot)}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground mb-0.5">Processing time</div>
-                  <div className="font-semibold font-mono">{formatMs(enrichedPosition.timelag_bot_processing)}</div>
+                  <div className="font-semibold font-mono">{formatMs(position.timelag_bot_processing)}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground mb-0.5">Exit</div>
-                  <div className="font-semibold font-mono">{formatMs(enrichedPosition.timelag_bot_to_exchange)}</div>
+                  <div className="font-semibold font-mono">{formatMs(position.timelag_bot_to_exchange)}</div>
                 </div>
               </div>
             </CardContent>
@@ -378,7 +361,7 @@ export default function TradeDetail() {
         )}
 
         {/* Timelag Close */}
-        {enrichedPosition && enrichedPosition.status === "closed" && (
+        {position && position.status === "closed" && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">Timelag Close</CardTitle>
@@ -387,15 +370,15 @@ export default function TradeDetail() {
               <div className="grid grid-cols-3 gap-2 text-xs">
                 <div>
                   <div className="text-muted-foreground mb-0.5">Entry</div>
-                  <div className="font-semibold font-mono">{formatMs(enrichedPosition.timelag_close_tv_to_bot)}</div>
+                  <div className="font-semibold font-mono">{formatMs(position.timelag_close_tv_to_bot)}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground mb-0.5">Processing time</div>
-                  <div className="font-semibold font-mono">{formatMs(enrichedPosition.timelag_close_bot_processing)}</div>
+                  <div className="font-semibold font-mono">{formatMs(position.timelag_close_bot_processing)}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground mb-0.5">Exit</div>
-                  <div className="font-semibold font-mono">{formatMs(enrichedPosition.timelag_close_bot_to_exchange)}</div>
+                  <div className="font-semibold font-mono">{formatMs(position.timelag_close_bot_to_exchange)}</div>
                 </div>
               </div>
             </CardContent>
@@ -414,7 +397,7 @@ export default function TradeDetail() {
             <CollapsibleContent>
               <CardContent className="pt-0">
                 <pre className="text-[10px] overflow-auto bg-muted/40 rounded p-2 max-h-48">
-                  {JSON.stringify(enrichedPosition, null, 2)}
+                  {JSON.stringify(position, null, 2)}
                 </pre>
               </CardContent>
             </CollapsibleContent>

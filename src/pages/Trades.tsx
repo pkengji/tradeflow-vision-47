@@ -148,14 +148,6 @@ export default function Trades() {
 
   const [showFilters, setShowFilters] = useState(false);
 
-  // Poll marks for open positions every 10 seconds
-  const { data: marks } = useQuery({
-    queryKey: ["position-marks"],
-    queryFn: () => api.getPositionMarks(),
-    refetchInterval: 10000,
-    enabled: activeTab === "open",
-  });
-
   // ---- 4.2 EFFECTS: Daten laden ----
   useEffect(() => {
     let cancel = false;
@@ -167,7 +159,7 @@ export default function Trades() {
 
         const res = await api.getPositions({
           limit: displayLimit,
-          status: activeTab === "open" ? "open" : "closed", // <-- NEU
+          status: activeTab === "open" ? "open" : "closed",
         });
 
         if (!cancel) {
@@ -186,7 +178,27 @@ export default function Trades() {
     return () => {
       cancel = true;
     };
-  }, [displayLimit, activeTab]); // <-- activeTab als Dependency ergänzen
+  }, [displayLimit, activeTab]);
+
+  // Poll open positions every 10 seconds for live updates
+  useEffect(() => {
+    if (activeTab !== "open") return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await api.getPositions({
+          limit: displayLimit,
+          status: "open",
+        });
+        setPositions(Array.isArray(res?.items) ? res.items : []);
+        setTotalCount(res?.total ?? 0);
+      } catch (e) {
+        console.error("Failed to poll positions:", e);
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [activeTab, displayLimit]);
 
   // Restore scroll position and displayLimit on mount
   useEffect(() => {
@@ -319,26 +331,13 @@ export default function Trades() {
   const openTrades = useMemo(() => {
     const trades = filtered.filter((t) => t.status === "open");
     
-    // Merge with live marks data
-    const enriched = trades.map((t) => {
-      const mark = marks?.[t.id];
-      if (mark) {
-        return {
-          ...t,
-          mark_price: mark.mark_price,
-          unrealized_pnl: mark.unrealized_pnl,
-        };
-      }
-      return t;
-    });
-    
     // Sortiere nach opened_at (neueste zuerst)
-    return enriched.sort((a, b) => {
+    return trades.sort((a, b) => {
       const dateA = a.opened_at ? new Date(a.opened_at).getTime() : 0;
       const dateB = b.opened_at ? new Date(b.opened_at).getTime() : 0;
       return dateB - dateA;
     });
-  }, [filtered, marks]);
+  }, [filtered]);
 
   const closedTrades = useMemo(() => {
     const trades = filtered.filter((t) => t.status === "closed");
