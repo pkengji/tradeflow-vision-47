@@ -6,14 +6,14 @@ type Point = { date: string; pnl: number; equity: number };
 export default function EquityChart({ data }: { data: Point[] }) {
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number; point: Point } | null>(null);
   
-  // Fixed dimensions that work responsively
-  const width = 800;
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+  
+  // Adaptive dimensions: smaller viewBox width on mobile means data gets compressed horizontally
+  const width = isMobile ? 400 : 800;
   const height = 240;
   const pad = 40;
   const padBottom = 50;
   const padLeft = 60;
-  
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
   
   // Debug log to check data
   console.log('EquityChart data:', data);
@@ -90,8 +90,8 @@ export default function EquityChart({ data }: { data: Point[] }) {
     }
   }
 
-  // Generate X-axis labels (show ~5 dates evenly distributed)
-  const xTickCount = Math.min(5, validData.length);
+  // Generate X-axis labels (fewer on mobile to avoid crowding)
+  const xTickCount = isMobile ? Math.min(3, validData.length) : Math.min(5, validData.length);
   const xTickIndices = Array.from({ length: xTickCount }, (_, i) => {
     return Math.floor((i / (xTickCount - 1)) * (validData.length - 1));
   });
@@ -103,10 +103,10 @@ export default function EquityChart({ data }: { data: Point[] }) {
         className="w-full"
         style={{ 
           height: 'auto', 
-          maxHeight: isMobile ? '400px' : '300px',
+          maxHeight: isMobile ? '350px' : '300px',
           minHeight: isMobile ? '280px' : 'auto'
         }}
-        preserveAspectRatio="xMidYMid meet"
+        preserveAspectRatio="none"
         onMouseMove={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           const mouseX = e.clientX - rect.left;
@@ -161,7 +161,8 @@ export default function EquityChart({ data }: { data: Point[] }) {
               y={yPos} 
               textAnchor="end" 
               alignmentBaseline="middle" 
-              className="text-xs sm:text-[10px] fill-muted-foreground"
+              className="fill-muted-foreground"
+              style={{ fontSize: '11px' }}
             >
               {formatCurrency(value)}
             </text>
@@ -178,7 +179,8 @@ export default function EquityChart({ data }: { data: Point[] }) {
               x={xPos} 
               y={height - padBottom + 20} 
               textAnchor="middle" 
-              className="text-xs sm:text-[10px] fill-muted-foreground"
+              className="fill-muted-foreground"
+              style={{ fontSize: '11px' }}
             >
               {formatDate(point.date)}
             </text>
