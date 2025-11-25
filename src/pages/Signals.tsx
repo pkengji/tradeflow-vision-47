@@ -122,8 +122,8 @@ export default function Signals() {
   };
 
   const getStatusBadge = (status: string) => {
-    if (status === 'sent' || status === 'approved') return <Badge variant="default" className="text-xs bg-[#0D3512] text-[#2DFB68]">{status}</Badge>;
-    if (status === 'failed') return <Badge variant="destructive" className="text-xs bg-[#641812] text-[#EA3A10]">failed</Badge>;
+    if (status === 'sent' || status === 'approved') return <Badge variant="default" className="text-xs bg-long-bg text-long">{status}</Badge>;
+    if (status === 'failed') return <Badge variant="destructive" className="text-xs bg-short-bg text-short">failed</Badge>;
     if (status === 'rejected') return <Badge variant="secondary" className="text-xs">rejected</Badge>;
     if (status === 'queued') return <Badge variant="secondary" className="text-xs">queued</Badge>;
     return <Badge variant="outline" className="text-xs">{status}</Badge>;

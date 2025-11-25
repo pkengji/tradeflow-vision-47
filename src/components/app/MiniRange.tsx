@@ -135,10 +135,10 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
                     {(() => {
                       const pct = ((mark - entry) / entry) * 100;
                       const hasProfit = (side === "long" && mark > entry) || (side === "short" && mark < entry);
-                      const color = hasProfit ? "#2DFB68" : "#EA3A10";
+                      const colorClass = hasProfit ? "text-success" : "text-danger";
                       return (
                         <>
-                          <span style={{ color }}>{`${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`}</span>
+                          <span className={colorClass}>{`${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`}</span>
                           <span className="ml-1 text-zinc-500 dark:text-zinc-400">{formatWithBestDecimals(mark, entryBest ?? exitBest)}</span>
                         </>
                       );
@@ -188,7 +188,7 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
   const pct = mark != null && entry ? ((mark - entry) / entry) * 100 : null;
   const hasProfit =
     mark != null && entry != null && ((side === "long" && mark > entry) || (side === "short" && mark < entry));
-  const gainColor = hasProfit ? "#2DFB68" : "#EA3A10";
+  const gainColorClass = hasProfit ? "text-success" : "text-danger";
   const segmentColor = hasProfit ? "bg-success" : "bg-danger";
 
   const H_BAR = BAR_THICK_PX;
@@ -224,7 +224,7 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
               colorClass="bg-danger"
               barHeightPx={H_BAR}
               labelGapPx={LABEL_GAP_PX - 5}
-              title={<span style={{ color: "#EA3A10" }}>SL</span>}
+              title={<span className="text-danger">SL</span>}
               value={<span className="text-foreground tabular-nums">{fmt(sl, entryBest)}</span>}
             />
 
@@ -250,7 +250,7 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
               colorClass="bg-success"
               barHeightPx={H_BAR}
               labelGapPx={LABEL_GAP_PX - 5}
-              title={<span style={{ color: "#2DFB68" }}>TP</span>}
+              title={<span className="text-success">TP</span>}
               value={<span className="text-foreground tabular-nums">{fmt(tp, entryBest)}</span>}
             />
 
@@ -274,7 +274,7 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
                   labelGapPx={LABEL_GAP_PX}
                   percent={pct}
                   price={mark}
-                  percentColor={gainColor}
+                  percentColorClass={gainColorClass}
                   entryBest={entryBest}
                   exitBest={exitBest}
                 />
@@ -365,7 +365,7 @@ function MarkLabel({
   labelGapPx,
   percent,
   price,
-  percentColor,
+  percentColorClass,
   entryBest,
   exitBest,
 }: {
@@ -376,7 +376,7 @@ function MarkLabel({
   labelGapPx: number;
   percent: number | null;
   price: number | null | undefined;
-  percentColor: string;
+  percentColorClass: string;
   entryBest?: number | null;
   exitBest?: number | null;
 }) {
@@ -394,7 +394,7 @@ function MarkLabel({
       style={{ left: labelLeft(xPct, align), top, transform: getTransform() }}
     >
       {percent != null && (
-        <span style={{ color: percentColor }}>{`${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%`}</span>
+        <span className={percentColorClass}>{`${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%`}</span>
       )}
       {price != null && <span className="ml-1 text-zinc-500 dark:text-zinc-400">{formatWithBestDecimals(price, entryBest ?? exitBest)}</span>}
     </div>
