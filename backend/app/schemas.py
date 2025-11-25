@@ -40,6 +40,7 @@ class BotCreate(BaseModel):
     name: str
     description: Optional[str] = None
     exchange: Optional[str] = "bybit"
+    account_kind: Optional[str] = "sub"  # 'main' | 'sub'
     strategy: Optional[str] = None
     timeframe: Optional[str] = None
     auto_approve: Optional[bool] = False
@@ -53,6 +54,7 @@ class BotOut(BaseModel):
     uuid: str
     description: Optional[str] = None
     exchange: Optional[str] = None
+    account_kind: Optional[str] = None
     strategy: Optional[str] = None
     timeframe: Optional[str] = None
     status: str
@@ -75,6 +77,7 @@ class BotUpdate(BaseModel):
     name: str
     description: Optional[str] = None
     exchange: Optional[str] = "bybit"
+    account_kind: Optional[str] = "sub"
     strategy: Optional[str] = None
     timeframe: Optional[str] = None
     auto_approve: Optional[bool] = False
