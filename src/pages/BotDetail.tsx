@@ -325,10 +325,7 @@ useMemo(() => {
       <div className="space-y-4 p-4 pb-24 max-w-6xl mx-auto">
         {/* Header Card */}
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">{name || 'Bot Details'}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 pt-6">
             <div>
             <Label>Bot Name</Label>
             <Input 
