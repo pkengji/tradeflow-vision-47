@@ -1,10 +1,14 @@
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
 type Point = { date: string; pnl: number; equity: number };
 
 export default function EquityChart({ data }: { data: Point[] }) {
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number; point: Point } | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [panX, setPanX] = useState(0);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const touchStartRef = useRef<{ dist: number; zoom: number; x: number; panX: number } | null>(null);
   
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
   
@@ -96,9 +100,55 @@ export default function EquityChart({ data }: { data: Point[] }) {
     return Math.floor((i / (xTickCount - 1)) * (validData.length - 1));
   });
 
+  // Touch handlers for pinch-to-zoom
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      
+      touchStartRef.current = { dist, zoom, x: midX, panX };
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && touchStartRef.current) {
+      e.preventDefault();
+      
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      
+      const scale = dist / touchStartRef.current.dist;
+      const newZoom = Math.max(1, Math.min(10, touchStartRef.current.zoom * scale));
+      
+      // Calculate pan to keep zoom centered on pinch point
+      const deltaX = midX - touchStartRef.current.x;
+      const newPanX = touchStartRef.current.panX + deltaX;
+      
+      setZoom(newZoom);
+      setPanX(newPanX);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    touchStartRef.current = null;
+  };
+
+  // Reset zoom on double tap
+  const handleDoubleTap = (e: React.MouseEvent) => {
+    if (e.detail === 2) {
+      setZoom(1);
+      setPanX(0);
+    }
+  };
+
   return (
-    <div className="relative">
+    <div className="relative touch-none">
       <svg 
+        ref={svgRef}
         viewBox={`0 0 ${width} ${height}`}
         className="w-full"
         style={{ 
@@ -107,6 +157,10 @@ export default function EquityChart({ data }: { data: Point[] }) {
           minHeight: isMobile ? '280px' : 'auto'
         }}
         preserveAspectRatio="none"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onClick={handleDoubleTap}
         onMouseMove={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           const mouseX = e.clientX - rect.left;
@@ -187,8 +241,24 @@ export default function EquityChart({ data }: { data: Point[] }) {
           );
         })}
         
-        {/* Chart line */}
-        <path d={path} fill="none" stroke="currentColor" strokeWidth={2} />
+        {/* Clipping for zoomed content */}
+        <defs>
+          <clipPath id="chart-clip">
+            <rect x={padLeft} y={pad} width={width - padLeft - pad} height={height - pad - padBottom} />
+          </clipPath>
+        </defs>
+        
+        {/* Chart line with zoom/pan transform */}
+        <g clipPath="url(#chart-clip)">
+          <path 
+            d={path} 
+            fill="none" 
+            stroke="currentColor" 
+            strokeWidth={2}
+            transform={`translate(${panX}, 0) scale(${zoom}, 1)`}
+            style={{ transformOrigin: `${padLeft}px center` }}
+          />
+        </g>
         
         {hoveredPoint && !isNaN(hoveredPoint.x) && !isNaN(hoveredPoint.y) && (
           <circle 
