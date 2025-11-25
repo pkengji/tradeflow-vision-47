@@ -328,7 +328,7 @@ useMemo(() => {
           <CardHeader className="pb-3 hidden lg:block">
             <CardTitle className="text-base">{name || 'Bot Details'}</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 lg:pt-0 pt-6">
+          <CardContent className="space-y-4 pt-6">
             <div>
             <Label>Bot Name</Label>
             <Input 
@@ -445,7 +445,7 @@ useMemo(() => {
       {/* Global Settings */}
       <Card>
         <CardHeader>
-          <CardTitle>Globale Einstellungen</CardTitle>
+          <CardTitle className="text-base">Globale Einstellungen</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           <div>
@@ -553,7 +553,7 @@ useMemo(() => {
       {/* Pairs List */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Trading Pairs</CardTitle>
+          <CardTitle className="text-base">Trading Pairs</CardTitle>
           <Dialog open={addPairDialogOpen} onOpenChange={setAddPairDialogOpen}>
             <DialogTrigger asChild>
               <Button size="sm">
@@ -572,7 +572,9 @@ useMemo(() => {
 {symbolsInfo
   .filter(s => !pairs.find(pair => pair.symbol === s.symbol))
   .map((s) => {
-    const iconSrc = s.icon_local_path || s.icon_url || '';
+    const iconSrc = s.icon_local_path 
+      ? `/api/v1/symbols/icons/${s.icon_local_path.split('/').pop()}` 
+      : s.icon_url || '';
     return (
       <CommandItem
         key={s.symbol}
@@ -641,7 +643,9 @@ useMemo(() => {
 {filteredPairs.map(pair => {
   const info = symbolsInfo.find(s => s.symbol === pair.symbol);
   const maxLev = getMaxLeverage(pair.symbol);
-  const iconSrc = info?.icon_local_path || info?.icon_url || '';
+  const iconSrc = info?.icon_local_path 
+    ? `/api/v1/symbols/icons/${info.icon_local_path.split('/').pop()}` 
+    : info?.icon_url || '';
   return (
     <div key={pair.symbol} className="py-1 flex items-start gap-1.5">
       {/* Icon */}
