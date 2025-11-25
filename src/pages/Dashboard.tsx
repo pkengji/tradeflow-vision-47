@@ -369,7 +369,13 @@ export default function Dashboard() {
               />
               <MetricRow label="Realisierter P&L" value={formatCurrency(summary.kpis.overall.realized_pnl)} highlight />
               <MetricRow label="Anzahl Trades" value={summary.kpis.overall.trade_count} />
-              <MetricRow label="Offene Trades" value={summary.kpis.current.open_trades} />
+              <Link to="/trades?tab=open" className="flex justify-between items-center py-0.5 hover:bg-muted/50 -mx-2 px-2 rounded transition-colors cursor-pointer">
+                <span className="text-sm text-muted-foreground">Offene Trades</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-medium">{summary.kpis.current.open_trades}</span>
+                  <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
+                </div>
+              </Link>
               <MetricRow label="Win Rate" value={`${(summary.kpis.overall.win_rate * 100).toFixed(1)}%`} />
 
               <div className="pt-2 border-t">
