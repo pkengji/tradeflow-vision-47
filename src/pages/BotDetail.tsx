@@ -247,10 +247,11 @@ useMemo(() => {
         let newLeverage = p.leverage;
         if (globalLeverage !== '') {
           const maxLev = getMaxLeverage(p.symbol);
+          console.log(`Symbol ${p.symbol}: max_leverage=${maxLev}, global=${globalLeverage}, applied=${Math.min(Number(globalLeverage), maxLev)}`);
           if (globalLeverage === 'max') {
             newLeverage = 'max';
           } else {
-            newLeverage = Math.min(globalLeverage, maxLev);
+            newLeverage = Math.min(Number(globalLeverage), maxLev);
           }
         }
         return {
