@@ -179,11 +179,6 @@ useMemo(() => {
         savedBot = await api.updateBot(botId!, botData);
       }
       
-      // Save API keys if provided and not masked
-      if (savedBot && apiKey && apiSecret && apiSecret !== '********') {
-        await api.setBotExchangeKeys(savedBot.id, apiKey, apiSecret);
-      }
-      
       // Save bot symbols
       if (savedBot && pairs.length > 0) {
         const symbolsData = pairs.map(p => ({

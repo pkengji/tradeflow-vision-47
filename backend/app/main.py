@@ -921,10 +921,10 @@ def list_pairs():
         db.commit()
         return out
 
-@app.get("/api/v1/symbols/all")
+@app.get("/api/v1/symbols/all", response_model=List[str])
 def list_all_symbols(db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
-    # Return full symbol payload with max_leverage, tick_size, icon, etc.
-    return list_pairs_payload(db)
+    rows = db.execute(select(models.Symbol.symbol).order_by(models.Symbol.symbol.asc())).all()
+    return [s for (s,) in rows]
 
 
 # ----------- debug -------------------------
