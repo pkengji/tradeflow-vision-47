@@ -131,6 +131,9 @@ useEffect(() => {
   if (exchangeKeys) {
     setApiKey(exchangeKeys.api_key_masked || '');
     setApiSecret(exchangeKeys.has_api_secret ? '********' : '');
+    if (exchangeKeys.account_kind) {
+      setAccountKind(exchangeKeys.account_kind as 'main' | 'sub');
+    }
   }
 }, [exchangeKeys]);
 
@@ -179,6 +182,15 @@ useMemo(() => {
         savedBot = await api.updateBot(botId!, botData);
       }
       
+      // Save exchange keys if provided and not masked placeholder
+      if (savedBot && apiKey && apiSecret && apiSecret !== '********') {
+        await api.setBotExchangeKeys(savedBot.id, {
+          api_key: apiKey,
+          api_secret: apiSecret,
+          account_kind: accountKind,
+        });
+      }
+      
       // Save bot symbols
       if (savedBot && pairs.length > 0) {
         const symbolsData = pairs.map(p => ({
@@ -197,6 +209,7 @@ useMemo(() => {
       qc.invalidateQueries({ queryKey: ['bots'] });
       qc.invalidateQueries({ queryKey: ['bot', botId] });
       qc.invalidateQueries({ queryKey: ['bot-symbols', botId] });
+      qc.invalidateQueries({ queryKey: ['exchange-keys', botId] });
       navigate('/bots');
     },
     onError: (error: any) => {
@@ -247,7 +260,6 @@ useMemo(() => {
         let newLeverage = p.leverage;
         if (globalLeverage !== '') {
           const maxLev = getMaxLeverage(p.symbol);
-          console.log(`Symbol ${p.symbol}: max_leverage=${maxLev}, global=${globalLeverage}, applied=${Math.min(Number(globalLeverage), maxLev)}`);
           if (globalLeverage === 'max') {
             newLeverage = 'max';
           } else {

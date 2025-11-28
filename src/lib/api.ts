@@ -301,11 +301,11 @@ async function resumeBot(id: number) {
 async function deleteBot(id: number) {
   return http(`/api/v1/bots/${id}`, { method: "DELETE" });
 }
-async function getBotExchangeKeys(id: number): Promise<{ api_key_masked: string | null; has_api_secret: boolean }> {
+async function getBotExchangeKeys(id: number): Promise<{ api_key_masked: string | null; has_api_secret: boolean; account_kind?: string | null }> {
   return http(`/api/v1/bots/${id}/exchange-keys`);
 }
-async function setBotExchangeKeys(id: number, api_key: string, api_secret: string) {
-  return http(`/api/v1/bots/${id}/exchange-keys`, { method: "PUT", body: { api_key, api_secret } });
+async function setBotExchangeKeys(id: number, data: { api_key: string; api_secret: string; account_kind?: string }) {
+  return http(`/api/v1/bots/${id}/exchange-keys`, { method: "PUT", body: data });
 }
 
 async function getBotSymbols(bot_id: number): Promise<any[]> {
