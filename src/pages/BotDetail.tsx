@@ -108,9 +108,12 @@ const { data: exchangeKeys } = useQuery({
     }
   }, [isNew, uuid]);
 
-const { data: symbolsInfo = [] } = useQuery<SymbolInfo[]>({
+const { data: symbolsInfo = [], isLoading: symbolsLoading } = useQuery<SymbolInfo[]>({
   queryKey: ['allSymbolsInfo'],
   queryFn: () => getAllSymbols(),
+  staleTime: 5 * 60 * 1000, // 5 minutes
+  gcTime: 10 * 60 * 1000, // 10 minutes
+  refetchOnWindowFocus: false,
 });
 
 // Webhook secret (user-specific)
@@ -581,9 +584,9 @@ useMemo(() => {
               </DialogHeader>
               <Command className="rounded-lg border">
                 <CommandInput placeholder="Pair suchen..." />
-                <CommandEmpty>Kein Pair gefunden.</CommandEmpty>
+                <CommandEmpty>{symbolsLoading ? 'Lade Symbole...' : 'Kein Pair gefunden.'}</CommandEmpty>
                 <CommandGroup className="max-h-64 overflow-auto">
-{symbolsInfo
+{!symbolsLoading && symbolsInfo
   .filter(s => !pairs.find(pair => pair.symbol === s.symbol))
   .map((s) => {
     const iconSrc = s.icon_local_path 
