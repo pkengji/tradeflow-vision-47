@@ -108,13 +108,25 @@ const { data: exchangeKeys } = useQuery({
     }
   }, [isNew, uuid]);
 
-const { data: symbolsInfo = [], isLoading: symbolsLoading } = useQuery<SymbolInfo[]>({
+const { data: symbolsInfo = [], isLoading: symbolsLoading, error: symbolsError } = useQuery<SymbolInfo[]>({
   queryKey: ['allSymbolsInfo'],
   queryFn: () => getAllSymbols(),
   staleTime: 5 * 60 * 1000, // 5 minutes
   gcTime: 10 * 60 * 1000, // 10 minutes
   refetchOnWindowFocus: false,
+  retry: 2,
+  retryDelay: 1000,
 });
+
+// Log symbols info for debugging
+useEffect(() => {
+  console.log('[BotDetail] Symbols state:', { 
+    loading: symbolsLoading, 
+    count: symbolsInfo.length, 
+    error: symbolsError,
+    sample: symbolsInfo.slice(0, 3)
+  });
+}, [symbolsLoading, symbolsInfo, symbolsError]);
 
 // Webhook secret (user-specific)
 const { data: webhookSecretData } = useQuery({
