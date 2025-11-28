@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from typing import Optional, List, Dict, Any
 import secrets
 from .models import Bot, Position, PushSubscription
-from .auth import authenticate_user
+from .auth import hash_password, verify_password
 from sqlalchemy import or_, select, func
 from .services.bybit_sync import sync_backfill_since, sync_recent_closures, quick_sync_symbol, sync_full_history,rebuild_positions_orderlink, sync_symbol_recent, sync_recent_all_bots, reconcile_symbol, _persist_execution, _dt_ms, _f
 from .services.symbols import sync_symbols_linear_usdt, list_pairs_payload, ensure_symbol_icon
@@ -34,8 +34,13 @@ import requests
 app = FastAPI(title="TradingBot Backend (User Scope Patch)", version="0.3.0")
 
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
-position_cache: Dict[tuple[int, str], dict] = {}
+
+# Live-Caches
+position_cache: Dict[tuple[int, str], dict] = {}   # private WS (execution/position) → aktuell nur für Closings
+ticker_cache: Dict[str, dict] = {}                 # public WS (tickers) → mark_price etc.
+
 ws_threads: Dict[int, Any] = {}
+public_ws_client: Any | None = None
 
 
 ALLOWED_ORIGINS = [
@@ -92,7 +97,7 @@ def get_current_user_id(db: Session = Depends(get_db), request: Request = None) 
         u = models.User(
             username="admin",
             email="admin@example.com",
-            password_hash="admin",
+            password_hash=hash_password("admin"),
             role="admin",
             webhook_secret=secrets.token_hex(16),
         )
@@ -108,7 +113,7 @@ def create_user(body: CreateUserBody, db: Session = Depends(get_db)):
     u = models.User(
         username=body.username,
         email=body.email,
-        password_hash=body.password,
+        password_hash=hash_password(body.password),
         role=body.role or "user",
         webhook_secret=secrets.token_hex(16),
     )
@@ -134,7 +139,7 @@ def update_me(body: UpdateUserBody, db: Session = Depends(get_db), user_id: int 
 def set_password(body: UpdatePasswordBody, db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
     u = db.query(models.User).filter(models.User.id == user_id).first()
     if not u: raise HTTPException(404, "User not found")
-    u.password_hash = body.new_password
+    u.password_hash = hash_password(body.new_password)
     db.commit()
     return {"ok": True}
 
@@ -165,7 +170,17 @@ def login(body: LoginBody, response: Response, db: Session = Depends(get_db)):
         or_(models.User.email == ident, models.User.username == ident)
     ).first()
 
-    if not u or u.password_hash != body.password:
+    if not u:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    # zuerst normal prüfen (gehashte Passwörter)
+    if verify_password(body.password, u.password_hash or ""):
+        pass
+    # Fallback: alte Klartext-Passwörter einmalig migrieren
+    elif u.password_hash == body.password:
+        u.password_hash = hash_password(body.password)
+        db.commit()
+    else:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     # Cookie direkt auf Response setzen
@@ -231,15 +246,32 @@ def patch_bot(bot_id: int, payload: BotUpdate, db: Session = Depends(get_db), us
         raise HTTPException(404, "Bot not found or not owned by current user")
     return BotOut.model_validate(bot, from_attributes=True)
 
-@app.put("/api/v1/bots/{bot_id}/exchange-keys", response_model=BotOut)
-def set_exchange_keys(bot_id: int, body: BotExchangeKeysIn, db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
-    b = db.query(models.Bot).filter(models.Bot.id == bot_id, models.Bot.user_id == user_id, models.Bot.is_deleted == False).first()
+@app.put("/api/v1/bots/{bot_id}/exchange-keys", response_model=BotExchangeKeysOut)
+def set_exchange_keys(
+    bot_id: int,
+    body: BotExchangeKeysIn,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    b = db.query(models.Bot).filter(
+        models.Bot.id == bot_id,
+        models.Bot.user_id == user_id,
+        models.Bot.is_deleted == False,
+    ).first()
     if not b:
         raise HTTPException(404, "Bot not found or not owned by current user")
+
     b.api_key = body.api_key
     b.api_secret = body.api_secret
+    if body.account_kind is not None:
+        b.account_kind = body.account_kind
+
     db.commit(); db.refresh(b)
-    return _bot_out_from_model(b)
+    return BotExchangeKeysOut(
+        api_key_masked=_mask_key(b.api_key),
+        has_api_secret=bool(b.api_secret),
+        account_kind=b.account_kind,
+    )
 
 @app.get("/api/v1/bots/{bot_id}/exchange-keys", response_model=BotExchangeKeysOut)
 def get_exchange_keys(bot_id: int, db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
@@ -404,6 +436,14 @@ def list_symbols(db: Session = Depends(get_db), user_id: int = Depends(get_curre
 
 
 # ---------- Positions ----------
+
+def _compute_unrealized_pnl(entry_price: float | None, qty: float | None, side: str | None, mark_price: float | None) -> float | None:
+    if not entry_price or not qty or not mark_price:
+        return None
+    s = (side or "").lower()
+    side_factor = 1.0 if s in ("long", "buy") else -1.0
+    return (mark_price - entry_price) * qty * side_factor
+
 @app.get("/api/v1/positions")
 def list_positions(
     status: str | None = None,
@@ -436,12 +476,26 @@ def list_positions(
 
     items: list[dict] = []
     for r in rows:
+        # Basis: DB-Werte
+        entry_price = (r.entry_price_trigger or r.entry_price_vwap or r.entry_price_best)
         pnl_value = (
             r.unrealized_pnl_usdt
             if r.status == "open" and r.unrealized_pnl_usdt is not None
             else r.pnl_usdt
         )
-        entry_price = (r.entry_price_trigger or r.entry_price_vwap or r.entry_price_best)
+        mark_price = r.mark_price
+
+        # Live-Overlay für offene Positionen: Public Ticker-WS
+        if r.status == "open":
+            tick = ticker_cache.get(r.symbol)
+            if tick:
+                mark_price = tick.get("mark_price", mark_price)
+
+            # Für PnL bevorzugen wir VWAP-Entry, falls gesetzt
+            entry_for_pnl = r.entry_price_vwap or entry_price
+            live_pnl = _compute_unrealized_pnl(entry_for_pnl, r.qty, r.side, mark_price)
+            if live_pnl is not None:
+                pnl_value = live_pnl
 
         item = {
             "id": r.id,
@@ -456,21 +510,17 @@ def list_positions(
             "entry_price_best": r.entry_price_best,
             "entry_price_vwap": r.entry_price_vwap,
             "exit_price_vwap": r.exit_price_vwap,
-            "exit_price_best": r.exit_price_vwap,   
+            "exit_price_best": r.exit_price_vwap,
             "exit_price": r.exit_price_vwap,
-            "mark_price": r.mark_price,
+            "mark_price": mark_price,
             "pnl": pnl_value,
             "fee_open_usdt": r.fee_open_usdt,
             "fee_close_usdt": r.fee_close_usdt,
             "funding_usdt": None,
             "opened_at": r.opened_at,
             "closed_at": r.closed_at,
-            # ADDED: Brücke (für TradeDetails)
             "trade_uid": getattr(r, "trade_uid", None),
             "tv_signal_id": getattr(r, "tv_signal_id", None),
-            "outbox_item_id": getattr(r, "outbox_item_id", None),
-            "first_exec_at": getattr(r, "first_exec_at", None),
-            "last_exec_at": getattr(r, "last_exec_at", None),
         }
         items.append(item)
 
@@ -496,18 +546,26 @@ def get_position(
     if not r:
         raise HTTPException(status_code=404, detail="Position not found")
 
-    pnl_value = (r.unrealized_pnl_usdt if r.status == "open" and r.unrealized_pnl_usdt is not None else r.pnl_usdt)
+    pnl_value = (
+        r.unrealized_pnl_usdt
+        if r.status == "open" and r.unrealized_pnl_usdt is not None
+        else r.pnl_usdt
+    )
     entry_price = (r.entry_price_trigger or r.entry_price_vwap or r.entry_price_best)
 
     # Default immer DB-Mark-Price
     mark_price = r.mark_price
 
-    # Overlay mit Live-Cache (nur wenn offen)
+    # Live-Overlay mit Public Ticker-WS (nur für offene Positionen)
     if r.status == "open":
-        live = position_cache.get((r.bot_id, r.symbol))
-        if live:
-            mark_price = live.get("mark_price", mark_price)
-            pnl_value = live.get("unrealised_pnl", pnl_value)
+        tick = ticker_cache.get(r.symbol)
+        if tick:
+            mark_price = tick.get("mark_price", mark_price)
+
+        entry_for_pnl = r.entry_price_vwap or entry_price
+        live_pnl = _compute_unrealized_pnl(entry_for_pnl, r.qty, r.side, mark_price)
+        if live_pnl is not None:
+            pnl_value = live_pnl
 
     return {
         "id": r.id,
@@ -793,18 +851,39 @@ def get_daily_pnl(
     rows = q.all()
 
     day_pnl = defaultdict(float)
+
+    # 1) Alle Tage ohne Date-Filter aggregieren
     for p in rows:
+        if not p.closed_at:
+            continue
         d = p.closed_at.date()
-        if dfrom and d < dfrom: continue
-        if dto and d > dto: continue
-        pnl = float(getattr(p, "realized_pnl_net_usdt", None) or getattr(p, "pnl_usdt", 0.0) or 0.0)
+        pnl = float(
+            getattr(p, "realized_pnl_net_usdt", None)
+            or getattr(p, "pnl_usdt", 0.0)
+            or 0.0
+        )
         day_pnl[d] += pnl
 
+    # 2) Running Equity über alle Tage, aber nur gefilterte Tage zurückgeben
     points: List[DailyPnlPoint] = []
     running = 0.0
     for d in sorted(day_pnl.keys()):
         running += day_pnl[d]
-        points.append(DailyPnlPoint(date=d.isoformat(), pnl=day_pnl[d], equity=running))
+
+        # Filter jetzt erst beim Bauen der Response anwenden
+        if dfrom and d < dfrom:
+            continue
+        if dto and d > dto:
+            continue
+
+        points.append(
+            DailyPnlPoint(
+                date=d.isoformat(),
+                pnl=day_pnl[d],
+                equity=running,
+            )
+        )
+
     return points
 
 
@@ -921,10 +1000,12 @@ def list_pairs():
         db.commit()
         return out
 
-@app.get("/api/v1/symbols/all", response_model=List[str])
-def list_all_symbols(db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
-    rows = db.execute(select(models.Symbol.symbol).order_by(models.Symbol.symbol.asc())).all()
-    return [s for (s,) in rows]
+@app.get("/api/v1/symbols/all", response_model=List[SymbolOut])
+def list_all_symbols(
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    return list_pairs_payload(db)
 
 
 # ----------- debug -------------------------
@@ -1074,6 +1155,9 @@ def ingest_tv_signal(sig: TvSignalIn, user_id: int = Depends(get_current_user_id
     bss = db.execute(select(BotSymbolSetting).where(BotSymbolSetting.bot_id == bot.id, BotSymbolSetting.symbol == sig.symbol, BotSymbolSetting.enabled == True)).scalar_one_or_none()
     if not bss:
         raise HTTPException(400, "symbol not enabled for this bot")
+    direction = sig.direction.lower()
+    if direction not in ("long", "short"):
+        raise HTTPException(400, "invalid direction")
 
     sym = db.execute(select(Symbol).where(Symbol.symbol == sig.symbol)).scalar_one_or_none()
     if not sym:
@@ -1091,7 +1175,7 @@ def ingest_tv_signal(sig: TvSignalIn, user_id: int = Depends(get_current_user_id
     off_mkt = 0.00015
     off_lim = 0.00030
 
-    if sig.direction.lower() == "long":
+    if direction == "long":
         side_entry = "Buy"; side_exit = "Sell"; trig_dir = 2
         sl_market = _round_to_tick(sl_trigger * (1 - off_mkt), sym.tick_size)
         sl_limit  = _round_to_tick(sl_trigger * (1 - off_lim), sym.tick_size)
@@ -1150,7 +1234,7 @@ def ingest_tv_signal(sig: TvSignalIn, user_id: int = Depends(get_current_user_id
         bot_id=bot.id,
         symbol=sig.symbol,
         trade_uid=trade_uid,
-        side=sig.direction,
+        side=direction,
         entry_price_trigger=sig.entry_price,
         stop_loss_tv=sl_trigger,
         take_profit_tv=tp_trigger,
@@ -1170,6 +1254,20 @@ def ingest_tv_signal(sig: TvSignalIn, user_id: int = Depends(get_current_user_id
     db.commit()
     db.refresh(tv_row)  # id verfügbar
 
+
+    # NEU: Long/Short Filter basierend auf BotSymbolSetting
+    allow_long = getattr(bss, "allow_long", True)
+    allow_short = getattr(bss, "allow_short", True)
+
+    if (direction == "long" and not allow_long) or (direction == "short" and not allow_short):
+        tv_row.status = "ignored"
+        tv_row.error_message = (tv_row.error_message or "") + "direction not allowed for this symbol"
+        db.commit()
+        return {
+            "status": "ignored",
+            "reason": f"direction {direction} not allowed for {sig.symbol}",
+            "tv_signal_id": tv_row.id,
+        }
 
     try:
         ob = OutboxItem(
@@ -1340,6 +1438,13 @@ def _on_exec(row, ctx):
         symbol = (row.get("symbol") or row.get("s") or "").upper()
         if not symbol:
             return
+        
+        # --- NEU: exec_type lesen und Funding ignorieren ---
+        exec_type_raw = row.get("execType") or row.get("N") or ""
+        exec_type = exec_type_raw.lower() if isinstance(exec_type_raw, str) else ""
+        if exec_type in ("funding", "fundingfee", "funding_fee"):
+            # Funding gehört in funding_events, nicht in executions
+            return
 
         side_raw = row.get("side") or row.get("S") or ""
         side = side_raw.lower() if isinstance(side_raw, str) else ""
@@ -1380,16 +1485,29 @@ def _on_position(row: dict, ctx: dict):
     from math import isclose
     bot_id = ctx.get("bot_id")
     symbol = (row.get("symbol") or row.get("s") or "").upper()
+    print(f"[WS POS RAW] bot={bot_id} symbol={symbol} row={row}")  # <--- einmalig zum Debuggen
     if not bot_id or not symbol:
         return
 
     size = float(row.get("size") or 0.0)
-    avg_price = float(row.get("avgPrice") or 0.0)
+    avg_price = float(row.get("entryPrice") or 0.0)
     mark_price = float(row.get("markPrice") or 0.0)
     unreal = float(row.get("unrealisedPnl") or 0.0)
 
-    # 1) live cache updaten
-    position_cache[(bot_id, symbol)] = {
+    key = (bot_id, symbol)
+
+    # 1) Wenn Position auf 0 fällt → aus Cache entfernen + Re-Sync
+    if isclose(size, 0.0, rel_tol=0.0, abs_tol=1e-12):
+        position_cache.pop(key, None)
+        with SessionLocal() as db:
+            try:
+                sync_symbol_recent(db, bot_id, symbol, hours=2)
+            except Exception as e:
+                print(f"[WS ERROR] pos sync failed for {symbol}: {e}")
+        return
+
+    # 2) sonst live cache updaten
+    position_cache[key] = {
         "size": size,
         "avg_price": avg_price,
         "mark_price": mark_price,
@@ -1397,13 +1515,48 @@ def _on_position(row: dict, ctx: dict):
         "ts": time.time(),
     }
 
-    # 2) Wenn die Position auf 0 fällt → Close erkannt → Re-Sync nur Symbol
-    if isclose(size, 0.0, rel_tol=0.0, abs_tol=1e-12):
-        with SessionLocal() as db:
-            try:
-                sync_symbol_recent(db, bot_id, symbol, hours=2)
-            except Exception as e:
-                print(f"[WS ERROR] pos sync failed for {symbol}: {e}")
+def _on_ticker(row: dict, ctx: dict):
+    """
+    Callback für Public WS 'tickers.<symbol>'.
+    Aktualisiert den ticker_cache mit aktuellem mark_price etc.,
+    überschreibt aber vorhandene Werte nicht mit 0/leer.
+    """
+    symbol = (row.get("symbol") or row.get("s") or "").upper()
+    if not symbol:
+        return
+
+    old = ticker_cache.get(symbol, {})
+
+    def _safe_float(val) -> float | None:
+        try:
+            if val is None or val == "":
+                return None
+            f = float(val)
+            # Bybit schickt manchmal "0" oder extrem kleine Dummy-Werte → ignorieren
+            return f if f != 0.0 else None
+        except (TypeError, ValueError):
+            return None
+
+    mark_raw = row.get("markPrice") or row.get("lastPrice")
+    last_raw = row.get("lastPrice")
+    index_raw = row.get("indexPrice")
+
+    mark_price  = _safe_float(mark_raw)  or old.get("mark_price")
+    last_price  = _safe_float(last_raw)  or old.get("last_price")
+    index_price = _safe_float(index_raw) or old.get("index_price")
+
+    # Wenn wir *gar nichts* Sinnvolles haben, Cache nicht anfassen
+    if mark_price is None and last_price is None and index_price is None:
+        return
+
+    ticker_cache[symbol] = {
+        "mark_price": mark_price  if mark_price  is not None else 0.0,
+        "last_price": last_price  if last_price  is not None else 0.0,
+        "index_price": index_price if index_price is not None else 0.0,
+        "ts": time.time(),
+    }
+    # optional:
+    # print(f"[TICKER] {symbol} mark={ticker_cache[symbol]['mark_price']} last={ticker_cache[symbol]['last_price']}")
 
 def _start_ws_for_bot(bot):
     if not bot.is_active:
@@ -1445,10 +1598,56 @@ def task_start_ws_for_active_bots():
     finally:
         db.close()
 
+def task_start_public_ws_for_symbols():
+    """
+    Startet einen globalen Public-WS für alle Symbole,
+    die in aktiven Bots via BotSymbolSetting.enabled=True hinterlegt sind.
+    """
+    global public_ws_client
+    db = SessionLocal()
+    try:
+        from .models import Bot, BotSymbolSetting
+        # aktive Bots
+        bots = db.execute(select(Bot).where(Bot.is_active == True)).scalars().all()
+        if not bots:
+            print("[WS PUBLIC] No active bots, skipping public WS")
+            return
+
+        bot_ids = [b.id for b in bots]
+        # aktivierte Symbole dieser Bots
+        syms = (
+            db.execute(
+                select(BotSymbolSetting.symbol)
+                .where(BotSymbolSetting.bot_id.in_(bot_ids))
+                .where(BotSymbolSetting.enabled == True)
+            )
+            .scalars()
+            .all()
+        )
+        uniq_syms = sorted({(s or "").upper() for s in syms if s})
+        if not uniq_syms:
+            print("[WS PUBLIC] No enabled symbols for active bots, skipping")
+            return
+
+        from .bybit_v5 import BybitPublicWS
+        url = os.getenv(
+            "BYBIT_WS_PUBLIC_URL",
+            "wss://stream.bybit.com/v5/public/linear",
+        )
+        print(f"[WS PUBLIC] Starting WS for symbols: {', '.join(uniq_syms)}")
+        ctx: Dict[str, Any] = {}
+        ws = BybitPublicWS(url, uniq_syms, _on_ticker, ctx)
+        ws.start()
+        public_ws_client = ws
+    finally:
+        db.close()
+
+
 @app.on_event("startup")
 def _on_startup():
     import threading
     threading.Thread(target=task_start_ws_for_active_bots, daemon=True).start()
+    threading.Thread(target=task_start_public_ws_for_symbols, daemon=True).start()
     #threading.Thread(target=task_rebuild_all_bots, daemon=True).start() --> wir müssen nicht alle bots (positions) rebuilden
 
 
@@ -1623,6 +1822,15 @@ def debug_position_cache(
         "entries": entries,
     }
 
+
+@app.post("/api/v1/debug/tv-signal")
+def debug_tv_signal(sig: TvSignalIn, db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
+    # user_secret automatisch setzen, damit es durch ingest_tv_signal geht
+    u = db.get(User, user_id)
+    if not u or not u.webhook_secret:
+        raise HTTPException(400, "user has no webhook_secret")
+    sig.user_secret = u.webhook_secret
+    return ingest_tv_signal(sig=sig, user_id=user_id, db=db)
 
 
 # =========================

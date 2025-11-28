@@ -45,6 +45,7 @@ class BotCreate(BaseModel):
     auto_approve: Optional[bool] = False
     api_key: Optional[str] = None
     api_secret: Optional[str] = None
+    account_kind: Optional[str] = None
 
 class BotOut(BaseModel):
     id: int
@@ -65,8 +66,10 @@ class BotOut(BaseModel):
     is_deleted: bool
     created_at: datetime
     updated_at: Optional[datetime]
-    api_key: Optional[str] = None
-    api_secret: Optional[str] = None
+
+    has_exchange_keys: bool = False
+    api_key_masked: Optional[str] = None
+    account_kind: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -80,20 +83,26 @@ class BotUpdate(BaseModel):
     auto_approve: Optional[bool] = False
     api_key: Optional[str] = None
     api_secret: Optional[str] = None
+    account_kind: Optional[str] = None
 
 class BotExchangeKeysIn(BaseModel):
     api_key: str
     api_secret: str
+    account_kind: Optional[str] = None  # optional
     
 class BotExchangeKeysOut(BaseModel):
     api_key_masked: Optional[str] = None
     has_api_secret: bool
-    
+    account_kind: Optional[str] = None
+
 class BotSymbolSettingIn(BaseModel):
     symbol: str
     enabled: bool = True
     target_risk_amount: float = 1.0
     leverage_override: Optional[float] = None
+    # NEU:
+    allow_long: bool = True
+    allow_short: bool = True
 
 class BotSymbolSettingOut(BotSymbolSettingIn):
     id: int

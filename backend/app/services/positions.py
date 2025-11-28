@@ -366,54 +366,39 @@ def open_from_execs_if_missing(db: Session, bot_id: int, symbol: str):
 
 
 def _consume_execs_for_position(db: Session, pos: models.Position, *, both_sides: bool = True):
-    # konsumiert Exits (und optional Entry-Seite) bis Positions-Menge
-    entry_is_long = (str(pos.side or "long").lower() == "long")
-    entry_side = "buy" if entry_is_long else "sell"
-    exit_side  = "sell" if entry_is_long else "buy"
+    """
+    Markiert alle Executions für (bot_id, symbol) im Zeitfenster [opened_at, closed_at]
+    als konsumiert. Damit können diese Fills nicht mehr für eine neue Position
+    verwendet werden.
+    """
+    if not pos.opened_at:
+        return
 
-    execs = (db.query(models.Execution)
-               .filter(models.Execution.bot_id == pos.bot_id,
-                       models.Execution.symbol == pos.symbol,
-                       models.Execution.ts >= pos.opened_at,
-                       (models.Execution.ts <= pos.closed_at) if pos.closed_at else True,
-                       models.Execution.is_consumed == False)
-               .order_by(models.Execution.ts.asc(), models.Execution.id.asc())
-               .all())
+    q = (
+        db.query(models.Execution)
+        .filter(models.Execution.bot_id == pos.bot_id)
+        .filter(models.Execution.symbol == pos.symbol)
+        .filter(models.Execution.ts >= pos.opened_at)
+    )
 
-    target = float(pos.qty or 0.0)
-    taken_exit, taken_entry = 0.0, 0.0
-    use_ids = []
+    if pos.closed_at:
+        q = q.filter(models.Execution.ts <= pos.closed_at)
 
-    # erst Exits
-    for e in execs:
-        if (e.side or "").lower() != exit_side and not bool(e.reduce_only):
-            continue
-        q = float(e.qty or 0.0)
-        take = min(q, target - taken_exit)
-        if take <= 0: 
-            continue
-        use_ids.append(e.id); taken_exit += take
-        if taken_exit >= target - 1e-12:
-            break
+    exec_ids = [
+        e.id
+        for e in q.filter(
+            (models.Execution.is_consumed == False) | (models.Execution.is_consumed.is_(None))
+        ).all()
+    ]
 
-    # optional: auch Entry-Execs konsumieren (damit sie nicht nochmal gematcht werden)
-    if both_sides and taken_exit > 0:
-        for e in execs:
-            if (e.side or "").lower() != entry_side:
-                continue
-            q = float(e.qty or 0.0)
-            take = min(q, target - taken_entry)
-            if take <= 0:
-                continue
-            use_ids.append(e.id); taken_entry += take
-            if taken_entry >= target - 1e-12:
-                break
-
-    if use_ids:
-        (db.query(models.Execution)
-           .filter(models.Execution.id.in_(use_ids))
-           .update({"is_consumed": True}, synchronize_session=False))
+    if exec_ids:
+        (
+            db.query(models.Execution)
+            .filter(models.Execution.id.in_(exec_ids))
+            .update({"is_consumed": True}, synchronize_session=False)
+        )
         db.commit()
+
 
 
 def close_if_match(db: Session, bot_id: int, symbol: str):

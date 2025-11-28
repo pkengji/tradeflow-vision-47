@@ -124,6 +124,34 @@ def _load_all_linear_usdt_symbols(client: BybitV5Data) -> List[str]:
     # duplikate entfernen + sortieren
     return sorted(list(dict.fromkeys(out)))
 
+def _symbols_for_bot(
+    db: Session,
+    bot_id: int,
+    client: Optional[BybitV5Data] = None,
+) -> List[str]:
+    """
+    Liefert alle Symbole, die für diesen Bot in bot_symbol_settings hinterlegt
+    und enabled sind. Wenn keine hinterlegt sind, optional Fallback auf
+    _load_all_linear_usdt_symbols(client).
+    """
+    rows = (
+        db.query(models.BotSymbolSetting)
+          .filter(models.BotSymbolSetting.bot_id == bot_id)
+          .filter(models.BotSymbolSetting.enabled == True)
+          .all()
+    )
+    syms = [row.symbol for row in rows]
+
+    if syms:
+        # Doppelte entfernen + sortieren
+        return sorted(list(dict.fromkeys(syms)))
+
+    # Fallback, wenn noch keine Settings existieren
+    if client is not None:
+        return _load_all_linear_usdt_symbols(client)
+
+    return []
+
 
 # ============================================================
 # Bybit Fetches
@@ -150,8 +178,15 @@ def _fetch_executions(
         )
         data = res.get("result") or {}
         lst = data.get("list") or []
-        if lst:
-            items.extend(lst)
+
+        
+        # --- NEU: Funding-ExecTypes rausfiltern ---
+        for row in lst:
+            exec_type = (row.get("execType") or "").lower()
+            if exec_type in ("funding", "fundingfee", "funding_fee"):
+                continue
+            items.append(row)
+
         cursor = data.get("nextPageCursor")
         if not cursor:
             break
@@ -334,6 +369,41 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
         user_id_cache[bid] = b.user_id if b else None
         return user_id_cache[bid]
 
+    def _find_matching_open_position(
+        bot_id_pos: int,
+        symbol: str,
+        side: str,
+        qty: float,
+    ) -> models.Position | None:
+        """
+        Versucht eine bereits vorhandene offene Position zu finden,
+        deren Menge zur rekonstruierten Trade-Menge passt.
+        Wird genutzt, um bei Rebuilds bestehende offene Positionen zu schließen,
+        statt neue Closed-Positionen zu erzeugen.
+        """
+        if not qty or qty <= 0:
+            return None
+
+        # Toleranz: 0.1% der Menge, mindestens 1e-8
+        eps_qty = max(abs(qty) * 1e-3, 1e-8)
+
+        q_pos = (
+            db.query(models.Position)
+              .filter(models.Position.bot_id == bot_id_pos)
+              .filter(models.Position.symbol == symbol)
+              .filter(models.Position.status == "open")
+        )
+        if side:
+            q_pos = q_pos.filter(models.Position.side == side)
+
+        candidates = q_pos.order_by(models.Position.opened_at.asc()).all()
+        for p in candidates:
+            if p.qty is None:
+                continue
+            if abs(float(p.qty) - float(qty)) <= eps_qty:
+                return p
+        return None
+
     for symbol, rows in by_symbol.items():
         # Gruppenbildung: key = exchange_order_id (preferiert), sonst order_link_id
         groups: dict[str, list[models.Execution]] = {}
@@ -454,33 +524,52 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
             best_exit  = _best_price(exit_g["rows"], exit_side_for_best) or v_exit
 
             bot_id_pos = entry_g["bot_id"]
-            pos = models.Position(
-                bot_id=bot_id_pos,
-                user_id=_user_id_for(bot_id_pos),
+            target_side = "long" if side_first == "buy" else "short"
+            user_id_pos = _user_id_for(bot_id_pos)
+
+            # 1) Versuche, eine bestehende offene Position zu finden (z. B. aus Live-Betrieb)
+            pos = _find_matching_open_position(
+                bot_id_pos=bot_id_pos,
                 symbol=symbol,
-                side=("long" if side_first == "buy" else "short"),
-                status="closed",
-                opened_at=opened_at,
-                closed_at=closed_at,
-                qty=q_entry,
-                entry_price_vwap=v_entry,
-                exit_price_vwap=v_exit,
-                entry_price_best=best_entry,
-                exit_price_best=best_exit,
-                fee_open_usdt=abs(fee_open),
-                fee_close_usdt=abs(fee_close),
-                funding_usdt=funding,
-                pnl_usdt=pnl_net,
-                first_exec_at=opened_at,
-                last_exec_at=closed_at,
+                side=target_side,
+                qty=float(q_entry or 0.0),
             )
+
+            # 2) Falls keine passende offene Position existiert → neue anlegen
+            if pos is None:
+                pos = models.Position(
+                    bot_id=bot_id_pos,
+                    user_id=user_id_pos,
+                    symbol=symbol,
+                    side=target_side,
+                    status="closed",
+                )
+                created += 1
+            else:
+                # vorhandene offene Position wird jetzt geschlossen
+                pos.status = "closed"
+
+            # Gemeinsame Felder setzen/überschreiben
+            pos.opened_at = opened_at
+            pos.closed_at = closed_at
+            pos.qty = q_entry
+            pos.entry_price_vwap = v_entry
+            pos.exit_price_vwap = v_exit
+            pos.entry_price_best = best_entry
+            pos.exit_price_best = best_exit
+            pos.fee_open_usdt = abs(fee_open)
+            pos.fee_close_usdt = abs(fee_close)
+            pos.funding_usdt = funding
+            pos.pnl_usdt = pnl_net
+            pos.first_exec_at = opened_at
+            pos.last_exec_at = closed_at
 
             es, xs, tl = _slippage_entry_exit_usdt(pos)
             pos.slippage_entry_usdt = es
             pos.slippage_exit_usdt = xs
             pos.slippage_timelag_usdt = tl
 
-            db.add(pos); created += 1
+            db.add(pos)
 
             # Executions konsumieren
             for x in (entry_g["rows"] + exit_g["rows"]):
@@ -563,33 +652,49 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
                         )
                         pnl_net_r = pnl_gross_r - abs(fee_open_r) - abs(fee_close_r) - funding_raw_r
 
-                        pos = models.Position(
-                            bot_id=e.bot_id,
-                            user_id=_user_id_for(e.bot_id),
+                        bot_id_pos = e.bot_id
+                        target_side = "long" if first_side_r == "buy" else "short"
+                        user_id_pos = _user_id_for(bot_id_pos)
+
+                        pos = _find_matching_open_position(
+                            bot_id_pos=bot_id_pos,
                             symbol=symbol,
-                            side=("long" if first_side_r == "buy" else "short"),
-                            status="closed",
-                            opened_at=opened_at_r,
-                            closed_at=closed_at_r,
-                            qty=q_entry_r,
-                            entry_price_vwap=v_entry_r,
-                            exit_price_vwap=v_exit_r,
-                            entry_price_best=best_entry_r or v_entry_r,
-                            exit_price_best=best_exit_r  or v_exit_r,
-                            fee_open_usdt=abs(fee_open_r),
-                            fee_close_usdt=abs(fee_close_r),
-                            funding_usdt=funding_raw_r,
-                            pnl_usdt=pnl_net_r,
-                            first_exec_at=opened_at_r,
-                            last_exec_at=closed_at_r,
+                            side=target_side,
+                            qty=float(q_entry_r or 0.0),
                         )
+
+                        if pos is None:
+                            pos = models.Position(
+                                bot_id=bot_id_pos,
+                                user_id=user_id_pos,
+                                symbol=symbol,
+                                side=target_side,
+                                status="closed",
+                            )
+                            created += 1
+                        else:
+                            pos.status = "closed"
+
+                        pos.opened_at = opened_at_r
+                        pos.closed_at = closed_at_r
+                        pos.qty = q_entry_r
+                        pos.entry_price_vwap = v_entry_r
+                        pos.exit_price_vwap = v_exit_r
+                        pos.entry_price_best = (best_entry_r or v_entry_r)
+                        pos.exit_price_best = (best_exit_r  or v_exit_r)
+                        pos.fee_open_usdt = abs(fee_open_r)
+                        pos.fee_close_usdt = abs(fee_close_r)
+                        pos.funding_usdt = funding_raw_r
+                        pos.pnl_usdt = pnl_net_r
+                        pos.first_exec_at = opened_at_r
+                        pos.last_exec_at = closed_at_r
 
                         es, xs, tl = _slippage_entry_exit_usdt(pos)
                         pos.slippage_entry_usdt = es
                         pos.slippage_exit_usdt = xs
                         pos.slippage_timelag_usdt = tl
                         
-                        db.add(pos); created += 1
+                        db.add(pos)
 
                     # consume & reset
                     for z in (entry_fills + exit_fills):
@@ -640,37 +745,52 @@ def rebuild_positions_orderlink(db: Session, *, bot_id: int) -> int:
                             for x in fexec2:
                                 if x.ts and x.ts.strftime("%H:%M") in ("00:00","08:00","16:00"):
                                     funding_raw_r += float(x.fee_usdt or 0.0)
-
                         pnl_net_r = pnl_gross_r - abs(fee_open_r) - abs(fee_close_r) - funding_raw_r
 
+                        bot_id_pos = entry_fills[0].bot_id
+                        target_side = "long" if first_side_r == "buy" else "short"
+                        user_id_pos = _user_id_for(bot_id_pos)
 
-                        pos = models.Position(
-                            bot_id=entry_fills[0].bot_id,
-                            user_id=_user_id_for(entry_fills[0].bot_id),
+                        pos = _find_matching_open_position(
+                            bot_id_pos=bot_id_pos,
                             symbol=symbol,
-                            side=("long" if first_side_r == "buy" else "short"),
-                            status="closed",                               # auto-closed (alt)
-                            opened_at=opened_at_r,
-                            closed_at=last_ts,
-                            qty=q_entry_r,
-                            entry_price_vwap=v_entry_r,
-                            exit_price_vwap=last_price,
-                            entry_price_best=best_entry_r or v_entry_r,
-                            exit_price_best=best_exit_r  or last_price,
-                            fee_open_usdt=abs(fee_open_r),
-                            fee_close_usdt=abs(fee_close_r),
-                            funding_usdt=funding_raw_r,
-                            pnl_usdt=pnl_net_r,
-                            first_exec_at=opened_at_r,
-                            last_exec_at=last_ts,
+                            side=target_side,
+                            qty=float(q_entry_r or 0.0),
                         )
+
+                        if pos is None:
+                            pos = models.Position(
+                                bot_id=bot_id_pos,
+                                user_id=user_id_pos,
+                                symbol=symbol,
+                                side=target_side,
+                                status="closed",      # auto-closed (alt)
+                            )
+                            created += 1
+                        else:
+                            pos.status = "closed"
+
+                        pos.opened_at = opened_at_r
+                        pos.closed_at = last_ts
+                        pos.qty = q_entry_r
+                        pos.entry_price_vwap = v_entry_r
+                        pos.exit_price_vwap = last_price
+                        pos.entry_price_best = best_entry_r or v_entry_r
+                        pos.exit_price_best = best_exit_r  or last_price
+                        pos.fee_open_usdt = abs(fee_open_r)
+                        pos.fee_close_usdt = abs(fee_close_r)
+                        pos.funding_usdt = funding_raw_r
+                        pos.pnl_usdt = pnl_net_r
+                        pos.first_exec_at = opened_at_r
+                        pos.last_exec_at = last_ts
 
                         es, xs, tl = _slippage_entry_exit_usdt(pos)
                         pos.slippage_entry_usdt = es
                         pos.slippage_exit_usdt = xs
                         pos.slippage_timelag_usdt = tl
 
-                        db.add(pos); created += 1
+                        db.add(pos)
+
 
                     for z in entry_fills:
                         used_row_ids.add(z.id)
@@ -966,7 +1086,7 @@ def sync_recent_closures(
     else:
         start_ms = end_ms - int(timedelta(hours=max(1, lookback_hours)).total_seconds() * 1000)
 
-    syms = _load_all_linear_usdt_symbols(client)
+    syms = _symbols_for_bot(db, bot.id, client)
 
     total_execs = 0
     affected_syms: set[str] = set() 
@@ -1038,7 +1158,7 @@ def sync_backfill_since(
     since_exec = since_ms if since_ms is not None else (_latest_ts(models.Execution) or 0)
     since_fund = since_ms if since_ms is not None else (_latest_ts(models.FundingEvent) or 0)
 
-    syms = _load_all_linear_usdt_symbols(client)
+    syms = _symbols_for_bot(db, bot.id, client)
 
     inserted_execs = 0
     inserted_positions = 0

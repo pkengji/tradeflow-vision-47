@@ -71,6 +71,11 @@ class BotSymbolSetting(Base):
     enabled = Column(Boolean, default=True)
     target_risk_amount = Column(Float, default=1.0)
     leverage_override = Column(Float, nullable=True)
+
+    # NEU:
+    allow_long = Column(Boolean, nullable=False, default=True)
+    allow_short = Column(Boolean, nullable=False, default=True)
+
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc), nullable=False)
 

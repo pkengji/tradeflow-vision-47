@@ -33,8 +33,10 @@ def create_bot(db: Session, user_id: int, data: BotCreate) -> Bot:
         is_active=True,
         is_deleted=False,
         api_key=data.api_key, 
-        api_secret=data.api_secret
-        
+        api_secret=data.api_secret,
+        # NEU
+        exchange=(data.exchange or "Bybit"),
+        account_kind=data.account_kind,        
     )
     db.add(bot); db.commit(); db.refresh(bot)
     return bot
@@ -45,7 +47,7 @@ def update_bot(db: Session, user_id: int, bot_id: int, data: BotUpdate) -> Bot |
     if not bot: 
         return None
     # Felder optional updaten
-    for field in ["name","description","exchange","strategy","timeframe","auto_approve"]:
+    for field in ["name","description","exchange","strategy","timeframe","auto_approve","account_kind"]:
         val = getattr(data, field)
         if val is not None:
             setattr(bot, field, val)
@@ -93,6 +95,10 @@ def replace_bot_symbols(db: Session, user_id: int, bot_id: int, items: list[dict
             enabled=bool(it.get("enabled", True)),
             target_risk_amount=float(it.get("target_risk_amount", 1.0)),
             leverage_override=it.get("leverage_override", None),
+
+            # NEU:
+            allow_long=bool(it.get("allow_long", True)),
+            allow_short=bool(it.get("allow_short", True)),
         )
         db.add(row)
         rows.append(row)
