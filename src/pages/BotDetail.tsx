@@ -24,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import {
   Command,
@@ -593,12 +594,19 @@ useMemo(() => {
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
                 <DialogTitle>Pair hinzufügen</DialogTitle>
+                <DialogDescription>Wähle zusätzliche Trading-Pairs für diesen Bot aus.</DialogDescription>
               </DialogHeader>
               <Command className="rounded-lg border">
                 <CommandInput placeholder="Pair suchen..." />
-                <CommandEmpty>{symbolsLoading ? 'Lade Symbole...' : 'Kein Pair gefunden.'}</CommandEmpty>
+                <CommandEmpty>
+                  {symbolsLoading
+                    ? 'Lade Symbole...'
+                    : symbolsError
+                      ? 'Fehler beim Laden der Symbole.'
+                      : 'Kein Pair gefunden.'}
+                </CommandEmpty>
                 <CommandGroup className="max-h-64 overflow-auto">
-{!symbolsLoading && symbolsInfo
+{!symbolsLoading && !symbolsError && symbolsInfo
   .filter(s => !pairs.find(pair => pair.symbol === s.symbol))
   .map((s) => {
     const iconSrc = s.icon_local_path 
