@@ -224,6 +224,11 @@ export type TradesResponse = {
 // Dashboard Summary Types
 export type DashboardSummary = {
   portfolio_total_equity: number;
+  cashflows?: {
+    deposits_usdt: number;
+    withdrawals_usdt: number;
+    net_cashflow_usdt: number;
+  };
   kpis: {
     overall: DashboardKPIPeriod;
     today: DashboardKPIPeriod;
