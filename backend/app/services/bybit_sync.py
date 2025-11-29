@@ -296,14 +296,41 @@ def _persist_funding_event(db: Session, bot_id: int, ev: Dict[str, Any]):
     typ = (ev.get("type") or ev.get("category") or "").lower()
     if "funding" not in typ:
         return
+
+    symbol = (ev.get("symbol") or "").strip()
+    amount = _f(ev.get("amount"))
+    rate = _f(ev.get("feeRate") or ev.get("rate"))
+    ts = _dt_ms(ev.get("timestamp") or ev.get("ts"))
+
+    # Wenn kein Timestamp, ist der Event für uns nicht brauchbar → skippen
+    if ts is None:
+        return
+
+    # 🔍 Duplikat-Check: gleicher Bot, Symbol, Zeitstempel & Betrag (optional rate)
+    exists = (
+        db.query(models.FundingEvent)
+        .filter(
+            models.FundingEvent.bot_id == bot_id,
+            models.FundingEvent.symbol == symbol,
+            models.FundingEvent.ts == ts,
+            models.FundingEvent.amount_usdt == amount,
+            models.FundingEvent.rate == rate,
+        )
+        .first()
+    )
+    if exists:
+        # Bereits vorhanden → nicht nochmal einfügen
+        return
+
     fe = models.FundingEvent(
         bot_id=bot_id,
-        symbol=(ev.get("symbol") or ""),
-        amount_usdt=_f(ev.get("amount")),
-        rate=_f(ev.get("feeRate") or ev.get("rate")),
-        ts=_dt_ms(ev.get("timestamp") or ev.get("ts")),
+        symbol=symbol,
+        amount_usdt=amount,
+        rate=rate,
+        ts=ts,
     )
     db.add(fe)
+
 
 
 # ============================================================

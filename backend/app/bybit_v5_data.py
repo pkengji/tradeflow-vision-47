@@ -71,7 +71,29 @@ class BybitV5Data:
         if cursor:    q["cursor"]    = cursor
         return self.client._request("GET", "/v5/account/transaction-log", query=q)
     
-        # --- Deposits ---
+    # Convert Coin List (liefert u. a. icon / iconNight)
+    # Docs: GET /v5/asset/exchange/query-coin-list
+    def convert_coin_list(
+        self,
+        accountType: str = "eb_convert_uta",  # ggf. auf eb_convert_funding/spot anpassen, falls nötig
+        side: int = 0,
+        coin: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        q: Dict[str, Any] = {
+            "accountType": accountType,
+            "side": str(side),   # "0" = fromCoin-Liste
+        }
+        if coin:
+            q["coin"] = coin
+
+        return self.client._request(
+            "GET",
+            "/v5/asset/exchange/query-coin-list",
+            query=q,
+        )
+
+
+    # --- Deposits ---
     # Docs: /v5/asset/deposit/query-record
     # Filters you can pass: coin, startTime, endTime, cursor, limit
     def deposits(self, *, coin: str = "USDT",

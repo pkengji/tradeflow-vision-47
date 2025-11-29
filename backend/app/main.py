@@ -1,5 +1,5 @@
 import os
-from sqlalchemy import select
+from sqlalchemy import or_, select, func
 
 from fastapi import FastAPI, Depends, HTTPException, Request, Response, Query, APIRouter, Body
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,17 +8,17 @@ from fastapi.security.api_key import APIKeyHeader
 from sqlalchemy.orm import Session
 from typing import Optional, List, Dict, Any
 import secrets
-from .models import Bot, Position, PushSubscription
+from .models import Bot, Position, PushSubscription, Symbol
 from .auth import hash_password, verify_password
-from sqlalchemy import or_, select, func
 from .services.bybit_sync import sync_backfill_since, sync_recent_closures, quick_sync_symbol, sync_full_history,rebuild_positions_orderlink, sync_symbol_recent, sync_recent_all_bots, reconcile_symbol, _persist_execution, _dt_ms, _f
-from .services.symbols import sync_symbols_linear_usdt, list_pairs_payload, ensure_symbol_icon
+from .services.symbols import sync_symbols_linear_usdt, sync_bybit_icon_urls, list_pairs_payload, ensure_symbol_icon
 from collections import defaultdict
 from datetime import datetime, timezone, date, timedelta
 from app.services.positions import handle_position_close, reconcile_symbol
 from app.services.portfolio_sync import sync_cashflows as pf_sync_cashflows, compute_portfolio_value as pf_compute_portfolio_value
 from app.services.metrics import _slippage_entry_exit_usdt
 from app.services.summary import SummaryFilters, compute_dashboard_summary
+from .bybit_v5_data import BybitV5Data
 
 from .database import Base, engine, SessionLocal
 from . import models, schemas
@@ -941,9 +941,27 @@ def dashboard_summary(
 # -------------- Symbols / Pairs -----------------------
 @app.post("/api/v1/symbols/sync")
 def symbols_sync(db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)):
-    bybit_client = None
-    count = sync_symbols_linear_usdt(db, bybit_client)
-    return {"ok": True, "updated": count}
+    # 1) Einen aktiven Bot mit API-Key/Secret des Users holen
+    bot = (
+        db.query(Bot)
+        .filter(Bot.user_id == user_id, Bot.is_deleted == False)
+        .order_by(Bot.id.asc())
+        .first()
+    )
+
+    icon_updates = 0
+
+    if bot and bot.api_key and bot.api_secret:
+        data_client = BybitV5Data(bot.api_key, bot.api_secret or False)
+        # 2) Symbole via v5 Market Instruments Info syncen (mit signiertem Client, kann aber auch public)
+        updated = sync_symbols_linear_usdt(db, bybit_client=data_client.client)
+        # 3) Icon-URLs via convert_coin_list holen und in Symbol.icon_url schreiben
+        icon_updates = sync_bybit_icon_urls(db, data_client=data_client)
+    else:
+        # Fallback: nur Symbols via Public-Endpoint, keine Bybit-Icons
+        updated = sync_symbols_linear_usdt(db, bybit_client=None)
+
+    return {"ok": True, "updated": updated, "icon_updates": icon_updates}
 
 
 @app.post("/api/v1/symbols/icons/refresh")
@@ -1007,6 +1025,100 @@ def list_all_symbols(
 ):
     return list_pairs_payload(db)
 
+@app.post("/api/v1/symbols/icons/debug")
+def debug_symbol_icons(
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """
+    Debug-Route: zieht Icon-Infos nur für BTC, ETH und SOL.
+    - Versucht zuerst, Bybit-Icon-URLs via /v5/asset/exchange/query-coin-list zu aktualisieren.
+    - Ruft dann ensure_symbol_icon(max_age_days=0) auf, um das Icon neu zu ziehen.
+    - Gibt pro Coin die relevanten Infos zurück.
+    """
+    bases = ["BTC", "ETH", "SOL"]
+    results: list[dict[str, Any]] = []
+
+    # 1) Versuche optional, Bybit-Icon-URLs zu aktualisieren (falls ein Bot mit API-Key existiert)
+    bot = (
+        db.query(models.Bot)
+        .filter(models.Bot.user_id == user_id, models.Bot.is_deleted == False)
+        .order_by(models.Bot.id.asc())
+        .first()
+    )
+
+    if bot and bot.api_key and bot.api_secret:
+        try:
+            data_client = BybitV5Data(
+                bot.api_key,
+                bot.api_secret,
+                testnet=getattr(bot, "is_testnet", False) or False,
+            )
+            icon_updates = sync_bybit_icon_urls(db, data_client=data_client)
+        except Exception as e:
+            icon_updates = 0
+            print("[ICON-DEBUG] sync_bybit_icon_urls error:", e)
+    else:
+        icon_updates = 0
+        print("[ICON-DEBUG] No bot with API keys found – skipping convert_coin_list")
+
+    # 2) Für BTC, ETH, SOL explizit ensure_symbol_icon(max_age_days=0) ausführen
+    for base in bases:
+        sym = (
+            db.execute(
+                select(models.Symbol).where(models.Symbol.base_currency == base)
+            )
+            .scalars()
+            .first()
+        )
+
+        if not sym:
+            results.append(
+                {
+                    "base": base,
+                    "found": False,
+                    "error": "No Symbol row with this base_currency",
+                }
+            )
+            continue
+
+        try:
+            served_url = ensure_symbol_icon(db, sym, max_age_days=0)
+        except Exception as e:
+            results.append(
+                {
+                    "base": base,
+                    "symbol": sym.symbol,
+                    "found": True,
+                    "error": f"ensure_symbol_icon failed: {e}",
+                }
+            )
+            continue
+
+        results.append(
+            {
+                "base": base,
+                "symbol": sym.symbol,
+                "found": bool(served_url),
+                "served_url": served_url,
+                "icon_url_db": sym.icon_url,
+                "icon_local_path": sym.icon_local_path,
+                "icon_last_synced_at": sym.icon_last_synced_at.isoformat()
+                if sym.icon_last_synced_at
+                else None,
+            }
+        )
+
+    # Wichtig: Änderungen an sym (icon_url/icon_local_path/icon_last_synced_at) committen
+    db.commit()
+
+    return {
+        "ok": True,
+        "icon_updates_from_convert_coin_list": icon_updates,
+        "results": results,
+    }
+
+
 
 # ----------- debug -------------------------
 @app.post("/api/v1/bots/{bot_id}/sync-bybit-quick")
@@ -1045,7 +1157,6 @@ def debug_bybit(
         if symbol in ("BTC","ETH","XRP","SOL","BNB","DOGE","ADA","LTC","XLM","LINK","AVAX","TRX"):
             symbol = symbol + "USDT"
 
-    from .bybit_v5_data import BybitV5Data
     data = BybitV5Data(api_key, api_secret)
 
     try:
@@ -1115,6 +1226,8 @@ def debug_bybit(
         "funding": summarize("funding", funding_raw),
         "raw": {"executions": exec_raw, "closed_pnl": closed_raw, "funding": funding_raw},
     }
+
+
 
 
 # ------------------ Bybit - TV Signal Intake -------------------------

@@ -2,6 +2,7 @@
 from __future__ import annotations
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone, timedelta
+from app.bybit_v5_data import BybitV5Data
 
 import os, io, requests
 
@@ -133,6 +134,49 @@ def sync_symbols_linear_usdt(db: Session, bybit_client: Optional[Any] = None) ->
     print(f"[SYNC] Updated {updated} symbols")
     return updated
 
+def sync_bybit_icon_urls(db: Session, data_client: BybitV5Data) -> int:
+    """
+    Holt alle Coins via /v5/asset/exchange/query-coin-list und trägt
+    die von Bybit gelieferten Icon-URLs in models.Symbol.icon_url ein.
+    Rückgabe: Anzahl aktualisierter Symbole.
+    """
+    try:
+        res = data_client.convert_coin_list(accountType="eb_convert_funding", side=0)
+    except Exception as e:
+        print("[ICON] convert_coin_list error:", e)
+        return 0
+
+    result = res.get("result") or {}
+    coins = result.get("coins") or []
+
+    # Mapping: COIN (z.B. "BTC", "AAVE") -> icon-URL
+    coin_icon_map: dict[str, str] = {}
+    for c in coins:
+        coin_code = (c.get("coin") or "").upper()
+        icon = c.get("iconNight") or c.get("icon")
+        if coin_code and icon:
+            coin_icon_map[coin_code] = icon
+
+    if not coin_icon_map:
+        print("[ICON] convert_coin_list returned no icons")
+        return 0
+
+    updated = 0
+    symbols = db.execute(select(models.Symbol)).scalars().all()
+    for s in symbols:
+        base = (s.base_currency or "").upper()
+        new_icon = coin_icon_map.get(base)
+        if new_icon and new_icon != (s.icon_url or ""):
+            s.icon_url = new_icon
+            updated += 1
+
+    if updated:
+        db.commit()
+
+    return updated
+
+
+
 # --- Query Helpers für API ---
 
 def _base_from_symbol(sym: str) -> str:
@@ -142,11 +186,11 @@ def _base_from_symbol(sym: str) -> str:
 def _candidate_icon_urls(base: str) -> list[str]:
     b = base.lower()
     return [
-        f"https://static.bybit.com/icon/{base}.png",                             # Bybit
-        f"https://cryptoicons-api.vercel.app/api/icon/{base.lower()}",           # Binance alt
-        f"https://raw.githubusercontent.com/binance-chain/tokens-info/master/assets/{base}_logo.png", # Binance alt repo
-        f"https://cryptoicons.org/api/icon/{base.lower()}/64"                      # Fallback
-        # Coinpaprika: sehr gute Abdeckung, korrektes Format
+        # Externe generische Fallback-Quellen,
+        # falls sym.icon_url (Bybit) nicht oder nicht erreichbar ist:
+        f"https://cryptoicons-api.vercel.app/api/icon/{b}",
+        f"https://raw.githubusercontent.com/binance-chain/tokens-info/master/assets/{base}_logo.png",
+        f"https://cryptoicons.org/api/icon/{b}/64",
         f"https://static.coinpaprika.com/coin/{b}-{b}/logo.png",
     ]
 
@@ -154,11 +198,17 @@ def _candidate_icon_urls(base: str) -> list[str]:
 def _fetch_first_ok(urls: list[str]) -> tuple[bytes, str] | tuple[None, None]:
     for u in urls:
         try:
-            r = requests.get(u, timeout=6)
+            r = requests.get(
+                u,
+                timeout=10,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (compatible; TradeflowBot/1.0)"
+                },
+            )
             if r.ok and r.content:
                 return r.content, u
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[ICON-FETCH] {u} error: {e}")
     return None, None
 
 def ensure_symbol_icon(db: Session, sym: models.Symbol, max_age_days: int = 30) -> str | None:
@@ -186,22 +236,28 @@ def ensure_symbol_icon(db: Session, sym: models.Symbol, max_age_days: int = 30) 
         return f"/static/{sym.icon_local_path}"
 
     # 🔥 Download forcieren, wenn kein lokales oder abgelaufenes Icon
-    content, src = _fetch_first_ok(_candidate_icon_urls(base))
-    if content:
-        os.makedirs(ICONS_DIR, exist_ok=True)
+    urls: list[str] = []
+
+    # 1) Wenn Bybit bereits eine icon_url geliefert hat → zuerst probieren
+    if sym.icon_url:
+        urls.append(sym.icon_url)
+
+    # 2) Danach die klassischen Fallback-Quellen
+    urls.extend(_candidate_icon_urls(base))
+
+    content, src = _fetch_first_ok(urls)
+    if content and src:
+        # Ziel-Ordner sicherstellen
+        os.makedirs(os.path.dirname(local_abs), exist_ok=True)
         with open(local_abs, "wb") as f:
             f.write(content)
         sym.icon_local_path = local_rel
-        sym.icon_url = src
+        sym.icon_url = src  # tatsächliche Quelle (Bybit oder Fallback)
         sym.icon_last_synced_at = datetime.now(timezone.utc)
         db.add(sym)
-        # ⚠️ flush reicht hier, commit im aufrufenden Code
-        db.flush()
+        db.flush()  # commit macht der aufrufende Code
         print(f"[ICON] Saved {base} -> {local_rel}")
         return f"/static/{local_rel}"
-
-    print(f"[ICON] Not found for {base}")
-    return None
 
 
 def list_pairs_payload(db: Session) -> list[dict]:

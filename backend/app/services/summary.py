@@ -407,6 +407,11 @@ def compute_dashboard_summary(db: Session, user_id: int, f: SummaryFilters) -> D
     # 4) Zusammenbau
     summary: Dict[str, Any] = {
         "portfolio_total_equity": portfolio_total_equity,  # nur ZEIT-gefiltert
+        "cashflows": {
+            "deposits_usdt": dep,
+            "withdrawals_usdt": -wdr,          # positiv als Betrag
+            "net_cashflow_usdt": dep + wdr,    # gleiche Logik wie oben
+        },
         "kpis": {
             "overall": {
                 "realized_pnl": overall_realized,
