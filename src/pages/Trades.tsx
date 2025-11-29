@@ -173,10 +173,36 @@ export default function Trades() {
         setError(null);
         setIsLoadingMore(true);
 
-        const res = await api.getPositions({
+        // Build query parameters from filters
+        const params: any = {
           limit: displayLimit,
           status: activeTab === "open" ? "open" : "closed",
-        });
+        };
+
+        // Add filters as query parameters
+        if (filters.botIds && filters.botIds.length > 0) {
+          params.bot_id = filters.botIds.join(",");
+        }
+        if (filters.symbols && filters.symbols.length > 0) {
+          params.symbols = filters.symbols.join(",");
+        }
+        if (filters.side && filters.side !== "all") {
+          params.side = filters.side;
+        }
+        if (filters.dateFrom) {
+          params.date_from = filters.dateFrom.toISOString().split("T")[0];
+        }
+        if (filters.dateTo) {
+          params.date_to = filters.dateTo.toISOString().split("T")[0];
+        }
+        if (filters.timeFrom) {
+          params.time_from = filters.timeFrom;
+        }
+        if (filters.timeTo) {
+          params.time_to = filters.timeTo;
+        }
+
+        const res = await api.getPositions(params);
 
         if (!cancel) {
           setPositions(Array.isArray(res?.items) ? res.items : []);
@@ -194,7 +220,7 @@ export default function Trades() {
     return () => {
       cancel = true;
     };
-  }, [displayLimit, activeTab]);
+  }, [displayLimit, activeTab, filters]);
 
   // Poll open positions every 10 seconds for live updates
   useEffect(() => {
@@ -202,10 +228,35 @@ export default function Trades() {
 
     const interval = setInterval(async () => {
       try {
-        const res = await api.getPositions({
+        // Build query parameters from filters
+        const params: any = {
           limit: displayLimit,
           status: "open",
-        });
+        };
+
+        if (filters.botIds && filters.botIds.length > 0) {
+          params.bot_id = filters.botIds.join(",");
+        }
+        if (filters.symbols && filters.symbols.length > 0) {
+          params.symbols = filters.symbols.join(",");
+        }
+        if (filters.side && filters.side !== "all") {
+          params.side = filters.side;
+        }
+        if (filters.dateFrom) {
+          params.date_from = filters.dateFrom.toISOString().split("T")[0];
+        }
+        if (filters.dateTo) {
+          params.date_to = filters.dateTo.toISOString().split("T")[0];
+        }
+        if (filters.timeFrom) {
+          params.time_from = filters.timeFrom;
+        }
+        if (filters.timeTo) {
+          params.time_to = filters.timeTo;
+        }
+
+        const res = await api.getPositions(params);
         setPositions(Array.isArray(res?.items) ? res.items : []);
         setTotalCount(res?.total ?? 0);
       } catch (e) {
@@ -214,7 +265,7 @@ export default function Trades() {
     }, 10000);
 
     return () => clearInterval(interval);
-  }, [activeTab, displayLimit]);
+  }, [activeTab, displayLimit, filters]);
 
   // Restore scroll position and displayLimit on mount
   useEffect(() => {
@@ -284,66 +335,8 @@ export default function Trades() {
   }, []);
 
   // ---- 4.3 SELECTORS/DERIVATES ----
-  const byTab = useMemo(
-    () => positions.filter((p) => (activeTab === "open" ? p.status === "open" : p.status === "closed")),
-    [positions, activeTab],
-  );
-
-  const afterBasicFilters = useMemo(() => {
-    return byTab.filter((p) => {
-      if (filters.botIds && filters.botIds.length > 0 && !filters.botIds.includes(p.bot_id)) return false;
-      if (filters.side && filters.side !== "all" && p.side !== filters.side) return false;
-      if (filters.symbols && filters.symbols.length > 0 && !filters.symbols.includes(p.symbol)) return false;
-      return true;
-    });
-  }, [byTab, filters]);
-
-  const filtered = useMemo(() => {
-    let list = afterBasicFilters;
-
-    // Datumsfilter
-    if (filters.dateFrom || filters.dateTo) {
-      list = list.filter((p) => {
-        const date = toDateOrNull(activeTab === "closed" ? p.closed_at : p.opened_at);
-        if (!date) return false;
-        if (filters.dateFrom && date < filters.dateFrom) return false;
-        if (filters.dateTo && date > filters.dateTo) return false;
-        return true;
-      });
-    }
-
-    // Tageszeitfilter
-    if (filters.timeFrom || filters.timeTo) {
-      list = list.filter((p) => {
-        const dateStr = filters.timeMode === "closed" ? p.closed_at : p.opened_at;
-        const date = toDateOrNull(dateStr);
-        if (!date) return false;
-        const hours = date.getHours();
-        const minutes = date.getMinutes();
-        const timeInMinutes = hours * 60 + minutes;
-
-        let fromMinutes = 0;
-        let toMinutes = 24 * 60;
-
-        if (filters.timeFrom) {
-          const [h, m] = filters.timeFrom.split(":").map(Number);
-          fromMinutes = h * 60 + m;
-        }
-        if (filters.timeTo) {
-          const [h, m] = filters.timeTo.split(":").map(Number);
-          toMinutes = h * 60 + m;
-        }
-
-        // Handle overnight ranges (e.g., 22:00 - 03:00)
-        if (fromMinutes > toMinutes) {
-          return timeInMinutes >= fromMinutes || timeInMinutes <= toMinutes;
-        }
-        return timeInMinutes >= fromMinutes && timeInMinutes <= toMinutes;
-      });
-    }
-
-    return list;
-  }, [afterBasicFilters, filters, activeTab]);
+  // Positions are now filtered server-side, so we just use them directly
+  const filtered = useMemo(() => positions, [positions]);
 
   const openTrades = useMemo(() => {
     const trades = filtered.filter((t) => t.status === "open");
@@ -458,8 +451,8 @@ export default function Trades() {
                 onChange={setFilters}
                 availableBots={bots}
                 availableSymbols={symbols}
-                showDateRange={activeTab === "closed"}
-                showTimeRange={activeTab === "closed"}
+                showDateRange={true}
+                showTimeRange={true}
                 showSignalKind={false}
               />
             </div>
@@ -503,8 +496,8 @@ export default function Trades() {
                   onChange={setFilters}
                   availableBots={bots}
                   availableSymbols={symbols}
-                  showDateRange={activeTab === "closed"}
-                  showTimeRange={activeTab === "closed"}
+                  showDateRange={true}
+                  showTimeRange={true}
                   showSignalKind={false}
                 />
               </div>
