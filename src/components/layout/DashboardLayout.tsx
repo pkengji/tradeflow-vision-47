@@ -19,12 +19,16 @@ export function DashboardLayout({
   pageTitle, 
   mobileHeaderRight,
   mobileHeaderLeft,
+  desktopHeaderRight,
+  desktopHeaderLeft,
   showBackButton = false,
 }: { 
   children: React.ReactNode;
   pageTitle?: string;
   mobileHeaderRight?: ReactNode;
   mobileHeaderLeft?: ReactNode;
+  desktopHeaderRight?: ReactNode;
+  desktopHeaderLeft?: ReactNode;
   showBackButton?: boolean;
 }) {
   const { user, logout } = useAuth();
@@ -104,16 +108,23 @@ export function DashboardLayout({
             <div className="flex h-14 items-center px-4">
               {/* Left side: back button or custom left element */}
               <div className="flex items-center gap-2">
-                {mobileHeaderLeft}
-                {showBackButton && !mobileHeaderLeft && (
-                  <Button 
-                    variant="ghost" 
-                    size="icon"
-                    onClick={() => navigate(-1)}
-                  >
-                    <ChevronLeft className="h-5 w-5" />
-                  </Button>
-                )}
+                {/* Mobile: use mobileHeaderLeft */}
+                <div className="lg:hidden">
+                  {mobileHeaderLeft}
+                  {showBackButton && !mobileHeaderLeft && (
+                    <Button 
+                      variant="ghost" 
+                      size="icon"
+                      onClick={() => navigate(-1)}
+                    >
+                      <ChevronLeft className="h-5 w-5" />
+                    </Button>
+                  )}
+                </div>
+                {/* Desktop: use desktopHeaderLeft */}
+                <div className="hidden lg:block">
+                  {desktopHeaderLeft}
+                </div>
               </div>
               
               {/* Centered title */}
@@ -123,7 +134,14 @@ export function DashboardLayout({
               
               {/* Right side: filter button or spacer */}
               <div className="w-10 flex justify-end">
-                {mobileHeaderRight}
+                {/* Mobile: use mobileHeaderRight */}
+                <div className="lg:hidden">
+                  {mobileHeaderRight}
+                </div>
+                {/* Desktop: use desktopHeaderRight */}
+                <div className="hidden lg:block">
+                  {desktopHeaderRight}
+                </div>
               </div>
             </div>
           </header>
