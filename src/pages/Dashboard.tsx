@@ -253,15 +253,12 @@ export default function Dashboard() {
     >
       {/* Filter Modal (Mobile) */}
       {showFilters && (
-        <div className="lg:hidden fixed inset-0 z-50 bg-background">
-          <div className="flex flex-col h-full">
-            <div className="flex items-center justify-between p-4 border-b">
-              <h2 className="text-lg font-semibold">Filter</h2>
-              <Button size="sm" onClick={() => setShowFilters(false)}>
-                Fertig
-              </Button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4">
+        <div className="fixed inset-0 bg-background/80 z-50 lg:hidden" onClick={() => setShowFilters(false)}>
+          <div
+            className="fixed inset-x-0 top-14 bottom-16 bg-background flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="overflow-auto">
               <TradesFiltersBar
                 selectedBots={selectedBots}
                 onBotsChange={setSelectedBots}
@@ -290,6 +287,11 @@ export default function Dashboard() {
                 onShowCostAsPercentChange={setShowCostAsPercent}
               />
             </div>
+            <div className="border-t p-3">
+              <Button className="w-full" onClick={() => setShowFilters(false)}>
+                Fertig
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -297,36 +299,38 @@ export default function Dashboard() {
       <div className="sm:p-4 pb-24 space-y-6">
         {/* Filter - Desktop (collapsible) */}
         {showFilters && (
-          <div className="hidden lg:block border rounded-lg p-4 bg-muted/30">
-            <TradesFiltersBar
-              selectedBots={selectedBots}
-              onBotsChange={setSelectedBots}
-              selectedSymbols={selectedSymbols}
-              onSymbolsChange={setSelectedSymbols}
-              dateFrom={dateFrom}
-              dateTo={dateTo}
-              onDateFromChange={setDateFrom}
-              onDateToChange={setDateTo}
-              direction={direction}
-              onDirectionChange={setDirection}
-              openHourFrom={openHourFrom}
-              openHourTo={openHourTo}
-              onOpenHourFromChange={setOpenHourFrom}
-              onOpenHourToChange={setOpenHourTo}
-              closeHourFrom={closeHourFrom}
-              closeHourTo={closeHourTo}
-              onCloseHourFromChange={setCloseHourFrom}
-              onCloseHourToChange={setCloseHourTo}
-              onResetFilters={handleResetFilters}
-              availableBots={bots}
-              availableSymbols={symbols}
-              showDateRange={true}
-              showTimeRange={true}
-              showCostAsPercent={showCostAsPercent}
-              onShowCostAsPercentChange={setShowCostAsPercent}
-            />
-            <div className="flex justify-end mt-4">
-              <Button size="sm" onClick={() => setShowFilters(false)}>
+          <div className="hidden lg:block border rounded-lg bg-muted/30">
+            <div className="p-4">
+              <TradesFiltersBar
+                selectedBots={selectedBots}
+                onBotsChange={setSelectedBots}
+                selectedSymbols={selectedSymbols}
+                onSymbolsChange={setSelectedSymbols}
+                dateFrom={dateFrom}
+                dateTo={dateTo}
+                onDateFromChange={setDateFrom}
+                onDateToChange={setDateTo}
+                direction={direction}
+                onDirectionChange={setDirection}
+                openHourFrom={openHourFrom}
+                openHourTo={openHourTo}
+                onOpenHourFromChange={setOpenHourFrom}
+                onOpenHourToChange={setOpenHourTo}
+                closeHourFrom={closeHourFrom}
+                closeHourTo={closeHourTo}
+                onCloseHourFromChange={setCloseHourFrom}
+                onCloseHourToChange={setCloseHourTo}
+                onResetFilters={handleResetFilters}
+                availableBots={bots}
+                availableSymbols={symbols}
+                showDateRange={true}
+                showTimeRange={true}
+                showCostAsPercent={showCostAsPercent}
+                onShowCostAsPercentChange={setShowCostAsPercent}
+              />
+            </div>
+            <div className="border-t p-3">
+              <Button className="w-full" onClick={() => setShowFilters(false)}>
                 Fertig
               </Button>
             </div>
