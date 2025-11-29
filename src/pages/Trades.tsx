@@ -291,6 +291,7 @@ export default function Trades() {
 
   const afterBasicFilters = useMemo(() => {
     return byTab.filter((p) => {
+      if (filters.botIds && filters.botIds.length > 0 && !filters.botIds.includes(p.bot_id)) return false;
       if (filters.side && filters.side !== "all" && p.side !== filters.side) return false;
       if (filters.symbols && filters.symbols.length > 0 && !filters.symbols.includes(p.symbol)) return false;
       return true;
@@ -495,18 +496,20 @@ export default function Trades() {
         <div className="space-y-4 p-4 pb-24">
           {/* Filter - Desktop (collapsible) */}
           {showFilters && (
-            <div className="hidden lg:block border rounded-lg p-4 bg-muted/30">
-              <TradesFiltersBar
-                value={filters}
-                onChange={setFilters}
-                availableBots={bots}
-                availableSymbols={symbols}
-                showDateRange={activeTab === "closed"}
-                showTimeRange={activeTab === "closed"}
-                showSignalKind={false}
-              />
-              <div className="flex justify-end mt-4">
-                <Button size="sm" onClick={() => setShowFilters(false)}>
+            <div className="hidden lg:block border rounded-lg bg-muted/30">
+              <div className="p-4">
+                <TradesFiltersBar
+                  value={filters}
+                  onChange={setFilters}
+                  availableBots={bots}
+                  availableSymbols={symbols}
+                  showDateRange={activeTab === "closed"}
+                  showTimeRange={activeTab === "closed"}
+                  showSignalKind={false}
+                />
+              </div>
+              <div className="border-t p-3">
+                <Button className="w-full" onClick={() => setShowFilters(false)}>
                   Fertig
                 </Button>
               </div>

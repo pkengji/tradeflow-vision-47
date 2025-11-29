@@ -177,19 +177,23 @@ export default function Signals() {
       <div className="p-4 pb-24">
         {/* Filter - Desktop (collapsible) */}
         {showFilters && (
-          <div className="hidden lg:block border rounded-lg p-4 bg-muted/30 mb-4">
-            <TradesFiltersBar
-              value={filters}
-              onChange={setFilters}
-              availableBots={bots}
-              availableSymbols={symbols}
-              showDateRange={true}
-              showTimeRange={true}
-              showSignalKind={true}
-              showSignalStatus={true}
-            />
-            <div className="flex justify-end mt-4">
-              <Button size="sm" onClick={() => setShowFilters(false)}>Fertig</Button>
+          <div className="hidden lg:block border rounded-lg bg-muted/30 mb-4">
+            <div className="p-4">
+              <TradesFiltersBar
+                value={filters}
+                onChange={setFilters}
+                availableBots={bots}
+                availableSymbols={symbols}
+                showDateRange={true}
+                showTimeRange={true}
+                showSignalKind={true}
+                showSignalStatus={true}
+              />
+            </div>
+            <div className="border-t p-3">
+              <Button className="w-full" onClick={() => setShowFilters(false)}>
+                Fertig
+              </Button>
             </div>
           </div>
         )}
