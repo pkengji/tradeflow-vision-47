@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { useState, useMemo, useEffect } from "react";
-import { Plus, Search, Trash2, Save, Copy, Eye, EyeOff, RefreshCw } from "lucide-react";
+import { Plus, Search, Trash2, Save, Copy, Eye, EyeOff, RefreshCw, ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import {
@@ -352,8 +352,18 @@ export default function BotDetail() {
     toast.success(`${label} kopiert`);
   };
 
+  const BackButton = (
+    <Button variant="ghost" size="icon" onClick={() => navigate("/bots")}>
+      <ChevronLeft className="h-5 w-5" />
+    </Button>
+  );
+
   return (
-    <DashboardLayout pageTitle={name || "Bot"} showBackButton={true}>
+    <DashboardLayout
+      pageTitle={name || "Bot"}
+      mobileHeaderLeft={BackButton}
+      desktopHeaderLeft={BackButton}
+    >
       <div className="space-y-4 p-4 pb-24 max-w-6xl mx-auto">
         {/* Bot Configuration Card */}
         <Card>

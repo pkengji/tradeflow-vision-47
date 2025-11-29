@@ -75,11 +75,10 @@ export function DashboardLayout({
         <div className="flex h-14 items-center px-4">
           <div className="flex items-center gap-2">
             <CandlestickChart className="h-6 w-6" />
-          </div>
-
-          <div className="flex-1 text-center">
             <h1 className="text-lg font-semibold">Shpatsbot</h1>
           </div>
+
+          <div className="flex-1"></div>
 
           <div className="flex items-center gap-4">
             <div className="text-right">
@@ -105,9 +104,9 @@ export function DashboardLayout({
         <div className="flex-1 flex flex-col min-h-screen lg:min-h-0 pb-16 lg:pb-0">
           {/* Inner Header (Mobile always, Desktop below outer header) */}
           <header className="sticky top-0 lg:top-14 z-40 border-b bg-background">
-            <div className="flex h-14 items-center px-4">
+            <div className="flex h-14 items-center px-4 relative">
               {/* Left side: back button or custom left element */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 absolute left-4">
                 {/* Mobile: use mobileHeaderLeft */}
                 <div className="lg:hidden">
                   {mobileHeaderLeft}
@@ -127,13 +126,13 @@ export function DashboardLayout({
                 </div>
               </div>
               
-              {/* Centered title */}
-              <h1 className="flex-1 text-center text-[var(--font-size-page-title)] font-semibold">
+              {/* Centered title - absolutely positioned */}
+              <h1 className="absolute left-1/2 -translate-x-1/2 text-[var(--font-size-page-title)] font-semibold whitespace-nowrap">
                 {currentPageTitle}
               </h1>
               
               {/* Right side: filter button or spacer */}
-              <div className="w-10 flex justify-end">
+              <div className="w-10 flex justify-end ml-auto">
                 {/* Mobile: use mobileHeaderRight */}
                 <div className="lg:hidden">
                   {mobileHeaderRight}
