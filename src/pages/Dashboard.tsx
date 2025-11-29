@@ -368,7 +368,7 @@ export default function Dashboard() {
                 highlight
               />
               <MetricRow label="Realisierter P&L" value={formatCurrency(summary.kpis.overall.realized_pnl)} highlight />
-              {summary.cashflows && summary.cashflows.net_cashflow_usdt !== 0 && (
+              {summary.cashflows && (
                 <MetricRow
                   label={summary.cashflows.net_cashflow_usdt < 0 ? "Einzahlungen" : "Auszahlungen"}
                   value={formatCurrency(Math.abs(summary.cashflows.net_cashflow_usdt))}
