@@ -30,7 +30,6 @@ export function DashboardLayout({
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Auto-detect page title if not provided
   const currentPageTitle = pageTitle || navigation.find(item => item.href === location.pathname)?.name || '';
@@ -66,44 +65,19 @@ export function DashboardLayout({
   );
 
   return (
-    <div className="min-h-screen bg-background pb-16 lg:pb-0">
-      {/* Header - Mobile */}
-      <header className="lg:hidden sticky top-0 z-40 border-b bg-background">
+    <div className="min-h-screen bg-background">
+      {/* Desktop Outer Header */}
+      <header className="hidden lg:block sticky top-0 z-50 border-b bg-background">
         <div className="flex h-14 items-center px-4">
-          {/* Left side: back button or custom left element */}
-          <div className="flex items-center gap-2">
-            {mobileHeaderLeft}
-            {showBackButton && !mobileHeaderLeft && (
-              <Button 
-                variant="ghost" 
-                size="icon"
-                onClick={() => navigate(-1)}
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </Button>
-            )}
-          </div>
-          
-          {/* Centered title */}
-          <h1 className="flex-1 text-center text-[var(--font-size-page-title)] font-semibold">
-            {currentPageTitle}
-          </h1>
-          
-          {/* Filter button on right (if provided), or spacer */}
-          <div className="w-10">
-            {mobileHeaderRight}
-          </div>
-        </div>
-      </header>
-
-      {/* Header - Desktop */}
-      <header className="hidden lg:block sticky top-0 z-40 border-b bg-background">
-        <div className="flex h-14 items-center px-4 gap-4">
           <div className="flex items-center gap-2">
             <CandlestickChart className="h-6 w-6" />
           </div>
 
-          <div className="ml-auto flex items-center gap-4">
+          <div className="flex-1 text-center">
+            <h1 className="text-lg font-semibold">Shpatsbot</h1>
+          </div>
+
+          <div className="flex items-center gap-4">
             <div className="text-right">
               <div className="text-sm font-medium">{user?.email}</div>
               <div className="text-xs text-muted-foreground capitalize">{user?.role}</div>
@@ -115,18 +89,50 @@ export function DashboardLayout({
         </div>
       </header>
 
-      <div className="flex">
-        {/* Sidebar - Desktop */}
-        <aside className="hidden lg:block w-64 border-r min-h-[calc(100vh-3.5rem)] sticky top-14">
+      <div className="flex lg:min-h-[calc(100vh-3.5rem)]">
+        {/* Desktop Fixed Sidebar */}
+        <aside className="hidden lg:block w-64 border-r sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto">
           <nav className="p-4">
             <NavLinks />
           </nav>
         </aside>
 
-        {/* Main Content */}
-        <main className="flex-1">
-          {children}
-        </main>
+        {/* Main Content Area */}
+        <div className="flex-1 flex flex-col min-h-screen lg:min-h-0 pb-16 lg:pb-0">
+          {/* Inner Header (Mobile always, Desktop below outer header) */}
+          <header className="sticky top-0 lg:top-14 z-40 border-b bg-background">
+            <div className="flex h-14 items-center px-4">
+              {/* Left side: back button or custom left element */}
+              <div className="flex items-center gap-2">
+                {mobileHeaderLeft}
+                {showBackButton && !mobileHeaderLeft && (
+                  <Button 
+                    variant="ghost" 
+                    size="icon"
+                    onClick={() => navigate(-1)}
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </Button>
+                )}
+              </div>
+              
+              {/* Centered title */}
+              <h1 className="flex-1 text-center text-[var(--font-size-page-title)] font-semibold">
+                {currentPageTitle}
+              </h1>
+              
+              {/* Right side: filter button or spacer */}
+              <div className="w-10 flex justify-end">
+                {mobileHeaderRight}
+              </div>
+            </div>
+          </header>
+
+          {/* Page Content */}
+          <main className="flex-1">
+            {children}
+          </main>
+        </div>
       </div>
 
       {/* Mobile Bottom Navigation */}

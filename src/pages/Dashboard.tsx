@@ -238,7 +238,7 @@ export default function Dashboard() {
     <DashboardLayout
       pageTitle="Dashboard"
       mobileHeaderRight={
-        <Button variant="ghost" size="sm" onClick={() => setShowFilters(true)} className="relative">
+        <Button variant="ghost" size="icon" onClick={() => setShowFilters(true)} className="relative">
           <SlidersHorizontal className="h-5 w-5" />
           {activeFilterCount > 0 && (
             <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-medium">
@@ -292,19 +292,6 @@ export default function Dashboard() {
       )}
 
       <div className="sm:p-4 pb-24 space-y-6">
-        {/* Filter Button - Desktop */}
-        <div className="hidden lg:flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="relative">
-            <SlidersHorizontal className="h-4 w-4 mr-2" />
-            Filter
-            {activeFilterCount > 0 && (
-              <span className="ml-2 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-medium">
-                {activeFilterCount}
-              </span>
-            )}
-          </Button>
-        </div>
-
         {/* Filter - Desktop (collapsible) */}
         {showFilters && (
           <div className="hidden lg:block border rounded-lg p-4 bg-muted/30">
