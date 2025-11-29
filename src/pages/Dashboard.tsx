@@ -368,6 +368,12 @@ export default function Dashboard() {
                 highlight
               />
               <MetricRow label="Realisierter P&L" value={formatCurrency(summary.kpis.overall.realized_pnl)} highlight />
+              {summary.cashflows && (
+                <MetricRow
+                  label={summary.cashflows.net_cashflow_usdt < 0 ? "Einzahlungen" : "Auszahlungen"}
+                  value={formatCurrency(Math.abs(summary.cashflows.net_cashflow_usdt))}
+                />
+              )}
               <MetricRow label="Anzahl Trades" value={summary.kpis.overall.trade_count} />
               <Link to="/trades?tab=open" className="flex justify-between items-center py-0.5 hover:bg-muted/50 -mx-2 px-2 rounded transition-colors cursor-pointer">
                 <span className="text-sm text-muted-foreground">Offene Trades</span>

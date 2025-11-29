@@ -24,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import {
   Command,
@@ -108,10 +109,25 @@ const { data: exchangeKeys } = useQuery({
     }
   }, [isNew, uuid]);
 
-const { data: symbolsInfo = [] } = useQuery<SymbolInfo[]>({
+const { data: symbolsInfo = [], isLoading: symbolsLoading, error: symbolsError } = useQuery<SymbolInfo[]>({
   queryKey: ['allSymbolsInfo'],
   queryFn: () => getAllSymbols(),
+  staleTime: 5 * 60 * 1000, // 5 minutes
+  gcTime: 10 * 60 * 1000, // 10 minutes
+  refetchOnWindowFocus: false,
+  retry: 2,
+  retryDelay: 1000,
 });
+
+// Log symbols info for debugging
+useEffect(() => {
+  console.log('[BotDetail] Symbols state:', { 
+    loading: symbolsLoading, 
+    count: symbolsInfo.length, 
+    error: symbolsError,
+    sample: symbolsInfo.slice(0, 3)
+  });
+}, [symbolsLoading, symbolsInfo, symbolsError]);
 
 // Webhook secret (user-specific)
 const { data: webhookSecretData } = useQuery({
@@ -578,17 +594,21 @@ useMemo(() => {
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
                 <DialogTitle>Pair hinzufügen</DialogTitle>
+                <DialogDescription>Wähle zusätzliche Trading-Pairs für diesen Bot aus.</DialogDescription>
               </DialogHeader>
               <Command className="rounded-lg border">
                 <CommandInput placeholder="Pair suchen..." />
-                <CommandEmpty>Kein Pair gefunden.</CommandEmpty>
+                <CommandEmpty>
+                  {symbolsLoading
+                    ? 'Lade Symbole...'
+                    : symbolsError
+                      ? 'Fehler beim Laden der Symbole.'
+                      : 'Kein Pair gefunden.'}
+                </CommandEmpty>
                 <CommandGroup className="max-h-64 overflow-auto">
-{symbolsInfo
+{!symbolsLoading && !symbolsError && symbolsInfo
   .filter(s => !pairs.find(pair => pair.symbol === s.symbol))
   .map((s) => {
-    const iconSrc = s.icon_local_path 
-      ? `/api/v1/symbols/icons/${s.icon_local_path.split('/').pop()}` 
-      : s.icon_url || '';
     return (
       <CommandItem
         key={s.symbol}
@@ -600,10 +620,12 @@ useMemo(() => {
             : ''
         }`}
       >
-        {iconSrc ? (
-          <img src={iconSrc} alt={`${s.symbol} icon`} className="mr-2 h-5 w-5 rounded-full object-contain" />
+        {s.icon ? (
+          <img src={s.icon} alt={`${s.symbol} icon`} className="mr-2 h-5 w-5 rounded-full object-contain" />
         ) : (
-          <span className="mr-2 h-5 w-5" />
+          <div className="mr-2 h-5 w-5 rounded-full bg-muted flex items-center justify-center">
+            <span className="text-[10px] font-medium">{s.base_currency?.slice(0,2) || s.symbol.slice(0,2)}</span>
+          </div>
         )}
         <span className="font-medium">{s.symbol}</span>
         <span className="ml-2 text-xs text-muted-foreground">{s.base_currency || s.symbol.replace('USDT','')}</span>
@@ -657,16 +679,17 @@ useMemo(() => {
 {filteredPairs.map(pair => {
   const info = symbolsInfo.find(s => s.symbol === pair.symbol);
   const maxLev = getMaxLeverage(pair.symbol);
-  const iconSrc = info?.icon_local_path 
-    ? `/api/v1/symbols/icons/${info.icon_local_path.split('/').pop()}` 
-    : info?.icon_url || '';
   return (
     <div key={pair.symbol} className="py-1 flex items-start gap-1.5">
       {/* Icon */}
       <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 overflow-hidden">
-        {iconSrc ? (
-          <img src={iconSrc} alt={`${pair.symbol} icon`} className="h-6 w-6 object-contain" />
-        ) : null}
+        {info?.icon ? (
+          <img src={info.icon} alt={`${pair.symbol} icon`} className="h-6 w-6 object-contain" />
+        ) : (
+          <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center">
+            <span className="text-[10px] font-medium">{info?.base_currency?.slice(0,2) || pair.symbol.slice(0,2)}</span>
+          </div>
+        )}
       </div>
 
                   {/* Symbol + Long/Short Buttons */}

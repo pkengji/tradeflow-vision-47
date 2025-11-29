@@ -99,6 +99,8 @@ type SymbolRow = {
   step_size?: number | string | null;
   base_currency?: string | null;
   quote_currency?: string | null;
+  icon?: string | null;
+  max_leverage?: number | null;
 };
 
 type PositionsResponseRaw = {
@@ -224,6 +226,11 @@ export type TradesResponse = {
 // Dashboard Summary Types
 export type DashboardSummary = {
   portfolio_total_equity: number;
+  cashflows?: {
+    deposits_usdt: number;
+    withdrawals_usdt: number;
+    net_cashflow_usdt: number;
+  };
   kpis: {
     overall: DashboardKPIPeriod;
     today: DashboardKPIPeriod;
@@ -406,6 +413,10 @@ async function getFunding(position_id: number): Promise<any[]> {
 async function getSymbols(): Promise<string[]> {
   const rows = await http<SymbolRow[]>("/api/v1/symbols");
   return rows.map((s) => s.symbol ?? (s as any).name ?? String(s));
+}
+
+async function getPairs(): Promise<SymbolRow[]> {
+  return http<SymbolRow[]>("/api/v1/pairs");
 }
 
 async function getDailyPnl(params?: {
@@ -638,6 +649,7 @@ export const api = {
 
   // Symbols / PnL
   getSymbols,
+  getPairs,
   getDailyPnl,
 
   // Dashboard
