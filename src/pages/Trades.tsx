@@ -420,9 +420,30 @@ export default function Trades() {
     </Button>
   );
 
+  // Desktop Filter Button for header
+  const DesktopFilterButton = (
+    <Button
+      variant="outline"
+      size="icon"
+      onClick={() => setShowFilters(!showFilters)}
+      className="relative"
+    >
+      <SlidersHorizontal className="h-4 w-4" />
+      {activeFilterCount > 0 && (
+        <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center font-medium">
+          {activeFilterCount}
+        </span>
+      )}
+    </Button>
+  );
+
   // ---- 4.5 RENDER ----
   return (
-    <DashboardLayout pageTitle="Trades" mobileHeaderRight={FilterButton}>
+    <DashboardLayout
+      pageTitle="Trades"
+      mobileHeaderRight={FilterButton}
+      desktopHeaderRight={DesktopFilterButton}
+    >
       {/* Filter-Modal - Mobile */}
       {showFilters && (
         <div className="fixed inset-0 bg-background/80 z-50 lg:hidden" onClick={() => setShowFilters(false)}>
@@ -451,7 +472,7 @@ export default function Trades() {
       )}
 
       {/* Tabs integrated into header area - sticky */}
-      <div className="sticky top-14 z-10 bg-background border-b">
+      <div className="sticky top-14 lg:top-28 z-10 bg-background border-b">
         <Tabs value={activeTab} onValueChange={(v) => handleTabChange(v as TabKey)}>
           <TabsList className="grid w-full grid-cols-2 h-10 rounded-none border-0 bg-transparent p-0">
             <TabsTrigger
@@ -472,19 +493,6 @@ export default function Trades() {
 
       <div className="overflow-auto flex-1" ref={scrollContainerRef}>
         <div className="space-y-4 p-4 pb-24">
-          {/* Filter Button - Desktop */}
-          <div className="hidden lg:flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="relative">
-              <SlidersHorizontal className="h-4 w-4 mr-2" />
-              Filter
-              {activeFilterCount > 0 && (
-                <span className="ml-2 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-medium">
-                  {activeFilterCount}
-                </span>
-              )}
-            </Button>
-          </div>
-
           {/* Filter - Desktop (collapsible) */}
           {showFilters && (
             <div className="hidden lg:block border rounded-lg p-4 bg-muted/30">

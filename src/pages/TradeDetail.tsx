@@ -154,7 +154,11 @@ export default function TradeDetail() {
   );
 
   return (
-    <DashboardLayout pageTitle={`Position #${pid}`} mobileHeaderLeft={BackButton}>
+    <DashboardLayout
+      pageTitle={`Position #${pid}`}
+      mobileHeaderLeft={BackButton}
+      desktopHeaderLeft={BackButton}
+    >
       <div className="space-y-3 p-4 pb-24">
         {/* Header Card */}
         <Card>
