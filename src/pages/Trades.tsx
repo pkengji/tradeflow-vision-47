@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams, useLocation, useNavigationType } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import api, { type PositionListItem, type Bot } from "@/lib/api";
+import { getAllSymbols, type SymbolInfo } from "@/lib/symbols";
 import TradesFiltersBar, { type TradesFilters } from "@/components/app/TradesFiltersBar";
 import TradeCardCompact from "@/components/app/TradeCardCompact";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -103,6 +104,21 @@ export default function Trades() {
   const navigationType = useNavigationType(); // <--- NEU
   const [searchParams, setSearchParams] = useSearchParams();
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // Load symbols for icons
+  const { data: symbolsInfo = [] } = useQuery<SymbolInfo[]>({
+    queryKey: ['allSymbolsInfo'],
+    queryFn: () => getAllSymbols(),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  // Helper to get icon for a symbol
+  const getIconForSymbol = useCallback((symbol: string): string | undefined => {
+    const info = symbolsInfo.find(s => s.symbol === symbol);
+    return info?.icon || undefined;
+  }, [symbolsInfo]);
 
   // ---- 4.1 STATE (UI & Daten) ----
   const [activeTab, setActiveTab] = useState<TabKey>(() => {
@@ -519,6 +535,7 @@ export default function Trades() {
                           >
                             <TradeCardCompact
                               symbol={t.symbol}
+                              baseIconUrl={getIconForSymbol(t.symbol)}
                               side={t.side as "long" | "short"}
                               pnl={safeNumber(t.unrealized_pnl ?? t.pnl, 0)}
                               botName={t.bot_name ?? undefined}
@@ -579,6 +596,7 @@ export default function Trades() {
                           >
                             <TradeCardCompact
                               symbol={t.symbol}
+                              baseIconUrl={getIconForSymbol(t.symbol)}
                               side={t.side as "long" | "short"}
                               pnl={safeNumber(t.pnl, 0)}
                               botName={t.bot_name ?? undefined}

@@ -1,6 +1,6 @@
 // src/lib/symbols.ts
 // Utilities for symbol metadata and icons
-import { apiRequest } from '@/lib/api';
+import { api } from '@/lib/api';
 
 export type SymbolInfo = {
   symbol: string;
@@ -9,8 +9,7 @@ export type SymbolInfo = {
   step_size?: number | string | null;
   base_currency?: string | null;
   quote_currency?: string | null;
-  icon_url?: string | null;
-  icon_local_path?: string | null;
+  icon?: string | null;
 };
 
 // Simple in-memory cache for symbol info
@@ -18,7 +17,7 @@ let symbolCache: Map<string, SymbolInfo> | null = null;
 
 export async function getAllSymbols(): Promise<SymbolInfo[]> {
   console.log('[getAllSymbols] Starting fetch...');
-  const rows = await apiRequest<any[]>('/api/v1/symbols/all');
+  const rows = await api.getPairs();
   console.log('[getAllSymbols] Received data:', Array.isArray(rows) ? rows.length : 'non-array');
 
   if (!Array.isArray(rows)) {
@@ -27,18 +26,14 @@ export async function getAllSymbols(): Promise<SymbolInfo[]> {
   }
   
   const infos = rows.map((r: any) => {
-    if (typeof r === 'string') {
-      return { symbol: r } as SymbolInfo;
-    }
     return {
-      symbol: r.symbol || r.name || String(r),
-      max_leverage: r.max_leverage ?? r.maxLeverage,
-      tick_size: r.tick_size ?? r.tickSize ?? null,
-      step_size: r.step_size ?? r.stepSize ?? null,
-      base_currency: r.base_currency ?? r.baseCurrency ?? r.base ?? null,
-      quote_currency: r.quote_currency ?? r.quoteCurrency ?? r.quote ?? null,
-      icon_url: r.icon_url ?? r.icon ?? null,
-      icon_local_path: r.icon_local_path ?? r.iconLocalPath ?? null,
+      symbol: r.symbol || String(r),
+      max_leverage: r.max_leverage ?? 100,
+      tick_size: r.tick_size ?? null,
+      step_size: r.step_size ?? null,
+      base_currency: r.base_currency ?? r.base ?? null,
+      quote_currency: r.quote_currency ?? r.quote ?? null,
+      icon: r.icon ?? null,
     } as SymbolInfo;
   });
   
