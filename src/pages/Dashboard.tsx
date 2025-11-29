@@ -228,6 +228,17 @@ export default function Dashboard() {
     );
   }
 
+  const FilterButton = (
+    <Button variant="ghost" size="icon" onClick={() => setShowFilters(true)} className="relative">
+      <SlidersHorizontal className="h-5 w-5" />
+      {activeFilterCount > 0 && (
+        <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-medium">
+          {activeFilterCount}
+        </span>
+      )}
+    </Button>
+  );
+
   const overallTotalFeesUsdt =
     (summary?.kpis.overall.tx_breakdown_usdt?.fees || 0) +
     (summary?.kpis.overall.tx_breakdown_usdt?.funding || 0) +
@@ -237,16 +248,8 @@ export default function Dashboard() {
   return (
     <DashboardLayout
       pageTitle="Dashboard"
-      mobileHeaderRight={
-        <Button variant="ghost" size="icon" onClick={() => setShowFilters(true)} className="relative">
-          <SlidersHorizontal className="h-5 w-5" />
-          {activeFilterCount > 0 && (
-            <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-medium">
-              {activeFilterCount}
-            </span>
-          )}
-        </Button>
-      }
+      mobileHeaderRight={FilterButton}
+      desktopHeaderRight={FilterButton}
     >
       {/* Filter Modal (Mobile) */}
       {showFilters && (
