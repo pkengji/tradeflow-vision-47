@@ -33,7 +33,7 @@ export async function getAllSymbols(): Promise<SymbolInfo[]> {
       step_size: r.step_size ?? null,
       base_currency: r.base_currency ?? r.base ?? null,
       quote_currency: r.quote_currency ?? r.quote ?? null,
-      icon: r.icon ?? null,
+      icon: api.resolveIconUrl(r.icon ?? null),
     } as SymbolInfo;
   });
   

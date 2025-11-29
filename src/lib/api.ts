@@ -103,6 +103,16 @@ type SymbolRow = {
   max_leverage?: number | null;
 };
 
+function resolveIconUrl(icon?: string | null): string | null {
+  if (!icon) return null;
+  // Absolute URLs (http/https) can be used directly
+  if (/^https?:\/\//i.test(icon)) return icon;
+  // For relative paths like "/static/icons/aave.png" we need to prefix the API base URL
+  if (icon.startsWith("/")) return `${API_BASE}${icon}`;
+  // Fallback: treat as relative to API base
+  return `${API_BASE}/${icon}`;
+}
+
 type PositionsResponseRaw = {
   items: any[];
 };
@@ -651,6 +661,7 @@ export const api = {
   getSymbols,
   getPairs,
   getDailyPnl,
+  resolveIconUrl,
 
   // Dashboard
   getDashboardSummary,
