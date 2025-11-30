@@ -433,9 +433,9 @@ export default function Payments() {
                     </div>
                     <div className="divide-y divide-border">
                       {items.map((cf) => {
-                        const isDeposit = cf.direction === "deposit";
-                        const amountColor = isDeposit ? "text-success" : "text-danger";
-                        const amountText = isDeposit 
+                        const isWithdraw = cf.direction === "withdraw";
+                        const amountColor = isWithdraw ? "text-success" : "text-danger";
+                        const amountText = isWithdraw 
                           ? formatCurrency(cf.amount_usdt, false)
                           : formatCurrency(-cf.amount_usdt, true);
                         
@@ -446,7 +446,7 @@ export default function Payments() {
                           >
                             <div className="flex-1">
                               <div className="font-medium text-sm">
-                                {isDeposit ? "Einzahlung" : "Auszahlung"}
+                                {isWithdraw ? "Auszahlung" : "Einzahlung"}
                               </div>
                               <div className="text-xs text-muted-foreground">
                                 {new Date(cf.ts).toLocaleDateString("de-CH")}
