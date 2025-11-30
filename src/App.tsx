@@ -17,6 +17,7 @@ import SignalDetail from "./pages/SignalDetail";
 import Settings from './pages/Settings';
 import SettingsAccount from './pages/SettingsAccount';
 import SettingsNotifications from './pages/SettingsNotifications';
+import SettingsPayments from './pages/Payments';
 import SettingsTime from './pages/SettingsTime';
 import SettingsOwner from './pages/SettingsOwner';
 import NotFound from "@/pages/NotFound";
@@ -112,6 +113,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <SettingsNotifications />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/settings/payments"
+              element={
+                <ProtectedRoute>
+                  <SettingsPayments />
                 </ProtectedRoute>
               }
             />
