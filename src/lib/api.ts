@@ -107,7 +107,6 @@ type PositionsResponseRaw = {
   items: any[];
 };
 
-
 // ---------- Frontend-Typen (stabil) ----------
 
 export type Bot = {
@@ -308,7 +307,9 @@ async function resumeBot(id: number) {
 async function deleteBot(id: number) {
   return http(`/api/v1/bots/${id}`, { method: "DELETE" });
 }
-async function getBotExchangeKeys(id: number): Promise<{ api_key_masked: string | null; has_api_secret: boolean; account_kind?: string | null }> {
+async function getBotExchangeKeys(
+  id: number,
+): Promise<{ api_key_masked: string | null; has_api_secret: boolean; account_kind?: string | null }> {
   return http(`/api/v1/bots/${id}/exchange-keys`);
 }
 async function setBotExchangeKeys(id: number, data: { api_key: string; api_secret: string; account_kind?: string }) {
@@ -334,7 +335,11 @@ type PositionsParams = {
   status?: string;
   bot_id?: number;
   symbol?: string;
-  side?: string;
+  side?: string; // "long" | "short"; "beide" = weglassen
+  date_from?: string; // "2025-11-28"
+  date_to?: string;
+  open_hour?: string; // "18:00-19:00"
+  close_hour?: string;
   skip?: number;
   limit?: number;
 };
