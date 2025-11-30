@@ -190,10 +190,16 @@ export default function Trades() {
           params.side = filters.side;
         }
         if (filters.dateFrom) {
-          params.date_from = filters.dateFrom.toISOString().split("T")[0];
+          const y = filters.dateFrom.getFullYear();
+          const m = String(filters.dateFrom.getMonth() + 1).padStart(2, "0");
+          const d = String(filters.dateFrom.getDate()).padStart(2, "0");
+          params.date_from = `${y}-${m}-${d}`;
         }
         if (filters.dateTo) {
-          params.date_to = filters.dateTo.toISOString().split("T")[0];
+          const y = filters.dateTo.getFullYear();
+          const m = String(filters.dateTo.getMonth() + 1).padStart(2, "0");
+          const d = String(filters.dateTo.getDate()).padStart(2, "0");
+          params.date_to = `${y}-${m}-${d}`;
         }
         if (filters.timeFrom) {
           params.time_from = filters.timeFrom;
