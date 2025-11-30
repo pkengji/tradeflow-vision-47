@@ -197,11 +197,14 @@ export default function Dashboard() {
 
   const renderKPISection = (title: string, kpi: DashboardKPIPeriod | null) => {
     if (!kpi) return null;
-    const totalFeesUsdt =
-      (kpi.tx_breakdown_usdt?.fees || 0) +
-      (kpi.tx_breakdown_usdt?.funding || 0) +
-      (kpi.tx_breakdown_usdt?.slip_liquidity || 0) +
-      (kpi.tx_breakdown_usdt?.slip_time || 0);
+    
+    const txBreakdown = showCostAsPercent ? kpi.tx_breakdown_pct : kpi.tx_breakdown_usdt;
+    const totalFees = showCostAsPercent
+      ? ((txBreakdown?.fees || 0) + (txBreakdown?.funding || 0) + (txBreakdown?.slip_liquidity || 0) + (txBreakdown?.slip_time || 0))
+      : ((kpi.tx_breakdown_usdt?.fees || 0) + (kpi.tx_breakdown_usdt?.funding || 0) + (kpi.tx_breakdown_usdt?.slip_liquidity || 0) + (kpi.tx_breakdown_usdt?.slip_time || 0));
+    
+    const formatValue = (val: number) => showCostAsPercent ? `${(val * 100).toFixed(2)}%` : formatCurrency(val);
+    
     const totalTimelag =
       (kpi.timelag_ms?.ingress_ms_avg || 0) +
       (kpi.timelag_ms?.engine_ms_avg || 0) +
@@ -221,16 +224,16 @@ export default function Dashboard() {
             <div className="flex justify-between items-center mb-1">
               <span className="text-sm font-medium">Transaktionskosten</span>
               <span className="text-sm font-semibold">
-                {formatCurrency(totalFeesUsdt)}
+                {formatValue(totalFees)}
               </span>
             </div>
-            <MetricRow label="Fees" value={formatCurrency(kpi.tx_breakdown_usdt?.fees || 0)} />
-            <MetricRow label="Funding" value={formatCurrency(kpi.tx_breakdown_usdt?.funding || 0)} />
+            <MetricRow label="Fees" value={formatValue(txBreakdown?.fees || 0)} />
+            <MetricRow label="Funding" value={formatValue(txBreakdown?.funding || 0)} />
             <MetricRow
               label="Slippage (Liquidität)"
-              value={formatCurrency(kpi.tx_breakdown_usdt?.slip_liquidity || 0)}
+              value={formatValue(txBreakdown?.slip_liquidity || 0)}
             />
-            <MetricRow label="Slippage (Timelag)" value={formatCurrency(kpi.tx_breakdown_usdt?.slip_time || 0)} />
+            <MetricRow label="Slippage (Timelag)" value={formatValue(txBreakdown?.slip_time || 0)} />
           </div>
 
           <div className="pt-2 border-t">
@@ -267,11 +270,12 @@ export default function Dashboard() {
     </Button>
   );
 
-  const overallTotalFeesUsdt =
-    (summary?.kpis.overall.tx_breakdown_usdt?.fees || 0) +
-    (summary?.kpis.overall.tx_breakdown_usdt?.funding || 0) +
-    (summary?.kpis.overall.tx_breakdown_usdt?.slip_liquidity || 0) +
-    (summary?.kpis.overall.tx_breakdown_usdt?.slip_time || 0);
+  const overallTxBreakdown = showCostAsPercent ? summary?.kpis.overall.tx_breakdown_pct : summary?.kpis.overall.tx_breakdown_usdt;
+  const overallTotalFees = showCostAsPercent
+    ? ((overallTxBreakdown?.fees || 0) + (overallTxBreakdown?.funding || 0) + (overallTxBreakdown?.slip_liquidity || 0) + (overallTxBreakdown?.slip_time || 0))
+    : ((summary?.kpis.overall.tx_breakdown_usdt?.fees || 0) + (summary?.kpis.overall.tx_breakdown_usdt?.funding || 0) + (summary?.kpis.overall.tx_breakdown_usdt?.slip_liquidity || 0) + (summary?.kpis.overall.tx_breakdown_usdt?.slip_time || 0));
+  
+  const formatOverallValue = (val: number) => showCostAsPercent ? `${(val * 100).toFixed(2)}%` : formatCurrency(val);
 
   return (
     <DashboardLayout
@@ -406,21 +410,21 @@ export default function Dashboard() {
                 <div className="flex justify-between items-center mb-1">
                   <span className="text-sm font-medium">Transaktionskosten</span>
                   <span className="text-sm font-semibold">
-                    {formatCurrency(overallTotalFeesUsdt)}
+                    {formatOverallValue(overallTotalFees)}
                   </span>
                 </div>
-                <MetricRow label="Fees" value={formatCurrency(summary.kpis.overall.tx_breakdown_usdt?.fees || 0)} />
+                <MetricRow label="Fees" value={formatOverallValue(overallTxBreakdown?.fees || 0)} />
                 <MetricRow
                   label="Funding"
-                  value={formatCurrency(summary.kpis.overall.tx_breakdown_usdt?.funding || 0)}
+                  value={formatOverallValue(overallTxBreakdown?.funding || 0)}
                 />
                 <MetricRow
                   label="Slippage (Liquidität)"
-                  value={formatCurrency(summary.kpis.overall.tx_breakdown_usdt?.slip_liquidity || 0)}
+                  value={formatOverallValue(overallTxBreakdown?.slip_liquidity || 0)}
                 />
                 <MetricRow
                   label="Slippage (Timelag)"
-                  value={formatCurrency(summary.kpis.overall.tx_breakdown_usdt?.slip_time || 0)}
+                  value={formatOverallValue(overallTxBreakdown?.slip_time || 0)}
                 />
               </div>
 
