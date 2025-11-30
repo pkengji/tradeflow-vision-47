@@ -190,10 +190,16 @@ export default function Trades() {
           params.side = filters.side;
         }
         if (filters.dateFrom) {
-          params.date_from = filters.dateFrom.toISOString().split("T")[0];
+          const year = filters.dateFrom.getFullYear();
+          const month = String(filters.dateFrom.getMonth() + 1).padStart(2, '0');
+          const day = String(filters.dateFrom.getDate()).padStart(2, '0');
+          params.date_from = `${year}-${month}-${day}`;
         }
         if (filters.dateTo) {
-          params.date_to = filters.dateTo.toISOString().split("T")[0];
+          const year = filters.dateTo.getFullYear();
+          const month = String(filters.dateTo.getMonth() + 1).padStart(2, '0');
+          const day = String(filters.dateTo.getDate()).padStart(2, '0');
+          params.date_to = `${year}-${month}-${day}`;
         }
         if (filters.timeFrom) {
           params.time_from = filters.timeFrom;
@@ -244,10 +250,16 @@ export default function Trades() {
           params.side = filters.side;
         }
         if (filters.dateFrom) {
-          params.date_from = filters.dateFrom.toISOString().split("T")[0];
+          const year = filters.dateFrom.getFullYear();
+          const month = String(filters.dateFrom.getMonth() + 1).padStart(2, '0');
+          const day = String(filters.dateFrom.getDate()).padStart(2, '0');
+          params.date_from = `${year}-${month}-${day}`;
         }
         if (filters.dateTo) {
-          params.date_to = filters.dateTo.toISOString().split("T")[0];
+          const year = filters.dateTo.getFullYear();
+          const month = String(filters.dateTo.getMonth() + 1).padStart(2, '0');
+          const day = String(filters.dateTo.getDate()).padStart(2, '0');
+          params.date_to = `${year}-${month}-${day}`;
         }
         if (filters.timeFrom) {
           params.time_from = filters.timeFrom;
