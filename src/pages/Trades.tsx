@@ -457,22 +457,15 @@ export default function Trades() {
             className="fixed inset-x-0 top-14 bottom-16 bg-background flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="overflow-auto">
-              <TradesFiltersBar
-                value={filters}
-                onChange={setFilters}
-                availableBots={bots}
-                availableSymbols={symbols}
-                showDateRange={true}
-                showTimeRange={true}
-                showSignalKind={false}
-              />
-            </div>
-            <div className="border-t p-3">
-              <Button className="w-full" onClick={() => setShowFilters(false)}>
-                Fertig
-              </Button>
-            </div>
+            <TradesFiltersBar
+              value={filters}
+              onChange={setFilters}
+              availableBots={bots}
+              availableSymbols={symbols}
+              showDateRange={true}
+              showTimeRange={true}
+              showSignalKind={false}
+            />
           </div>
         </div>
       )}
@@ -502,22 +495,15 @@ export default function Trades() {
           {/* Filter - Desktop (collapsible) */}
           {showFilters && (
             <div className="hidden lg:block border rounded-lg bg-muted/30">
-              <div className="p-4">
-                <TradesFiltersBar
-                  value={filters}
-                  onChange={setFilters}
-                  availableBots={bots}
-                  availableSymbols={symbols}
-                  showDateRange={true}
-                  showTimeRange={true}
-                  showSignalKind={false}
-                />
-              </div>
-              <div className="border-t p-3">
-                <Button className="w-full" onClick={() => setShowFilters(false)}>
-                  Fertig
-                </Button>
-              </div>
+              <TradesFiltersBar
+                value={filters}
+                onChange={setFilters}
+                availableBots={bots}
+                availableSymbols={symbols}
+                showDateRange={true}
+                showTimeRange={true}
+                showSignalKind={false}
+              />
             </div>
           )}
 
