@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { SlidersHorizontal, Plus, Pencil, Trash2 } from "lucide-react";
+import { SlidersHorizontal, Plus, Pencil, Trash2, ChevronLeft } from "lucide-react";
 import api, { type CashflowOut } from "@/lib/api";
 import { formatCurrency } from "@/lib/formatters";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -43,7 +44,7 @@ function formatDateHeader(dateStr: string | null): string {
 function groupCashflowsByDate(cashflows: CashflowOut[]): Map<string, CashflowOut[]> {
   const groups = new Map<string, CashflowOut[]>();
   for (const cf of cashflows) {
-    const dateStr = cf.date;
+    const dateStr = cf.ts;
     if (!dateStr) continue;
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) continue;
@@ -210,7 +211,10 @@ export default function Payments() {
   const openEditDialog = (cf: CashflowOut) => {
     setEditingCashflow(cf);
     setFormAmount(cf.amount_usdt.toString());
-    setFormDate(cf.date);
+    // Extract date from ts field (YYYY-MM-DD)
+    const date = new Date(cf.ts);
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    setFormDate(dateStr);
     setShowEditDialog(true);
   };
 
@@ -290,9 +294,19 @@ export default function Payments() {
     </Button>
   );
 
+  const BackButton = (
+    <Link to="/settings">
+      <Button variant="ghost" size="icon">
+        <ChevronLeft className="h-5 w-5" />
+      </Button>
+    </Link>
+  );
+
   return (
     <DashboardLayout
       pageTitle="Zahlungen"
+      mobileHeaderLeft={BackButton}
+      desktopHeaderLeft={BackButton}
       mobileHeaderRight={FilterButton}
       desktopHeaderRight={DesktopFilterButton}
     >
@@ -435,7 +449,7 @@ export default function Payments() {
                                 {isDeposit ? "Einzahlung" : "Auszahlung"}
                               </div>
                               <div className="text-xs text-muted-foreground">
-                                {new Date(cf.date).toLocaleDateString("de-CH")}
+                                {new Date(cf.ts).toLocaleDateString("de-CH")}
                               </div>
                             </div>
                             <div className="flex items-center gap-3">
