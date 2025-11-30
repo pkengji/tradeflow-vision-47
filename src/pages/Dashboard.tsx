@@ -27,10 +27,9 @@ export default function Dashboard() {
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
   const [direction, setDirection] = useState<string>("both");
-  const [openHourFrom, setOpenHourFrom] = useState<string>("");
-  const [openHourTo, setOpenHourTo] = useState<string>("");
-  const [closeHourFrom, setCloseHourFrom] = useState<string>("");
-  const [closeHourTo, setCloseHourTo] = useState<string>("");
+  const [timeFrom, setTimeFrom] = useState<string>("");
+  const [timeTo, setTimeTo] = useState<string>("");
+  const [timeMode, setTimeMode] = useState<"opened" | "closed">("opened");
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
@@ -66,8 +65,14 @@ export default function Dashboard() {
         if (direction && direction !== "both") params.direction = direction;
         if (dateFrom) params.date_from = dateFrom.toISOString().split("T")[0];
         if (dateTo) params.date_to = dateTo.toISOString().split("T")[0];
-        if (openHourFrom && openHourTo) params.open_hour = `${openHourFrom}-${openHourTo}`;
-        if (closeHourFrom && closeHourTo) params.close_hour = `${closeHourFrom}-${closeHourTo}`;
+        if (timeFrom && timeTo) {
+          const hourParam = `${timeFrom}-${timeTo}`;
+          if (timeMode === "opened") {
+            params.open_hour = hourParam;
+          } else {
+            params.close_hour = hourParam;
+          }
+        }
 
         const [summaryData, dailyData] = await Promise.all([api.getDashboardSummary(params), api.getDailyPnl(params)]);
 
@@ -85,10 +90,9 @@ export default function Dashboard() {
     direction,
     dateFrom,
     dateTo,
-    openHourFrom,
-    openHourTo,
-    closeHourFrom,
-    closeHourTo,
+    timeFrom,
+    timeTo,
+    timeMode,
   ]);
 
   // Separate effect for chart data (only date filter, no other filters)
@@ -124,8 +128,7 @@ export default function Dashboard() {
     if (selectedSymbols.length > 0) count++;
     if (direction && direction !== "both") count++;
     if (dateFrom || dateTo) count++;
-    if (openHourFrom || openHourTo) count++;
-    if (closeHourFrom || closeHourTo) count++;
+    if (timeFrom || timeTo) count++;
     return count;
   }, [
     selectedBots,
@@ -133,10 +136,8 @@ export default function Dashboard() {
     direction,
     dateFrom,
     dateTo,
-    openHourFrom,
-    openHourTo,
-    closeHourFrom,
-    closeHourTo,
+    timeFrom,
+    timeTo,
   ]);
 
   const handleResetFilters = () => {
@@ -145,10 +146,9 @@ export default function Dashboard() {
     setDateFrom(undefined);
     setDateTo(undefined);
     setDirection("both");
-    setOpenHourFrom("");
-    setOpenHourTo("");
-    setCloseHourFrom("");
-    setCloseHourTo("");
+    setTimeFrom("");
+    setTimeTo("");
+    setTimeMode("opened");
   };
 
   // Helper components
@@ -229,7 +229,7 @@ export default function Dashboard() {
   }
 
   const FilterButton = (
-    <Button variant="ghost" size="icon" onClick={() => setShowFilters(true)} className="relative">
+    <Button variant="ghost" size="icon" onClick={() => setShowFilters(!showFilters)} className="relative">
       <SlidersHorizontal className="h-5 w-5" />
       {activeFilterCount > 0 && (
         <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-medium">
@@ -270,14 +270,12 @@ export default function Dashboard() {
                 onDateToChange={setDateTo}
                 direction={direction}
                 onDirectionChange={setDirection}
-                openHourFrom={openHourFrom}
-                openHourTo={openHourTo}
-                onOpenHourFromChange={setOpenHourFrom}
-                onOpenHourToChange={setOpenHourTo}
-                closeHourFrom={closeHourFrom}
-                closeHourTo={closeHourTo}
-                onCloseHourFromChange={setCloseHourFrom}
-                onCloseHourToChange={setCloseHourTo}
+                timeFrom={timeFrom}
+                timeTo={timeTo}
+                onTimeFromChange={setTimeFrom}
+                onTimeToChange={setTimeTo}
+                timeMode={timeMode}
+                onTimeModeChange={setTimeMode}
                 onResetFilters={handleResetFilters}
                 availableBots={bots}
                 availableSymbols={symbols}
@@ -312,14 +310,12 @@ export default function Dashboard() {
                 onDateToChange={setDateTo}
                 direction={direction}
                 onDirectionChange={setDirection}
-                openHourFrom={openHourFrom}
-                openHourTo={openHourTo}
-                onOpenHourFromChange={setOpenHourFrom}
-                onOpenHourToChange={setOpenHourTo}
-                closeHourFrom={closeHourFrom}
-                closeHourTo={closeHourTo}
-                onCloseHourFromChange={setCloseHourFrom}
-                onCloseHourToChange={setCloseHourTo}
+                timeFrom={timeFrom}
+                timeTo={timeTo}
+                onTimeFromChange={setTimeFrom}
+                onTimeToChange={setTimeTo}
+                timeMode={timeMode}
+                onTimeModeChange={setTimeMode}
                 onResetFilters={handleResetFilters}
                 availableBots={bots}
                 availableSymbols={symbols}

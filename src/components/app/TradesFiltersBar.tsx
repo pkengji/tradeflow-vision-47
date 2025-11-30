@@ -31,14 +31,12 @@ type Props = {
   onDateToChange?: (date: Date | undefined) => void;
   direction?: string;
   onDirectionChange?: (direction: string) => void;
-  openHourFrom?: string;
-  openHourTo?: string;
-  onOpenHourFromChange?: (value: string) => void;
-  onOpenHourToChange?: (value: string) => void;
-  closeHourFrom?: string;
-  closeHourTo?: string;
-  onCloseHourFromChange?: (value: string) => void;
-  onCloseHourToChange?: (value: string) => void;
+  timeFrom?: string;
+  timeTo?: string;
+  onTimeFromChange?: (value: string) => void;
+  onTimeToChange?: (value: string) => void;
+  timeMode?: "opened" | "closed";
+  onTimeModeChange?: (mode: "opened" | "closed") => void;
   onResetFilters?: () => void;
   showCostAsPercent?: boolean;
   onShowCostAsPercentChange?: (value: boolean) => void;
@@ -67,14 +65,12 @@ export default function TradesFiltersBar({
   onDateToChange,
   direction,
   onDirectionChange,
-  openHourFrom,
-  openHourTo,
-  onOpenHourFromChange,
-  onOpenHourToChange,
-  closeHourFrom,
-  closeHourTo,
-  onCloseHourFromChange,
-  onCloseHourToChange,
+  timeFrom,
+  timeTo,
+  onTimeFromChange,
+  onTimeToChange,
+  timeMode,
+  onTimeModeChange,
   onResetFilters,
   showCostAsPercent,
   onShowCostAsPercentChange,
@@ -165,8 +161,7 @@ export default function TradesFiltersBar({
       if (currentSymbols.length > 0) count++;
       if (direction && direction !== 'both') count++;
       if (currentDateFrom || currentDateTo) count++;
-      if (openHourFrom || openHourTo) count++;
-      if (closeHourFrom || closeHourTo) count++;
+      if (timeFrom || timeTo) count++;
     } else if (value) {
       if (value.botIds.length > 0) count++;
       if (value.symbols.length > 0) count++;
@@ -177,7 +172,7 @@ export default function TradesFiltersBar({
       if (value.signalStatus && value.signalStatus !== 'all') count++;
     }
     return count;
-  }, [isDashboardMode, currentBots, currentSymbols, direction, currentDateFrom, currentDateTo, openHourFrom, openHourTo, closeHourFrom, closeHourTo, value]);
+  }, [isDashboardMode, currentBots, currentSymbols, direction, currentDateFrom, currentDateTo, timeFrom, timeTo, value]);
 
   return (
     <div className="w-full p-4 space-y-3">
@@ -373,41 +368,42 @@ export default function TradesFiltersBar({
           {/* Tageszeitfilter */}
           {showTimeRange && (
             <>
-              {isDashboardMode && onOpenHourFromChange && onOpenHourToChange && onCloseHourFromChange && onCloseHourToChange ? (
+              {isDashboardMode && onTimeFromChange && onTimeToChange && onTimeModeChange && timeMode !== undefined ? (
                 <div className="space-y-2">
-                  <div className="text-xs font-medium">Tageszeit (Opened)</div>
+                  <div className="text-xs font-medium">Tageszeit</div>
                   <div className="flex gap-2">
                     <Input
                       type="time"
-                      value={openHourFrom || ''}
-                      onChange={(e) => onOpenHourFromChange(e.target.value)}
+                      value={timeFrom || ''}
+                      onChange={(e) => onTimeFromChange(e.target.value)}
                       className="text-sm"
                       placeholder="Von"
                     />
                     <Input
                       type="time"
-                      value={openHourTo || ''}
-                      onChange={(e) => onOpenHourToChange(e.target.value)}
+                      value={timeTo || ''}
+                      onChange={(e) => onTimeToChange(e.target.value)}
                       className="text-sm"
                       placeholder="Bis"
                     />
                   </div>
-                  <div className="text-xs font-medium mt-2">Tageszeit (Closed)</div>
-                  <div className="flex gap-2">
-                    <Input
-                      type="time"
-                      value={closeHourFrom || ''}
-                      onChange={(e) => onCloseHourFromChange(e.target.value)}
-                      className="text-sm"
-                      placeholder="Von"
-                    />
-                    <Input
-                      type="time"
-                      value={closeHourTo || ''}
-                      onChange={(e) => onCloseHourToChange(e.target.value)}
-                      className="text-sm"
-                      placeholder="Bis"
-                    />
+                  <div className="flex gap-2 mt-2">
+                    <Button
+                      size="sm"
+                      variant={timeMode === 'opened' ? 'default' : 'outline'}
+                      className="flex-1"
+                      onClick={() => onTimeModeChange('opened')}
+                    >
+                      Geöffnet
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={timeMode === 'closed' ? 'default' : 'outline'}
+                      className="flex-1"
+                      onClick={() => onTimeModeChange('closed')}
+                    >
+                      Geschlossen
+                    </Button>
                   </div>
                 </div>
               ) : !isDashboardMode && value && onChange ? (
