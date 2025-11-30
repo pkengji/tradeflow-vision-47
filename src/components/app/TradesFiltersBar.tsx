@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Calendar } from '@/components/ui/calendar';
@@ -92,10 +92,51 @@ export default function TradesFiltersBar({
 
   // Use Dashboard props or Trades/Signals props
   const isDashboardMode = onBotsChange !== undefined;
-  const currentBots = isDashboardMode ? (selectedBots || []) : (value?.botIds || []);
-  const currentSymbols = isDashboardMode ? (selectedSymbols || []) : (value?.symbols || []);
-  const currentDateFrom = isDashboardMode ? dateFrom : value?.dateFrom;
-  const currentDateTo = isDashboardMode ? dateTo : value?.dateTo;
+  
+  // Local intermediate states for filters
+  const [localBots, setLocalBots] = useState<number[]>([]);
+  const [localSymbols, setLocalSymbols] = useState<string[]>([]);
+  const [localDirection, setLocalDirection] = useState<string>('both');
+  const [localSide, setLocalSide] = useState<'all' | 'long' | 'short'>('all');
+  const [localDateFrom, setLocalDateFrom] = useState<Date | undefined>();
+  const [localDateTo, setLocalDateTo] = useState<Date | undefined>();
+  const [localTimeFrom, setLocalTimeFrom] = useState<string>('');
+  const [localTimeTo, setLocalTimeTo] = useState<string>('');
+  const [localTimeMode, setLocalTimeMode] = useState<'opened' | 'closed'>('opened');
+  const [localShowCostAsPercent, setLocalShowCostAsPercent] = useState(false);
+  const [localSignalKind, setLocalSignalKind] = useState<'all' | 'automatic' | 'manual'>('all');
+  const [localSignalStatus, setLocalSignalStatus] = useState<'all' | 'completed' | 'failed' | 'rejected' | 'pending' | 'waiting_for_approval'>('all');
+
+  // Initialize local states from props
+  useEffect(() => {
+    if (isDashboardMode) {
+      setLocalBots(selectedBots || []);
+      setLocalSymbols(selectedSymbols || []);
+      setLocalDirection(direction || 'both');
+      setLocalDateFrom(dateFrom);
+      setLocalDateTo(dateTo);
+      setLocalTimeFrom(timeFrom || '');
+      setLocalTimeTo(timeTo || '');
+      setLocalTimeMode(timeMode || 'opened');
+      setLocalShowCostAsPercent(showCostAsPercent || false);
+    } else if (value) {
+      setLocalBots(value.botIds || []);
+      setLocalSymbols(value.symbols || []);
+      setLocalSide(value.side || 'all');
+      setLocalDateFrom(value.dateFrom);
+      setLocalDateTo(value.dateTo);
+      setLocalTimeFrom(value.timeFrom || '');
+      setLocalTimeTo(value.timeTo || '');
+      setLocalTimeMode(value.timeMode || 'opened');
+      setLocalSignalKind(value.signalKind || 'all');
+      setLocalSignalStatus(value.signalStatus || 'all');
+    }
+  }, [isDashboardMode, selectedBots, selectedSymbols, direction, dateFrom, dateTo, timeFrom, timeTo, timeMode, showCostAsPercent, value]);
+
+  const currentBots = localBots;
+  const currentSymbols = localSymbols;
+  const currentDateFrom = localDateFrom;
+  const currentDateTo = localDateTo;
 
   const filteredBots = useMemo(() => {
     if (!botSearch) return availableBots;
@@ -110,26 +151,56 @@ export default function TradesFiltersBar({
   }, [availableSymbols, symbolSearch]);
 
   const toggleBot = (id: number) => {
-    if (isDashboardMode && onBotsChange) {
-      const has = currentBots.includes(id);
-      onBotsChange(has ? currentBots.filter((x) => x !== id) : [...currentBots, id]);
-    } else if (value && onChange) {
-      const has = value.botIds.includes(id);
-      onChange({ ...value, botIds: has ? value.botIds.filter((x) => x !== id) : [...value.botIds, id] });
-    }
+    const has = currentBots.includes(id);
+    setLocalBots(has ? currentBots.filter((x) => x !== id) : [...currentBots, id]);
   };
 
   const toggleSymbol = (sym: string) => {
-    if (isDashboardMode && onSymbolsChange) {
-      const has = currentSymbols.includes(sym);
-      onSymbolsChange(has ? currentSymbols.filter((x) => x !== sym) : [...currentSymbols, sym]);
-    } else if (value && onChange) {
-      const has = value.symbols.includes(sym);
-      onChange({ ...value, symbols: has ? value.symbols.filter((x) => x !== sym) : [...value.symbols, sym] });
+    const has = currentSymbols.includes(sym);
+    setLocalSymbols(has ? currentSymbols.filter((x) => x !== sym) : [...currentSymbols, sym]);
+  };
+
+  const applyFilters = () => {
+    if (isDashboardMode) {
+      onBotsChange?.(localBots);
+      onSymbolsChange?.(localSymbols);
+      onDirectionChange?.(localDirection);
+      onDateFromChange?.(localDateFrom);
+      onDateToChange?.(localDateTo);
+      onTimeFromChange?.(localTimeFrom);
+      onTimeToChange?.(localTimeTo);
+      onTimeModeChange?.(localTimeMode);
+      onShowCostAsPercentChange?.(localShowCostAsPercent);
+    } else if (onChange) {
+      onChange({
+        botIds: localBots,
+        symbols: localSymbols,
+        side: localSide,
+        dateFrom: localDateFrom,
+        dateTo: localDateTo,
+        timeFrom: localTimeFrom,
+        timeTo: localTimeTo,
+        timeMode: localTimeMode,
+        signalKind: localSignalKind,
+        signalStatus: localSignalStatus,
+      });
     }
   };
 
   const resetFilters = () => {
+    setLocalBots([]);
+    setLocalSymbols([]);
+    setLocalDirection('both');
+    setLocalSide('all');
+    setLocalDateFrom(undefined);
+    setLocalDateTo(undefined);
+    setLocalTimeFrom('');
+    setLocalTimeTo('');
+    setLocalTimeMode('opened');
+    setLocalShowCostAsPercent(false);
+    setLocalSignalKind('all');
+    setLocalSignalStatus('all');
+    
     if (isDashboardMode && onResetFilters) {
       onResetFilters();
     } else if (onChange) {
@@ -156,27 +227,24 @@ export default function TradesFiltersBar({
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
+    if (currentBots.length > 0) count++;
+    if (currentSymbols.length > 0) count++;
     if (isDashboardMode) {
-      if (currentBots.length > 0) count++;
-      if (currentSymbols.length > 0) count++;
-      if (direction && direction !== 'both') count++;
-      if (currentDateFrom || currentDateTo) count++;
-      if (timeFrom || timeTo) count++;
-    } else if (value) {
-      if (value.botIds.length > 0) count++;
-      if (value.symbols.length > 0) count++;
-      if (value.side && value.side !== 'all') count++;
-      if (value.dateFrom || value.dateTo) count++;
-      if (value.timeFrom || value.timeTo) count++;
-      if (value.signalKind && value.signalKind !== 'all') count++;
-      if (value.signalStatus && value.signalStatus !== 'all') count++;
+      if (localDirection && localDirection !== 'both') count++;
+      if (localTimeFrom || localTimeTo) count++;
+    } else {
+      if (localSide && localSide !== 'all') count++;
+      if (localTimeFrom || localTimeTo) count++;
+      if (localSignalKind && localSignalKind !== 'all') count++;
+      if (localSignalStatus && localSignalStatus !== 'all') count++;
     }
+    if (currentDateFrom || currentDateTo) count++;
     return count;
-  }, [isDashboardMode, currentBots, currentSymbols, direction, currentDateFrom, currentDateTo, timeFrom, timeTo, value]);
+  }, [currentBots, currentSymbols, isDashboardMode, localDirection, localSide, currentDateFrom, currentDateTo, localTimeFrom, localTimeTo, localSignalKind, localSignalStatus]);
 
   return (
-    <div className="w-full p-4 space-y-3">
-      {showFilters && (
+    <div className="w-full">
+      <div className="p-4">
         <div className="bg-card border rounded-lg shadow-lg p-4 space-y-3">
           <div className="flex items-center justify-between border-b pb-2">
             <span className="font-medium">Filter</span>
@@ -242,238 +310,165 @@ export default function TradesFiltersBar({
 
           {/* Richtung */}
           <div className="flex gap-2">
-            {isDashboardMode && onDirectionChange ? (
+            {isDashboardMode ? (
               <>
                 <Button
                   size="sm"
-                  variant={direction === 'both' ? 'default' : 'outline'}
+                  variant={localDirection === 'both' ? 'default' : 'outline'}
                   className="flex-1"
-                  onClick={() => onDirectionChange('both')}
+                  onClick={() => setLocalDirection('both')}
                 >
                   Alle
                 </Button>
                 <Button
                   size="sm"
-                  variant={direction === 'long' ? 'default' : 'outline'}
+                  variant={localDirection === 'long' ? 'default' : 'outline'}
                   className="flex-1"
-                  onClick={() => onDirectionChange('long')}
+                  onClick={() => setLocalDirection('long')}
                 >
                   Long
                 </Button>
                 <Button
                   size="sm"
-                  variant={direction === 'short' ? 'default' : 'outline'}
+                  variant={localDirection === 'short' ? 'default' : 'outline'}
                   className="flex-1"
-                  onClick={() => onDirectionChange('short')}
+                  onClick={() => setLocalDirection('short')}
                 >
                   Short
                 </Button>
               </>
-            ) : value && onChange ? (
+            ) : (
               <>
                 <Button
                   size="sm"
-                  variant={value.side === 'all' ? 'default' : 'outline'}
+                  variant={localSide === 'all' ? 'default' : 'outline'}
                   className="flex-1"
-                  onClick={() => onChange({ ...value, side: 'all' })}
+                  onClick={() => setLocalSide('all')}
                 >
                   Alle
                 </Button>
                 <Button
                   size="sm"
-                  variant={value.side === 'long' ? 'default' : 'outline'}
+                  variant={localSide === 'long' ? 'default' : 'outline'}
                   className="flex-1"
-                  onClick={() => onChange({ ...value, side: 'long' })}
+                  onClick={() => setLocalSide('long')}
                 >
                   Long
                 </Button>
                 <Button
                   size="sm"
-                  variant={value.side === 'short' ? 'default' : 'outline'}
+                  variant={localSide === 'short' ? 'default' : 'outline'}
                   className="flex-1"
-                  onClick={() => onChange({ ...value, side: 'short' })}
+                  onClick={() => setLocalSide('short')}
                 >
                   Short
                 </Button>
               </>
-            ) : null}
+            )}
           </div>
 
           {/* Datumsbereich */}
           {showDateRange && (
             <div className="space-y-2">
               <div className="text-xs font-medium">Datumsbereich</div>
-              {isDashboardMode ? (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="w-full justify-start">
-                      <CalendarIcon className="h-4 w-4 mr-2" />
-                      {currentDateFrom || currentDateTo
-                        ? `${currentDateFrom ? format(currentDateFrom, 'dd.MM.yyyy') : '...'} - ${currentDateTo ? format(currentDateTo, 'dd.MM.yyyy') : '...'}`
-                        : 'Datum wählen'}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <div className="p-3 space-y-2">
-                      <div className="text-xs font-medium">Von</div>
-                      <Calendar
-                        mode="single"
-                        selected={currentDateFrom}
-                        onSelect={(date) => onDateFromChange?.(date)}
-                        className="pointer-events-auto"
-                      />
-                      <div className="text-xs font-medium mt-2">Bis</div>
-                      <Calendar
-                        mode="single"
-                        selected={currentDateTo}
-                        onSelect={(date) => onDateToChange?.(date)}
-                        className="pointer-events-auto"
-                      />
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              ) : value && onChange ? (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="w-full justify-start">
-                      <CalendarIcon className="h-4 w-4 mr-2" />
-                      {value.dateFrom || value.dateTo
-                        ? `${value.dateFrom ? format(value.dateFrom, 'dd.MM.yyyy') : '...'} - ${value.dateTo ? format(value.dateTo, 'dd.MM.yyyy') : '...'}`
-                        : 'Datum wählen'}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <div className="p-3 space-y-2">
-                      <div className="text-xs font-medium">Von</div>
-                      <Calendar
-                        mode="single"
-                        selected={value.dateFrom}
-                        onSelect={(date) => onChange({ ...value, dateFrom: date })}
-                        className="pointer-events-auto"
-                      />
-                      <div className="text-xs font-medium mt-2">Bis</div>
-                      <Calendar
-                        mode="single"
-                        selected={value.dateTo}
-                        onSelect={(date) => onChange({ ...value, dateTo: date })}
-                        className="pointer-events-auto"
-                      />
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              ) : null}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-full justify-start">
+                    <CalendarIcon className="h-4 w-4 mr-2" />
+                    {currentDateFrom || currentDateTo
+                      ? `${currentDateFrom ? format(currentDateFrom, 'dd.MM.yyyy') : '...'} - ${currentDateTo ? format(currentDateTo, 'dd.MM.yyyy') : '...'}`
+                      : 'Datum wählen'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <div className="p-3 space-y-2">
+                    <div className="text-xs font-medium">Von</div>
+                    <Calendar
+                      mode="single"
+                      selected={currentDateFrom}
+                      onSelect={(date) => setLocalDateFrom(date)}
+                      className="pointer-events-auto"
+                    />
+                    <div className="text-xs font-medium mt-2">Bis</div>
+                    <Calendar
+                      mode="single"
+                      selected={currentDateTo}
+                      onSelect={(date) => setLocalDateTo(date)}
+                      className="pointer-events-auto"
+                    />
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
           )}
 
           {/* Tageszeitfilter */}
           {showTimeRange && (
-            <>
-              {isDashboardMode && onTimeFromChange && onTimeToChange && onTimeModeChange && timeMode !== undefined ? (
-                <div className="space-y-2">
-                  <div className="text-xs font-medium">Tageszeit</div>
-                  <div className="flex gap-2">
-                    <Input
-                      type="time"
-                      value={timeFrom || ''}
-                      onChange={(e) => onTimeFromChange(e.target.value)}
-                      className="text-sm"
-                      placeholder="Von"
-                    />
-                    <Input
-                      type="time"
-                      value={timeTo || ''}
-                      onChange={(e) => onTimeToChange(e.target.value)}
-                      className="text-sm"
-                      placeholder="Bis"
-                    />
-                  </div>
-                  <div className="flex gap-2 mt-2">
-                    <Button
-                      size="sm"
-                      variant={timeMode === 'opened' ? 'default' : 'outline'}
-                      className="flex-1"
-                      onClick={() => onTimeModeChange('opened')}
-                    >
-                      Geöffnet
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={timeMode === 'closed' ? 'default' : 'outline'}
-                      className="flex-1"
-                      onClick={() => onTimeModeChange('closed')}
-                    >
-                      Geschlossen
-                    </Button>
-                  </div>
-                </div>
-              ) : !isDashboardMode && value && onChange ? (
-                <div className="space-y-2">
-                  <div className="text-xs font-medium">Tageszeit</div>
-                  <div className="flex gap-2">
-                    <Input
-                      type="time"
-                      value={value.timeFrom || ''}
-                      onChange={(e) => onChange({ ...value, timeFrom: e.target.value })}
-                      className="text-sm"
-                      placeholder="Von"
-                    />
-                    <Input
-                      type="time"
-                      value={value.timeTo || ''}
-                      onChange={(e) => onChange({ ...value, timeTo: e.target.value })}
-                      className="text-sm"
-                      placeholder="Bis"
-                    />
-                  </div>
-                  <div className="flex gap-2 mt-2">
-                    <Button
-                      size="sm"
-                      variant={value.timeMode === 'opened' ? 'default' : 'outline'}
-                      className="flex-1"
-                      onClick={() => onChange({ ...value, timeMode: 'opened' })}
-                    >
-                      Geöffnet
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={value.timeMode === 'closed' ? 'default' : 'outline'}
-                      className="flex-1"
-                      onClick={() => onChange({ ...value, timeMode: 'closed' })}
-                    >
-                      Geschlossen
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-            </>
+            <div className="space-y-2">
+              <div className="text-xs font-medium">Tageszeit</div>
+              <div className="flex gap-2">
+                <Input
+                  type="time"
+                  value={localTimeFrom}
+                  onChange={(e) => setLocalTimeFrom(e.target.value)}
+                  className="text-sm"
+                  placeholder="Von"
+                />
+                <Input
+                  type="time"
+                  value={localTimeTo}
+                  onChange={(e) => setLocalTimeTo(e.target.value)}
+                  className="text-sm"
+                  placeholder="Bis"
+                />
+              </div>
+              <div className="flex gap-2 mt-2">
+                <Button
+                  size="sm"
+                  variant={localTimeMode === 'opened' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => setLocalTimeMode('opened')}
+                >
+                  Geöffnet
+                </Button>
+                <Button
+                  size="sm"
+                  variant={localTimeMode === 'closed' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => setLocalTimeMode('closed')}
+                >
+                  Geschlossen
+                </Button>
+              </div>
+            </div>
           )}
 
           {/* Signal-Art (nur für Signals-Seite) */}
-          {showSignalKind && value && onChange && (
+          {showSignalKind && (
             <div className="space-y-2">
               <div className="text-xs font-medium">Signal-Art</div>
               <div className="flex gap-2">
                 <Button
                   size="sm"
-                  variant={value.signalKind === 'all' ? 'default' : 'outline'}
+                  variant={localSignalKind === 'all' ? 'default' : 'outline'}
                   className="flex-1"
-                  onClick={() => onChange({ ...value, signalKind: 'all' })}
+                  onClick={() => setLocalSignalKind('all')}
                 >
                   Alle
                 </Button>
                 <Button
                   size="sm"
-                  variant={value.signalKind === 'automatic' ? 'default' : 'outline'}
+                  variant={localSignalKind === 'automatic' ? 'default' : 'outline'}
                   className="flex-1"
-                  onClick={() => onChange({ ...value, signalKind: 'automatic' })}
+                  onClick={() => setLocalSignalKind('automatic')}
                 >
                   Automatisch
                 </Button>
                 <Button
                   size="sm"
-                  variant={value.signalKind === 'manual' ? 'default' : 'outline'}
+                  variant={localSignalKind === 'manual' ? 'default' : 'outline'}
                   className="flex-1"
-                  onClick={() => onChange({ ...value, signalKind: 'manual' })}
+                  onClick={() => setLocalSignalKind('manual')}
                 >
                   Manuell
                 </Button>
@@ -482,7 +477,7 @@ export default function TradesFiltersBar({
           )}
 
           {/* Signal-Status (nur für Signals-Seite) */}
-          {showSignalStatus && value && onChange && (
+          {showSignalStatus && (
             <div className="space-y-2 relative">
               <div className="text-xs font-medium">Status</div>
               <Button
@@ -491,12 +486,12 @@ export default function TradesFiltersBar({
                 className="w-full justify-between"
                 onClick={() => toggleDropdown('signalStatus')}
               >
-                {value.signalStatus === 'all' ? 'Alle Status' : 
-                 value.signalStatus === 'completed' ? 'Completed' :
-                 value.signalStatus === 'failed' ? 'Failed' :
-                 value.signalStatus === 'rejected' ? 'Rejected' :
-                 value.signalStatus === 'pending' ? 'Pending' :
-                 value.signalStatus === 'waiting_for_approval' ? 'Waiting for approval' : 'Alle Status'}
+                {localSignalStatus === 'all' ? 'Alle Status' : 
+                 localSignalStatus === 'completed' ? 'Completed' :
+                 localSignalStatus === 'failed' ? 'Failed' :
+                 localSignalStatus === 'rejected' ? 'Rejected' :
+                 localSignalStatus === 'pending' ? 'Pending' :
+                 localSignalStatus === 'waiting_for_approval' ? 'Waiting for approval' : 'Alle Status'}
               </Button>
               {openDropdown === 'signalStatus' && (
                 <div className="absolute top-full mt-1 z-10 bg-card border rounded shadow-md p-2 space-y-1 min-w-[200px]">
@@ -504,11 +499,11 @@ export default function TradesFiltersBar({
                     <button
                       key={status}
                       onClick={() => {
-                        onChange({ ...value, signalStatus: status as any });
+                        setLocalSignalStatus(status as any);
                         closeAllDropdowns();
                       }}
                       className={`w-full text-left px-3 py-2 rounded text-sm hover:bg-muted ${
-                        value.signalStatus === status ? 'bg-primary text-primary-foreground' : ''
+                        localSignalStatus === status ? 'bg-primary text-primary-foreground' : ''
                       }`}
                     >
                       {status === 'all' ? 'Alle Status' :
@@ -531,15 +526,15 @@ export default function TradesFiltersBar({
               <div className="flex gap-2">
                 <Button
                   size="sm"
-                  variant={!showCostAsPercent ? 'default' : 'outline'}
-                  onClick={() => onShowCostAsPercentChange(false)}
+                  variant={!localShowCostAsPercent ? 'default' : 'outline'}
+                  onClick={() => setLocalShowCostAsPercent(false)}
                 >
                   $
                 </Button>
                 <Button
                   size="sm"
-                  variant={showCostAsPercent ? 'default' : 'outline'}
-                  onClick={() => onShowCostAsPercentChange(true)}
+                  variant={localShowCostAsPercent ? 'default' : 'outline'}
+                  onClick={() => setLocalShowCostAsPercent(true)}
                 >
                   %
                 </Button>
@@ -558,9 +553,17 @@ export default function TradesFiltersBar({
               <X className="h-4 w-4 mr-1" />
               Zurücksetzen
             </Button>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={applyFilters}
+              className="flex-1"
+            >
+              Fertig
+            </Button>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

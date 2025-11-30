@@ -290,38 +290,31 @@ export default function Dashboard() {
             className="fixed inset-x-0 top-14 bottom-16 bg-background flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="overflow-auto">
-              <TradesFiltersBar
-                selectedBots={selectedBots}
-                onBotsChange={setSelectedBots}
-                selectedSymbols={selectedSymbols}
-                onSymbolsChange={setSelectedSymbols}
-                dateFrom={dateFrom}
-                dateTo={dateTo}
-                onDateFromChange={setDateFrom}
-                onDateToChange={setDateTo}
-                direction={direction}
-                onDirectionChange={setDirection}
-                timeFrom={timeFrom}
-                timeTo={timeTo}
-                onTimeFromChange={setTimeFrom}
-                onTimeToChange={setTimeTo}
-                timeMode={timeMode}
-                onTimeModeChange={setTimeMode}
-                onResetFilters={handleResetFilters}
-                availableBots={bots}
-                availableSymbols={symbols}
-                showDateRange={true}
-                showTimeRange={true}
-                showCostAsPercent={showCostAsPercent}
-                onShowCostAsPercentChange={setShowCostAsPercent}
-              />
-            </div>
-            <div className="border-t p-3">
-              <Button className="w-full" onClick={() => setShowFilters(false)}>
-                Fertig
-              </Button>
-            </div>
+            <TradesFiltersBar
+              selectedBots={selectedBots}
+              onBotsChange={setSelectedBots}
+              selectedSymbols={selectedSymbols}
+              onSymbolsChange={setSelectedSymbols}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              onDateFromChange={setDateFrom}
+              onDateToChange={setDateTo}
+              direction={direction}
+              onDirectionChange={setDirection}
+              timeFrom={timeFrom}
+              timeTo={timeTo}
+              onTimeFromChange={setTimeFrom}
+              onTimeToChange={setTimeTo}
+              timeMode={timeMode}
+              onTimeModeChange={setTimeMode}
+              onResetFilters={handleResetFilters}
+              availableBots={bots}
+              availableSymbols={symbols}
+              showDateRange={true}
+              showTimeRange={true}
+              showCostAsPercent={showCostAsPercent}
+              onShowCostAsPercentChange={setShowCostAsPercent}
+            />
           </div>
         </div>
       )}
@@ -330,38 +323,31 @@ export default function Dashboard() {
         {/* Filter - Desktop (collapsible) */}
         {showFilters && (
           <div className="hidden lg:block border rounded-lg bg-muted/30">
-            <div className="p-4">
-              <TradesFiltersBar
-                selectedBots={selectedBots}
-                onBotsChange={setSelectedBots}
-                selectedSymbols={selectedSymbols}
-                onSymbolsChange={setSelectedSymbols}
-                dateFrom={dateFrom}
-                dateTo={dateTo}
-                onDateFromChange={setDateFrom}
-                onDateToChange={setDateTo}
-                direction={direction}
-                onDirectionChange={setDirection}
-                timeFrom={timeFrom}
-                timeTo={timeTo}
-                onTimeFromChange={setTimeFrom}
-                onTimeToChange={setTimeTo}
-                timeMode={timeMode}
-                onTimeModeChange={setTimeMode}
-                onResetFilters={handleResetFilters}
-                availableBots={bots}
-                availableSymbols={symbols}
-                showDateRange={true}
-                showTimeRange={true}
-                showCostAsPercent={showCostAsPercent}
-                onShowCostAsPercentChange={setShowCostAsPercent}
-              />
-            </div>
-            <div className="border-t p-3">
-              <Button className="w-full" onClick={() => setShowFilters(false)}>
-                Fertig
-              </Button>
-            </div>
+            <TradesFiltersBar
+              selectedBots={selectedBots}
+              onBotsChange={setSelectedBots}
+              selectedSymbols={selectedSymbols}
+              onSymbolsChange={setSelectedSymbols}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              onDateFromChange={setDateFrom}
+              onDateToChange={setDateTo}
+              direction={direction}
+              onDirectionChange={setDirection}
+              timeFrom={timeFrom}
+              timeTo={timeTo}
+              onTimeFromChange={setTimeFrom}
+              onTimeToChange={setTimeTo}
+              timeMode={timeMode}
+              onTimeModeChange={setTimeMode}
+              onResetFilters={handleResetFilters}
+              availableBots={bots}
+              availableSymbols={symbols}
+              showDateRange={true}
+              showTimeRange={true}
+              showCostAsPercent={showCostAsPercent}
+              onShowCostAsPercentChange={setShowCostAsPercent}
+            />
           </div>
         )}
 
