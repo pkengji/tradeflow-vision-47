@@ -280,8 +280,8 @@ export type CashflowOut = {
   tx_id: string | null;
   external_addr: string | null;
   is_internal: boolean;
-  date: string; // YYYY-MM-DD format or ISO timestamp
-  ts?: string;
+  ts: string; // ISO timestamp from backend
+  date?: string; // Optional YYYY-MM-DD format
 };
 
 // ---------- API-Funktionen ----------
