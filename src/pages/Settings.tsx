@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, User, Bell, Clock, Shield } from "lucide-react";
+import { ChevronRight, User, Bell, Clock, Shield, Wallet } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 type SettingsOption = {
@@ -29,6 +29,12 @@ export default function Settings() {
       label: 'Benachrichtigungen',
       icon: <Bell className="w-5 h-5" />,
       path: '/settings/notifications',
+    },
+    {
+      id: 'payments',
+      label: 'Zahlungen',
+      icon: <Wallet className="w-5 h-5" />,
+      path: '/settings/payments',
     },
     {
       id: 'time',

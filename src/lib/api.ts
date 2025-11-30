@@ -269,6 +269,21 @@ export type DashboardKPIPeriod = {
   };
 };
 
+export type CashflowOut = {
+  id: number;
+  user_id: number;
+  bot_id: number | null;
+  account_kind: string | null;
+  direction: "deposit" | "withdraw";
+  amount_usdt: number;
+  currency: string;
+  tx_id: string | null;
+  external_addr: string | null;
+  is_internal: boolean;
+  date: string; // YYYY-MM-DD format or ISO timestamp
+  ts?: string;
+};
+
 // ---------- API-Funktionen ----------
 
 async function getBots(): Promise<Bot[]> {
@@ -602,6 +617,41 @@ async function updateNotificationSettings(settings: any): Promise<any> {
   return Promise.resolve({ ok: true });
 }
 
+// Cashflows
+async function getCashflows(params?: { 
+  date_from?: string; 
+  date_to?: string; 
+  direction?: string 
+}): Promise<CashflowOut[]> {
+  return http<CashflowOut[]>("/api/v1/cashflows", { query: params });
+}
+
+async function createCashflow(data: {
+  direction: "deposit" | "withdraw";
+  amount_usdt: number;
+  currency: string;
+  date: string;
+  bot_id: number | null;
+}): Promise<CashflowOut> {
+  return http<CashflowOut>("/api/v1/cashflows/manual", { method: "POST", body: data });
+}
+
+async function updateCashflow(id: number, data: {
+  amount_usdt: number;
+  date: string;
+}): Promise<CashflowOut> {
+  return http<CashflowOut>(`/api/v1/cashflows/${id}`, { method: "PUT", body: data });
+}
+
+async function deleteCashflow(id: number): Promise<void> {
+  return http<void>(`/api/v1/cashflows/${id}`, { method: "DELETE" });
+}
+
+async function getNotificationSettings2(): Promise<any> {
+  console.warn("updateNotificationSettings not yet implemented in backend");
+  return Promise.resolve({ ok: true });
+}
+
 // Dashboard
 async function getDashboardSummary(params?: {
   bot_ids?: string;
@@ -674,6 +724,12 @@ export const api = {
   updateTimezone,
   getNotificationSettings,
   updateNotificationSettings,
+
+  // Cashflows
+  getCashflows,
+  createCashflow,
+  updateCashflow,
+  deleteCashflow,
 
   // Admin
   createUser,
