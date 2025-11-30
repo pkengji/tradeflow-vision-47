@@ -63,8 +63,18 @@ export default function Dashboard() {
         if (selectedBots.length) params.bot_ids = selectedBots.join(",");
         if (selectedSymbols.length) params.symbols = selectedSymbols.join(",");
         if (direction && direction !== "both") params.direction = direction;
-        if (dateFrom) params.date_from = dateFrom.toISOString().split("T")[0];
-        if (dateTo) params.date_to = dateTo.toISOString().split("T")[0];
+        if (dateFrom) {
+          const year = dateFrom.getFullYear();
+          const month = String(dateFrom.getMonth() + 1).padStart(2, '0');
+          const day = String(dateFrom.getDate()).padStart(2, '0');
+          params.date_from = `${year}-${month}-${day}`;
+        }
+        if (dateTo) {
+          const year = dateTo.getFullYear();
+          const month = String(dateTo.getMonth() + 1).padStart(2, '0');
+          const day = String(dateTo.getDate()).padStart(2, '0');
+          params.date_to = `${year}-${month}-${day}`;
+        }
         if (timeFrom && timeTo) {
           const hourParam = `${timeFrom}-${timeTo}`;
           if (timeMode === "opened") {
@@ -103,15 +113,33 @@ export default function Dashboard() {
 
         // Apply chart date filter
         if (chartDateRange === "custom") {
-          if (chartDateFrom) params.date_from = chartDateFrom.toISOString().split("T")[0];
-          if (chartDateTo) params.date_to = chartDateTo.toISOString().split("T")[0];
+          if (chartDateFrom) {
+            const year = chartDateFrom.getFullYear();
+            const month = String(chartDateFrom.getMonth() + 1).padStart(2, '0');
+            const day = String(chartDateFrom.getDate()).padStart(2, '0');
+            params.date_from = `${year}-${month}-${day}`;
+          }
+          if (chartDateTo) {
+            const year = chartDateTo.getFullYear();
+            const month = String(chartDateTo.getMonth() + 1).padStart(2, '0');
+            const day = String(chartDateTo.getDate()).padStart(2, '0');
+            params.date_to = `${year}-${month}-${day}`;
+          }
         } else {
           const days = parseInt(chartDateRange);
           const today = new Date();
           const fromDate = new Date(today);
           fromDate.setDate(today.getDate() - days);
-          params.date_from = fromDate.toISOString().split("T")[0];
-          params.date_to = today.toISOString().split("T")[0];
+          
+          const yearFrom = fromDate.getFullYear();
+          const monthFrom = String(fromDate.getMonth() + 1).padStart(2, '0');
+          const dayFrom = String(fromDate.getDate()).padStart(2, '0');
+          params.date_from = `${yearFrom}-${monthFrom}-${dayFrom}`;
+          
+          const yearTo = today.getFullYear();
+          const monthTo = String(today.getMonth() + 1).padStart(2, '0');
+          const dayTo = String(today.getDate()).padStart(2, '0');
+          params.date_to = `${yearTo}-${monthTo}-${dayTo}`;
         }
 
         const data = await api.getDailyPnl(params);
