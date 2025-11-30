@@ -368,7 +368,7 @@ async function getPositions(params?: PositionsParams): Promise<{ items: Position
       mark_price: p.mark_price ?? null,
       sl: p.sl_price ?? null,
       tp: p.tp_price ?? null,
-      pnl: p.pnl_usdt ?? p.pnl ?? null,
+      pnl: p.pnl ?? null,
       unrealized_pnl: p.unrealized_pnl ?? null,
       pnl_pct: p.pnl_pct ?? null,
       fee_open_usdt: p.fee_open_usdt ?? null,

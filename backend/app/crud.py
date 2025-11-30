@@ -5,7 +5,7 @@ from .models import User, Bot, Position, Outbox, DailyPnl, BotSymbolSetting
 from .schemas import BotCreate, BotUpdate
 from uuid import uuid4
 
-from sqlalchemy import func, and_, or_
+from sqlalchemy import func
 from . import models
 
 # -------- Bots --------
@@ -109,12 +109,6 @@ def replace_bot_symbols(db: Session, user_id: int, bot_id: int, items: list[dict
     return rows
 
 # -------- Positions --------
-def _parse_date(s: str | None):
-    if not s:
-        return None
-    return datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-
-
 def get_positions(
     db,
     *,
@@ -123,76 +117,39 @@ def get_positions(
     bot_id: int | None = None,
     symbol: str | None = None,
     side: str | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
     skip: int = 0,
     limit: int = 100,
 ):
     """
     Holt Positionen eines Users.
-    Optional filterbar nach Status, Bot, Symbol, Richtung und Datum.
-    - Für geschlossene Positionen filtert das Datum auf closed_at
-    - Für offene Positionen auf opened_at
-    - Gemischt: closed_at für closed, opened_at für open
+    KEIN unnötiger Join auf Executions -> sonst Duplikate.
     """
-    P = models.Position  # <-- WICHTIG: gleich zu Beginn definieren
-
     q = (
-        db.query(P)
-        .join(models.Bot, P.bot_id == models.Bot.id)
+        db.query(models.Position)
+        .join(models.Bot, models.Position.bot_id == models.Bot.id)
         .filter(models.Bot.user_id == user_id)
     )
 
     if status:
-        q = q.filter(P.status == status)
+        q = q.filter(models.Position.status == status)
     if bot_id:
-        q = q.filter(P.bot_id == bot_id)
+        q = q.filter(models.Position.bot_id == bot_id)
     if symbol:
-        q = q.filter(P.symbol == symbol)
+        q = q.filter(models.Position.symbol == symbol)
     if side:
-        q = q.filter(P.side == side)
+        q = q.filter(models.Position.side == side)
 
-    # Datums-Filter
-    dt_from = _parse_date(date_from)
-    dt_to = _parse_date(date_to)
-    if dt_to:
-        dt_to = dt_to + timedelta(days=1)  # inkl. kompletter Tag
-
-    if dt_from or dt_to:
-        if status == "closed":
-            if dt_from:
-                q = q.filter(P.closed_at >= dt_from)
-            if dt_to:
-                q = q.filter(P.closed_at < dt_to)
-        elif status == "open":
-            if dt_from:
-                q = q.filter(P.opened_at >= dt_from)
-            if dt_to:
-                q = q.filter(P.opened_at < dt_to)
-        else:
-            conds = []
-            if dt_from:
-                conds.append(
-                    or_(
-                        and_(P.status == "closed", P.closed_at >= dt_from),
-                        and_(P.status == "open", P.opened_at >= dt_from),
-                    )
-                )
-            if dt_to:
-                conds.append(
-                    or_(
-                        and_(P.status == "closed", P.closed_at < dt_to),
-                        and_(P.status == "open", P.opened_at < dt_to),
-                    )
-                )
-            for c in conds:
-                q = q.filter(c)
-
-    # Sortierung
+    # neueste zuerst
     if status == "closed":
-        q = q.order_by(P.closed_at.desc().nullslast(), P.id.desc())
+        q = q.order_by(
+            models.Position.closed_at.desc().nullslast(),
+            models.Position.id.desc(),
+        )
     else:
-        q = q.order_by(P.opened_at.desc().nullslast(), P.id.desc())
+        q = q.order_by(
+            models.Position.opened_at.desc().nullslast(),
+            models.Position.id.desc(),
+        )
 
     return q.offset(skip).limit(limit).all()
 
@@ -205,8 +162,6 @@ def count_positions(
     bot_id: int | None = None,
     symbol: str | None = None,
     side: str | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
 ) -> int:
     q = (
         db.query(func.count(models.Position.id))
@@ -222,42 +177,6 @@ def count_positions(
         q = q.filter(models.Position.symbol == symbol)
     if side:
         q = q.filter(models.Position.side == side)
-
-    dt_from = _parse_date(date_from)
-    dt_to = _parse_date(date_to)
-    if dt_to:
-        dt_to = dt_to + timedelta(days=1)
-
-    P = models.Position
-    if dt_from or dt_to:
-        if status == "closed":
-            if dt_from:
-                q = q.filter(P.closed_at >= dt_from)
-            if dt_to:
-                q = q.filter(P.closed_at < dt_to)
-        elif status == "open":
-            if dt_from:
-                q = q.filter(P.opened_at >= dt_from)
-            if dt_to:
-                q = q.filter(P.opened_at < dt_to)
-        else:
-            conds = []
-            if dt_from:
-                conds.append(
-                    or_(
-                        and_(P.status == "closed", P.closed_at >= dt_from),
-                        and_(P.status == "open", P.opened_at >= dt_from),
-                    )
-                )
-            if dt_to:
-                conds.append(
-                    or_(
-                        and_(P.status == "closed", P.closed_at < dt_to),
-                        and_(P.status == "open", P.opened_at < dt_to),
-                    )
-                )
-            for c in conds:
-                q = q.filter(c)
 
     return q.scalar() or 0
 
