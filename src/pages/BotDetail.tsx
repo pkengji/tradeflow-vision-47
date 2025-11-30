@@ -364,7 +364,7 @@ export default function BotDetail() {
       mobileHeaderLeft={BackButton}
       desktopHeaderLeft={BackButton}
     >
-      <div className="space-y-4 p-4 pb-24 max-w-6xl mx-auto">
+      <div className="space-y-4 p-4 max-w-6xl mx-auto">
         {/* Bot Configuration Card */}
         <Card>
           <CardHeader className="pb-3 hidden lg:block">
@@ -795,47 +795,49 @@ export default function BotDetail() {
         </Card>
 
         {/* Action Buttons */}
-        <div className="fixed bottom-16 lg:bottom-0 left-0 lg:left-64 right-0 bg-card border-t p-3 flex gap-3 z-50">
-          <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="flex-1">
-            <Save className="mr-2 h-4 w-4" />
-            {isNew ? "Speichern" : "Speichern"}
-          </Button>
-
-          {!isNew && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="flex-1">
-                  Aktionen
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="z-50">
-                {bot?.status === "active" ? (
-                  <DropdownMenuItem onClick={() => pauseMutation.mutate()}>Bot pausieren</DropdownMenuItem>
-                ) : (
-                  <DropdownMenuItem onClick={() => resumeMutation.mutate()}>Bot erneut starten</DropdownMenuItem>
-                )}
-                <DropdownMenuItem onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending}>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Historie laden
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    if (confirm("Bot wirklich löschen?")) deleteMutation.mutate();
-                  }}
-                  className="text-destructive"
-                >
-                  Bot löschen
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
-          {isNew && (
-            <Button variant="outline" onClick={() => navigate("/bots")} className="flex-1">
-              Abbrechen
+        <Card>
+          <CardContent className="p-3 flex gap-3">
+            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="flex-1">
+              <Save className="mr-2 h-4 w-4" />
+              {isNew ? "Speichern" : "Speichern"}
             </Button>
-          )}
-        </div>
+
+            {!isNew && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="flex-1">
+                    Aktionen
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  {bot?.status === "active" ? (
+                    <DropdownMenuItem onClick={() => pauseMutation.mutate()}>Bot pausieren</DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem onClick={() => resumeMutation.mutate()}>Bot erneut starten</DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending}>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Historie laden
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      if (confirm("Bot wirklich löschen?")) deleteMutation.mutate();
+                    }}
+                    className="text-destructive"
+                  >
+                    Bot löschen
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
+            {isNew && (
+              <Button variant="outline" onClick={() => navigate("/bots")} className="flex-1">
+                Abbrechen
+              </Button>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </DashboardLayout>
   );
