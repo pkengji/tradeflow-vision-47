@@ -1,18 +1,17 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
 
 export default function SettingsAccount() {
-  const navigate = useNavigate();
   const { user } = useAuth();
   const [username, setUsername] = useState(user?.username ?? '');
   const [newPassword, setNewPassword] = useState('');
@@ -44,8 +43,20 @@ export default function SettingsAccount() {
     profileMutation.mutate();
   };
 
+  const BackButton = (
+    <Link to="/settings">
+      <Button variant="ghost" size="icon">
+        <ChevronLeft className="h-5 w-5" />
+      </Button>
+    </Link>
+  );
+
   return (
-    <DashboardLayout pageTitle="Konto & Sicherheit" showBackButton>
+    <DashboardLayout
+      pageTitle="Konto & Sicherheit"
+      mobileHeaderLeft={BackButton}
+      desktopHeaderLeft={BackButton}
+    >
       <div className="flex-1 overflow-y-auto p-4 pb-24 space-y-4">
         <Card>
           <CardHeader className="pb-3">

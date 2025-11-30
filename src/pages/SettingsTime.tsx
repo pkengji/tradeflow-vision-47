@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowLeft } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -36,7 +36,6 @@ const TIMEZONES = [
 ];
 
 export default function SettingsTime() {
-  const navigate = useNavigate();
   const [useSystemTime, setUseSystemTime] = useState(true);
   const [selectedTimezone, setSelectedTimezone] = useState('Europe/Zurich');
 
@@ -59,8 +58,20 @@ export default function SettingsTime() {
     timezoneMutation.mutate();
   };
 
+  const BackButton = (
+    <Link to="/settings">
+      <Button variant="ghost" size="icon">
+        <ChevronLeft className="h-5 w-5" />
+      </Button>
+    </Link>
+  );
+
   return (
-    <DashboardLayout pageTitle="Zeit" showBackButton>
+    <DashboardLayout
+      pageTitle="Zeit"
+      mobileHeaderLeft={BackButton}
+      desktopHeaderLeft={BackButton}
+    >
       <div className="flex-1 overflow-y-auto p-4 pb-24 space-y-4">
         <Card>
           <CardHeader>

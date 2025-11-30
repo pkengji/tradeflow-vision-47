@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,13 +12,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowLeft } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
 
 export default function SettingsOwner() {
-  const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -56,8 +55,20 @@ export default function SettingsOwner() {
     addUserMutation.mutate();
   };
 
+  const BackButton = (
+    <Link to="/settings">
+      <Button variant="ghost" size="icon">
+        <ChevronLeft className="h-5 w-5" />
+      </Button>
+    </Link>
+  );
+
   return (
-    <DashboardLayout pageTitle="Owneroptionen" showBackButton>
+    <DashboardLayout
+      pageTitle="Owneroptionen"
+      mobileHeaderLeft={BackButton}
+      desktopHeaderLeft={BackButton}
+    >
       <div className="flex-1 overflow-y-auto p-4 pb-24 space-y-4">
         <Card>
           <CardHeader>

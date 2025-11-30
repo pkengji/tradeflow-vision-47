@@ -284,6 +284,22 @@ export type CashflowOut = {
   date?: string; // Optional YYYY-MM-DD format
 };
 
+// Notification Settings Types
+type NotificationSettingsOut = {
+  trade_opened_push: boolean;
+  trade_opened_email: boolean;
+  trade_won_push: boolean;
+  trade_won_email: boolean;
+  trade_lost_push: boolean;
+  trade_lost_email: boolean;
+  sltp_changed_push: boolean;
+  sltp_changed_email: boolean;
+  trade_failed_push: boolean;
+  trade_failed_email: boolean;
+  system_alerts_push: boolean;
+  system_alerts_email: boolean;
+};
+
 // ---------- API-Funktionen ----------
 
 async function getBots(): Promise<Bot[]> {
@@ -606,15 +622,13 @@ async function updateTimezone(data: { use_system: boolean; timezone?: string }):
   return Promise.resolve({ ok: true });
 }
 
-// Notification settings (placeholder until backend implements)
-async function getNotificationSettings(): Promise<any> {
-  console.warn("getNotificationSettings not yet implemented in backend");
-  return Promise.resolve({});
+// Notification settings
+async function getNotificationSettings(): Promise<NotificationSettingsOut> {
+  return http<NotificationSettingsOut>("/api/v1/notifications/settings");
 }
 
-async function updateNotificationSettings(settings: any): Promise<any> {
-  console.warn("updateNotificationSettings not yet implemented in backend");
-  return Promise.resolve({ ok: true });
+async function updateNotificationSettings(settings: NotificationSettingsOut): Promise<any> {
+  return http("/api/v1/notifications/settings", { method: "PUT", body: settings });
 }
 
 // Cashflows

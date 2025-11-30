@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 
@@ -13,8 +13,18 @@ type NotificationEvent =
   | 'trade_opened' 
   | 'trade_won' 
   | 'trade_lost' 
-  | 'tp_sl_changed' 
-  | 'trade_not_opened';
+  | 'sltp_changed' 
+  | 'trade_failed'
+  | 'system_alerts';
+
+const EVENT_LABELS: Record<NotificationEvent, string> = {
+  trade_opened: 'Trade geöffnet',
+  trade_won: 'Trade gewonnen',
+  trade_lost: 'Trade verloren',
+  sltp_changed: 'TP/SL geändert',
+  trade_failed: 'Trade nicht geöffnet',
+  system_alerts: 'System Meldungen',
+};
 
 type NotificationSettings = {
   [key in NotificationEvent]: {
@@ -23,44 +33,74 @@ type NotificationSettings = {
   };
 };
 
-const EVENT_LABELS: Record<NotificationEvent, string> = {
-  trade_opened: 'Trade geöffnet',
-  trade_won: 'Trade gewonnen',
-  trade_lost: 'Trade verloren',
-  tp_sl_changed: 'TP/SL geändert',
-  trade_not_opened: 'Trade nicht geöffnet',
-};
-
 export default function SettingsNotifications() {
-  const navigate = useNavigate();
   const qc = useQueryClient();
 
   const [settings, setSettings] = useState<NotificationSettings>({
-    trade_opened: { email: true, push: true },
-    trade_won: { email: true, push: true },
-    trade_lost: { email: true, push: true },
-    tp_sl_changed: { email: false, push: true },
-    trade_not_opened: { email: true, push: false },
+    trade_opened: { email: false, push: true },
+    trade_won: { email: false, push: true },
+    trade_lost: { email: false, push: true },
+    sltp_changed: { email: false, push: false },
+    trade_failed: { email: true, push: true },
+    system_alerts: { email: true, push: true },
   });
 
-  // TODO: Fetch settings from API
-  const { data: savedSettings } = useQuery({
+  // Fetch settings from API
+  const { data: savedSettings, isLoading } = useQuery({
     queryKey: ['notification-settings'],
-    queryFn: async () => {
-      // Placeholder - replace with actual API call
-      return settings;
-    },
+    queryFn: api.getNotificationSettings,
   });
 
   useEffect(() => {
     if (savedSettings) {
-      setSettings(savedSettings);
+      // Transform backend format to frontend format
+      setSettings({
+        trade_opened: {
+          email: savedSettings.trade_opened_email,
+          push: savedSettings.trade_opened_push,
+        },
+        trade_won: {
+          email: savedSettings.trade_won_email,
+          push: savedSettings.trade_won_push,
+        },
+        trade_lost: {
+          email: savedSettings.trade_lost_email,
+          push: savedSettings.trade_lost_push,
+        },
+        sltp_changed: {
+          email: savedSettings.sltp_changed_email,
+          push: savedSettings.sltp_changed_push,
+        },
+        trade_failed: {
+          email: savedSettings.trade_failed_email,
+          push: savedSettings.trade_failed_push,
+        },
+        system_alerts: {
+          email: savedSettings.system_alerts_email,
+          push: savedSettings.system_alerts_push,
+        },
+      });
     }
   }, [savedSettings]);
 
   const saveMutation = useMutation({
     mutationFn: async (newSettings: NotificationSettings) => {
-      return api.updateNotificationSettings(newSettings);
+      // Transform frontend format to backend format
+      const backendSettings = {
+        trade_opened_push: newSettings.trade_opened.push,
+        trade_opened_email: newSettings.trade_opened.email,
+        trade_won_push: newSettings.trade_won.push,
+        trade_won_email: newSettings.trade_won.email,
+        trade_lost_push: newSettings.trade_lost.push,
+        trade_lost_email: newSettings.trade_lost.email,
+        sltp_changed_push: newSettings.sltp_changed.push,
+        sltp_changed_email: newSettings.sltp_changed.email,
+        trade_failed_push: newSettings.trade_failed.push,
+        trade_failed_email: newSettings.trade_failed.email,
+        system_alerts_push: newSettings.system_alerts.push,
+        system_alerts_email: newSettings.system_alerts.email,
+      };
+      return api.updateNotificationSettings(backendSettings);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notification-settings'] });
@@ -85,8 +125,20 @@ export default function SettingsNotifications() {
     saveMutation.mutate(settings);
   };
 
+  const BackButton = (
+    <Link to="/settings">
+      <Button variant="ghost" size="icon">
+        <ChevronLeft className="h-5 w-5" />
+      </Button>
+    </Link>
+  );
+
   return (
-    <DashboardLayout pageTitle="Benachrichtigungen" showBackButton>
+    <DashboardLayout
+      pageTitle="Benachrichtigungen"
+      mobileHeaderLeft={BackButton}
+      desktopHeaderLeft={BackButton}
+    >
       <div className="flex-1 overflow-y-auto p-4 pb-24">
         <Card>
           <CardContent className="p-0">
@@ -96,26 +148,32 @@ export default function SettingsNotifications() {
               <div className="w-16 text-center text-sm font-medium">Push</div>
             </div>
 
-            {Object.entries(EVENT_LABELS).map(([event, label]) => (
-              <div
-                key={event}
-                className="flex items-center border-b last:border-b-0 px-4 py-3"
-              >
-                <div className="flex-1 text-sm">{label}</div>
-                <div className="w-16 flex justify-center">
-                  <Checkbox
-                    checked={settings[event as NotificationEvent].email}
-                    onCheckedChange={() => handleToggle(event as NotificationEvent, 'email')}
-                  />
-                </div>
-                <div className="w-16 flex justify-center">
-                  <Checkbox
-                    checked={settings[event as NotificationEvent].push}
-                    onCheckedChange={() => handleToggle(event as NotificationEvent, 'push')}
-                  />
-                </div>
+            {isLoading ? (
+              <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                Lade Einstellungen...
               </div>
-            ))}
+            ) : (
+              Object.entries(EVENT_LABELS).map(([event, label]) => (
+                <div
+                  key={event}
+                  className="flex items-center border-b last:border-b-0 px-4 py-3"
+                >
+                  <div className="flex-1 text-sm">{label}</div>
+                  <div className="w-16 flex justify-center">
+                    <Checkbox
+                      checked={settings[event as NotificationEvent].email}
+                      onCheckedChange={() => handleToggle(event as NotificationEvent, 'email')}
+                    />
+                  </div>
+                  <div className="w-16 flex justify-center">
+                    <Checkbox
+                      checked={settings[event as NotificationEvent].push}
+                      onCheckedChange={() => handleToggle(event as NotificationEvent, 'push')}
+                    />
+                  </div>
+                </div>
+              ))
+            )}
           </CardContent>
         </Card>
 
@@ -125,7 +183,7 @@ export default function SettingsNotifications() {
       </div>
 
       <div className="fixed bottom-16 lg:bottom-0 left-0 lg:left-64 right-0 bg-card border-t p-4 z-50">
-        <Button onClick={handleSave} className="w-full" disabled={saveMutation.isPending}>
+        <Button onClick={handleSave} className="w-full" disabled={saveMutation.isPending || isLoading}>
           {saveMutation.isPending ? 'Speichern...' : 'Speichern'}
         </Button>
       </div>
