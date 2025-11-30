@@ -449,7 +449,11 @@ def list_positions(
     status: str | None = None,
     bot_id: int | None = None,
     symbol: str | None = None,
-    side: str | None = None,
+    side: str | None = None,          # "long" | "short" | None (= beide)
+    date_from: str | None = None,     # YYYY-MM-DD
+    date_to: str | None = None,       # YYYY-MM-DD
+    open_hour: str | None = None,     # "HH:MM-HH:MM"
+    close_hour: str | None = None,    # "HH:MM-HH:MM"
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
@@ -462,6 +466,8 @@ def list_positions(
         bot_id=bot_id,
         symbol=symbol,
         side=side,
+        date_from=date_from,
+        date_to=date_to,
         skip=skip,
         limit=limit,
     )
@@ -472,7 +478,41 @@ def list_positions(
         bot_id=bot_id,
         symbol=symbol,
         side=side,
+        date_from=date_from,
+        date_to=date_to,
     )
+
+
+    # Tageszeit-Filter NACH dem DB-Query anwenden (analog Dashboard)
+    from app.services.summary import time_in_range, _to_utc_aware
+
+    open_rng = _parse_hour_range(open_hour)
+    close_rng = _parse_hour_range(close_hour)
+
+    def _dir_ok(p, direction: str | None) -> bool:
+        if not direction or direction == "both":
+            return True
+        return (p.side or "").lower() == direction.lower()
+
+    filtered = []
+    for p in rows:
+        if not _dir_ok(p, side):
+            continue
+        opened_at = _to_utc_aware(p.opened_at)
+        closed_at = _to_utc_aware(p.closed_at)
+        if not time_in_range(opened_at, open_rng):
+            continue
+        # für offene Trades nur der Open-Filter; Close-Filter nur, wenn es closed_at gibt
+        if closed_at and not time_in_range(closed_at, close_rng):
+            continue
+        filtered.append(p)
+
+    return {
+        "items": [PositionOut.model_validate(x, from_attributes=True) for x in filtered],
+        "total": total,
+        "page": skip // max(limit, 1) + 1,
+        "page_size": limit,
+    }
 
     items: list[dict] = []
     for r in rows:
@@ -1001,10 +1041,12 @@ def list_pairs():
         rows = db.query(models.Symbol).order_by(models.Symbol.symbol.asc()).all()
         out = []
         for r in rows:
-            # Sicherstellen, dass das Icon lokal liegt (lädt nur, wenn fehlt/alt)
-            icon_url = ensure_symbol_icon(db, r, max_age_days=30) \
-                       or r.icon_url \
-                       or f"https://cryptoicons.org/api/icon/{(r.base_currency or '').lower()}/64"
+            # 1) Nur das verwenden, was bereits lokal existiert
+            if r.icon_local_path:
+                icon_url = f"/static/{r.icon_local_path}"
+            else:
+                # Kein lokales Icon vorhanden → Frontend zeigt Placeholder
+                icon_url = None
 
             out.append({
                 "symbol": r.symbol,
@@ -1013,9 +1055,10 @@ def list_pairs():
                 "base_currency": r.base_currency,
                 "quote_currency": r.quote_currency,
                 "max_leverage": r.max_leverage,
-                "icon": icon_url,  # << nur eine finale URL
+                "icon": icon_url,  # nur lokal oder null
             })
-        db.commit()
+
+        # ❌ Kein commit hier nötig, wir verändern nichts
         return out
 
 @app.get("/api/v1/symbols/all", response_model=List[SymbolOut])
@@ -1116,6 +1159,55 @@ def debug_symbol_icons(
         "ok": True,
         "icon_updates_from_convert_coin_list": icon_updates,
         "results": results,
+    }
+
+
+@app.post("/api/v1/symbols/{symbol}/icon/refresh")
+def refresh_single_symbol_icon(
+    symbol: str,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """
+    Debug-Route: Icon nur für EIN Symbol neu ziehen.
+    - symbol: z.B. 'BTCUSDT', 'ADAUSDT'
+    - setzt icon_local_path & icon_last_synced_at zurück
+    - ruft ensure_symbol_icon(max_age_days=0) auf
+    - gibt Infos zu Quelle & lokalem Pfad zurück
+    """
+    sym = (
+        db.execute(
+            select(models.Symbol).where(models.Symbol.symbol == symbol.upper())
+        )
+        .scalars()
+        .first()
+    )
+
+    if not sym:
+        raise HTTPException(status_code=404, detail=f"Symbol {symbol} not found")
+
+    # Lokalen Pfad zurücksetzen, damit wir sicher neu laden
+    old_local = sym.icon_local_path
+    old_url = sym.icon_url
+    sym.icon_local_path = None
+    sym.icon_last_synced_at = None
+    db.add(sym)
+    db.flush()
+
+    # Forciert neu laden (Bybit-URL zuerst, dann Fallbacks)
+    served_url = ensure_symbol_icon(db, sym, max_age_days=0)
+
+    db.commit()
+
+    return {
+        "ok": bool(served_url),
+        "symbol": sym.symbol,
+        "base_currency": sym.base_currency,
+        "served_url": served_url,          # z.B. "/static/icons/ada.png"
+        "icon_local_path": sym.icon_local_path,
+        "icon_url_db": sym.icon_url,       # tatsächliche Quelle (Bybit oder Fallback)
+        "previous_local_path": old_local,
+        "previous_icon_url": old_url,
     }
 
 

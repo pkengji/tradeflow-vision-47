@@ -93,68 +93,84 @@ def _aggregate_exits_for_position(
     position_id: int,
 ):
     """
-    # CHANGED: Aggregiert Exit-Fills ohne Execution.position_id (das Feld existiert nicht).
+    Aggregiert Exit-Fills für eine offene Position.
+
     Strategie:
       - Position laden
-      - Exekutionen derselben (bot_id, symbol) ab opened_at
-      - Gewertet werden Fills, die die Position reduzieren:
-          * reduce_only == True ODER
-          * Gegenseite zur Entry-Seite
-      - aufsummieren bis qty == pos.qty
-    Gibt zurück: (vwap_exit, fee_close_usdt, closed_at)
+      - unconsumed Executions derselben (bot_id, symbol) ab opened_at
+      - gewertet werden nur Fills auf der Gegenseite der Position
+      - aufsummieren, bis exit-Qty == Positions-Qty
+
+    Gibt zurück: (vwap_exit, fee_close_usdt, closed_at) oder (None, 0.0, None),
+    falls noch nicht genug Exit-Volumen vorhanden ist.
     """
-    pos: models.Position | None = db.query(models.Position).filter(models.Position.id == position_id).first()
+    pos: models.Position | None = (
+        db.query(models.Position)
+        .filter(models.Position.id == position_id)
+        .first()
+    )
     if not pos or not pos.opened_at:
         return None, 0.0, None
 
-    # Welche Seite reduziert die Position?
+    qty_target = float(pos.qty or 0.0)
+    if qty_target <= 0:
+        return None, 0.0, None
+
     entry_is_long = (str(pos.side or "long").lower() == "long")
-    reduce_side = "sell" if entry_is_long else "buy"
+    exit_side = "sell" if entry_is_long else "buy"
 
     execs = (
         db.query(models.Execution)
-          .filter(models.Execution.bot_id == pos.bot_id)
-          .filter(models.Execution.symbol == pos.symbol)
-          .filter(models.Execution.ts >= pos.opened_at)
-          .order_by(models.Execution.ts.asc(), models.Execution.id.asc())
-          .all()
+        .filter(models.Execution.bot_id == pos.bot_id)
+        .filter(models.Execution.symbol == pos.symbol)
+        .filter(models.Execution.ts >= pos.opened_at)
+        .filter(
+            (models.Execution.is_consumed == False)
+            | (models.Execution.is_consumed.is_(None))
+        )
+        .order_by(models.Execution.ts.asc(), models.Execution.id.asc())
+        .all()
     )
     if not execs:
         return None, 0.0, None
 
-    target_qty = float(pos.qty or 0.0)
-    if target_qty <= 0:
-        return None, 0.0, None
-
-    notional = 0.0
-    qty_sum = 0.0
+    used_qty = 0.0
+    vwap_num = 0.0
     fee_sum = 0.0
-    last_ts = None
+    last_ts: datetime | None = None
 
     for e in execs:
-        side = (e.side or "").lower()
-        ro = bool(e.reduce_only)
-        # Kandidat, wenn reduceOnly ODER Gegenseite
-        if (ro or side == reduce_side):
-            px = float(e.price or 0.0)
-            q  = float(e.qty or 0.0)
-            if q <= 0:
-                continue
-            take = min(q, target_qty - qty_sum)
-            if take <= 0:
-                break
-            notional += px * take
-            qty_sum += take
-            fee_sum += float(e.fee_usdt or 0.0)
-            last_ts = e.ts or last_ts
+        if (e.side or "").lower() != exit_side:
+            continue
 
-            if qty_sum >= target_qty - 1e-12:
-                break
+        q = float(e.qty or 0.0)
+        if q <= 0:
+            continue
 
-    if qty_sum <= 0:
+        remaining = qty_target - used_qty
+        if remaining <= 1e-12:
+            break
+
+        take = min(q, remaining)
+        if take <= 0:
+            continue
+
+        price = float(e.price or 0.0)
+        vwap_num += price * take
+
+        # Fee anteilig auf die genutzte Menge umlegen
+        fee_total = float(e.fee_usdt or 0.0)
+        if q > 0:
+            fee_sum += fee_total * (take / q)
+
+        used_qty += take
+        last_ts = e.ts or last_ts
+
+    # Noch nicht genug Exit-Volumen → Position bleibt offen
+    if used_qty < qty_target - 1e-12:
         return None, 0.0, None
 
-    vwap_exit = notional / qty_sum
+    vwap_exit = vwap_num / used_qty if used_qty > 0 else None
     return vwap_exit, fee_sum, last_ts
 
 
@@ -272,11 +288,8 @@ def handle_position_close(
         fees_open=fee_open_usdt,
         fees_close=fee_close_usdt,
     )
-    # 5) Position als closed flaggen
-    _consume_execs_for_position(db, pos.id)
-
-    # 6) speichern
-    return _finalize_position(
+    # 5/6) Position finalisieren und PnL speichern
+    pos = _finalize_position(
         db,
         pos,
         exit_price=exit_price_vwap,
@@ -284,6 +297,10 @@ def handle_position_close(
         fee_close_usdt=fee_close_usdt,
         closed_at=exit_ts,
     )
+
+    # 7) Zugehörige Executions konsumieren
+    _consume_execs_for_position(db, pos.id)
+    return pos
 
 
 # --- Reconcile Helpers (Live/Periodic) ---
@@ -365,39 +382,50 @@ def open_from_execs_if_missing(db: Session, bot_id: int, symbol: str):
     return pos
 
 
-def _consume_execs_for_position(db: Session, pos: models.Position, *, both_sides: bool = True):
+def _consume_execs_for_position(
+    db: Session,
+    position_id: int,
+    *,
+    upto_ts: datetime | None = None,
+) -> None:
     """
-    Markiert alle Executions für (bot_id, symbol) im Zeitfenster [opened_at, closed_at]
-    als konsumiert. Damit können diese Fills nicht mehr für eine neue Position
+    Markiert alle Executions für diese Position als is_consumed = True.
+
+    - Position wird über ID geladen
+    - Zeitfenster: [opened_at, closed_at/last_exec_at/upto_ts]
+    - unabhängig von side/reduce_only
+
+    Damit können diese Fills nicht noch einmal für eine neue Position
     verwendet werden.
     """
-    if not pos.opened_at:
+    pos = (
+        db.query(models.Position)
+        .filter(models.Position.id == position_id)
+        .first()
+    )
+    if not pos or not pos.opened_at:
         return
 
-    q = (
-        db.query(models.Execution)
+    end_ts = (
+        upto_ts
+        or pos.closed_at
+        or pos.last_exec_at
+        or pos.opened_at
+    )
+
+    (db.query(models.Execution)
         .filter(models.Execution.bot_id == pos.bot_id)
         .filter(models.Execution.symbol == pos.symbol)
         .filter(models.Execution.ts >= pos.opened_at)
-    )
-
-    if pos.closed_at:
-        q = q.filter(models.Execution.ts <= pos.closed_at)
-
-    exec_ids = [
-        e.id
-        for e in q.filter(
-            (models.Execution.is_consumed == False) | (models.Execution.is_consumed.is_(None))
-        ).all()
-    ]
-
-    if exec_ids:
-        (
-            db.query(models.Execution)
-            .filter(models.Execution.id.in_(exec_ids))
-            .update({"is_consumed": True}, synchronize_session=False)
+        .filter(models.Execution.ts <= end_ts)
+        .filter(
+            (models.Execution.is_consumed == False)
+            | (models.Execution.is_consumed.is_(None))
         )
-        db.commit()
+        .update({"is_consumed": True}, synchronize_session=False))
+
+    db.commit()
+
 
 
 
@@ -443,7 +471,7 @@ def close_if_match(db: Session, bot_id: int, symbol: str):
         fee_close_usdt=fee_close,
         closed_at=exit_ts,
     )
-    _consume_execs_for_position(db, pos, both_sides=True)
+    _consume_execs_for_position(db, pos.id)
     return pos
 
 
