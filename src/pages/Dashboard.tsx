@@ -285,7 +285,7 @@ export default function Dashboard() {
     >
       {/* Filter Modal (Mobile) */}
       {showFilters && (
-        <div className="fixed inset-0 bg-background/80 z-50 lg:hidden" onClick={() => setShowFilters(false)}>
+        <div className="fixed top-14 inset-x-0 bottom-0 bg-background/80 z-50 lg:hidden" onClick={() => setShowFilters(false)}>
           <div
             className="fixed inset-x-0 top-14 bottom-16 bg-background flex flex-col"
             onClick={(e) => e.stopPropagation()}
@@ -314,6 +314,7 @@ export default function Dashboard() {
               showTimeRange={true}
               showCostAsPercent={showCostAsPercent}
               onShowCostAsPercentChange={setShowCostAsPercent}
+              onClose={() => setShowFilters(false)}
             />
           </div>
         </div>

@@ -51,6 +51,9 @@ type Props = {
   showTimeRange?: boolean;
   showSignalKind?: boolean;
   showSignalStatus?: boolean;
+  
+  // Callback to close filter view (for mobile/tablet)
+  onClose?: () => void;
 };
 
 export default function TradesFiltersBar({
@@ -84,6 +87,9 @@ export default function TradesFiltersBar({
   showTimeRange = true,
   showSignalKind = false,
   showSignalStatus = false,
+  
+  // Close callback
+  onClose,
 }: Props) {
   const [showFilters] = useState(true);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
@@ -185,6 +191,9 @@ export default function TradesFiltersBar({
         signalStatus: localSignalStatus,
       });
     }
+    
+    // Close filter view on mobile/tablet
+    onClose?.();
   };
 
   const resetFilters = () => {
@@ -217,6 +226,9 @@ export default function TradesFiltersBar({
         signalStatus: 'all',
       });
     }
+    
+    // Close filter view on mobile/tablet
+    onClose?.();
   };
 
   const closeAllDropdowns = () => setOpenDropdown(null);
