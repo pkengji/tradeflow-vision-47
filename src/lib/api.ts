@@ -633,7 +633,11 @@ async function createCashflow(data: {
   date: string;
   bot_id: number | null;
 }): Promise<CashflowOut> {
-  return http<CashflowOut>("/api/v1/cashflows/manual", { method: "POST", body: data });
+  const payload = {
+    ...data,
+    raw_json: JSON.stringify({ source: "manual" }),
+  };
+  return http<CashflowOut>("/api/v1/cashflows/manual", { method: "POST", body: payload });
 }
 
 async function updateCashflow(id: number, data: {
