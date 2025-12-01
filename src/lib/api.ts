@@ -592,6 +592,7 @@ async function getTvSignals(params?: {
   status?: string;
   date_from?: string;
   date_to?: string;
+  limit?: number;
 }): Promise<TvSignal[]> {
   return http<TvSignal[]>("/api/v1/tv/signals", { query: params });
 }
@@ -606,6 +607,7 @@ async function getOutboxItems(params?: {
   status?: string;
   date_from?: string;
   date_to?: string;
+  limit?: number;
 }): Promise<OutboxItemExtended[]> {
   return http<OutboxItemExtended[]>("/api/v1/outbox-items", { query: params });
 }

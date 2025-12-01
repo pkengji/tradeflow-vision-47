@@ -1,5 +1,6 @@
 // src/pages/Signals.tsx
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import { useNavigate, useNavigationType } from 'react-router-dom';
 import api from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,10 +19,34 @@ function mapStatus(raw: string): MappedStatus {
 }
 
 export default function Signals() {
-  const [activeTab, setActiveTab] = useState<SignalTab>('tv');
+  const navigate = useNavigate();
+  const navigationType = useNavigationType();
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  
+  const [activeTab, setActiveTab] = useState<SignalTab>(() => {
+    if (navigationType !== "POP") {
+      sessionStorage.removeItem("signals-scroll-position");
+      sessionStorage.removeItem("signals-display-limit");
+      sessionStorage.removeItem("signals-tab");
+      return 'tv';
+    }
+    const saved = sessionStorage.getItem("signals-tab");
+    return saved === 'tv' || saved === 'orders' || saved === 'manual' ? saved : 'tv';
+  });
+  
   const [tvSignals, setTvSignals] = useState<any[]>([]);
   const [orderSignals, setOrderSignals] = useState<any[]>([]);
   const [manualSignals, setManualSignals] = useState<any[]>([]);
+  
+  const [displayLimit, setDisplayLimit] = useState<number>(() => {
+    if (navigationType !== "POP") return 50;
+    const saved = sessionStorage.getItem("signals-display-limit");
+    if (!saved) return 50;
+    const parsed = parseInt(saved, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 50;
+  });
+  
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   
   const [filters, setFilters] = useState<TradesFilters>({
     botIds: [],
@@ -64,10 +89,40 @@ export default function Signals() {
 
   useEffect(() => {
     loadSignals();
-  }, [activeTab, filters]);
+  }, [activeTab, filters, displayLimit]);
+
+  // Restore scroll position on back navigation
+  useEffect(() => {
+    if (navigationType !== "POP") return;
+
+    const savedScrollY = sessionStorage.getItem("signals-scroll-position");
+    const savedTab = sessionStorage.getItem("signals-tab");
+
+    if (savedTab && (savedTab === 'tv' || savedTab === 'orders' || savedTab === 'manual')) {
+      setActiveTab(savedTab as SignalTab);
+    }
+
+    if (savedScrollY) {
+      setTimeout(() => {
+        const y = parseInt(savedScrollY, 10);
+        const container = scrollContainerRef.current;
+
+        if (container) {
+          container.scrollTo({ top: y, behavior: "auto" });
+        } else {
+          window.scrollTo(0, y);
+        }
+
+        sessionStorage.removeItem("signals-scroll-position");
+      }, 100);
+    }
+  }, [navigationType]);
 
   const loadSignals = async () => {
-    const params: any = {};
+    setIsLoadingMore(true);
+    const params: any = {
+      limit: displayLimit,
+    };
     
     // Bot IDs
     if (filters.botIds.length > 0) {
@@ -142,6 +197,24 @@ export default function Signals() {
       }
     } catch (error) {
       console.error('Failed to load signals:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
+  // Save scroll position and displayLimit before navigating
+  const saveScrollPosition = useCallback(() => {
+    const container = scrollContainerRef.current;
+    const scrollY = container ? container.scrollTop : window.scrollY;
+
+    sessionStorage.setItem("signals-scroll-position", String(scrollY));
+    sessionStorage.setItem("signals-tab", activeTab);
+    sessionStorage.setItem("signals-display-limit", String(displayLimit));
+  }, [activeTab, displayLimit]);
+
+  const handleLoadMore = () => {
+    if (!isLoadingMore) {
+      setDisplayLimit((prev) => prev + 50);
     }
   };
 
@@ -168,6 +241,9 @@ export default function Signals() {
   };
 
   const renderSignalList = (signals: any[], type: SignalTab) => {
+    const displayedSignals = signals.slice(0, displayLimit);
+    const hasMore = signals.length > displayLimit;
+
     if (signals.length === 0) {
       return (
         <div className="text-sm text-muted-foreground py-8 text-center">
@@ -177,55 +253,70 @@ export default function Signals() {
     }
 
     return (
-      <div className="divide-y divide-border">
-        {signals.map((signal) => {
-          return (
-            <div
-              key={signal.id}
-              onClick={() => {
-                const queryParam = type === 'tv' ? 'tv' : type === 'orders' ? 'orders' : 'manual';
-                window.location.href = `/signals/${signal.id}?type=${queryParam}`;
-              }}
-              className="py-3 hover:bg-muted/30 transition-colors cursor-pointer"
-            >
-              <div className="flex items-start gap-3">
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-sm">
-                      {type === 'tv' && `TV Signal #${signal.id}`}
-                      {type === 'orders' && `Order #${signal.id}`}
-                      {type === 'manual' && `Manual #${signal.id}`}
-                    </span>
-                    {signal.symbol && (
-                      <Badge variant="outline" className="text-xs">{signal.symbol}</Badge>
-                    )}
-                    {signal.side && (
-                      <Badge 
-                        variant={signal.side === 'long' ? 'default' : 'destructive'}
-                        className={`text-xs ${signal.side === 'long' ? 'bg-long-bg text-long' : 'bg-short-bg text-short'}`}
-                      >
-                        {signal.side}
-                      </Badge>
-                    )}
-                    {signal.kind && (
-                      <Badge variant="outline" className="text-xs capitalize">{signal.kind}</Badge>
-                    )}
+      <>
+        <div className="divide-y divide-border">
+          {displayedSignals.map((signal) => {
+            return (
+              <div
+                key={signal.id}
+                onClick={() => {
+                  saveScrollPosition();
+                  const queryParam = type === 'tv' ? 'tv' : type === 'orders' ? 'orders' : 'manual';
+                  navigate(`/signals/${signal.id}?type=${queryParam}`);
+                }}
+                className="py-3 hover:bg-muted/30 transition-colors cursor-pointer"
+              >
+                <div className="flex items-start gap-3">
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-sm">
+                        {type === 'tv' && `TV Signal #${signal.id}`}
+                        {type === 'orders' && `Order #${signal.id}`}
+                        {type === 'manual' && `Manual #${signal.id}`}
+                      </span>
+                      {signal.symbol && (
+                        <Badge variant="outline" className="text-xs">{signal.symbol}</Badge>
+                      )}
+                      {signal.side && (
+                        <Badge 
+                          variant={signal.side === 'long' ? 'default' : 'destructive'}
+                          className={`text-xs ${signal.side === 'long' ? 'bg-long-bg text-long' : 'bg-short-bg text-short'}`}
+                        >
+                          {signal.side}
+                        </Badge>
+                      )}
+                      {signal.kind && (
+                        <Badge variant="outline" className="text-xs capitalize">{signal.kind}</Badge>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {formatTime(signal.created_at || signal.tv_ts)}
+                    </div>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    {formatTime(signal.created_at || signal.tv_ts)}
-                  </div>
-                </div>
 
-                {/* Status Badge */}
-                <div className="text-right flex-shrink-0">
-                  {getStatusBadge(signal.status)}
+                  {/* Status Badge */}
+                  <div className="text-right flex-shrink-0">
+                    {getStatusBadge(signal.status)}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+        
+        {hasMore && (
+          <div className="flex justify-center py-4">
+            <Button 
+              variant="outline" 
+              onClick={handleLoadMore}
+              disabled={isLoadingMore}
+            >
+              {isLoadingMore ? 'Lädt...' : 'Mehr laden'}
+            </Button>
+          </div>
+        )}
+      </>
     );
   };
 
@@ -296,49 +387,65 @@ export default function Signals() {
         </div>
       )}
 
-      <div className="p-4 pb-24">
-        {/* Filter - Desktop (collapsible) */}
-        {showFilters && (
-          <div className="hidden lg:block border rounded-lg bg-muted/30 mb-4">
-            <div className="p-4">
-              <TradesFiltersBar
-                value={filters}
-                onChange={setFilters}
-                availableBots={bots}
-                availableSymbols={symbols}
-                showDateRange={true}
-                showTimeRange={false}
-                showSignalKind={false}
-                showSignalStatus={true}
-              />
-            </div>
-            <div className="border-t p-3 flex gap-3">
-              <Button className="flex-1" onClick={handleApplyFilters}>Fertig</Button>
-              <Button variant="outline" className="flex-1" onClick={handleResetFilters}>Zurücksetzen</Button>
-            </div>
+      {/* Filter - Desktop (collapsible) */}
+      {showFilters && (
+        <div className="hidden lg:block border rounded-lg bg-muted/30 m-4 mb-0">
+          <div className="p-4">
+            <TradesFiltersBar
+              value={filters}
+              onChange={setFilters}
+              availableBots={bots}
+              availableSymbols={symbols}
+              showDateRange={true}
+              showTimeRange={false}
+              showSignalKind={false}
+              showSignalStatus={true}
+            />
           </div>
-        )}
+          <div className="border-t p-3 flex gap-3">
+            <Button className="flex-1" onClick={handleApplyFilters}>Fertig</Button>
+            <Button variant="outline" className="flex-1" onClick={handleResetFilters}>Zurücksetzen</Button>
+          </div>
+        </div>
+      )}
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as SignalTab)} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-4">
-            <TabsTrigger value="tv">TV Signals</TabsTrigger>
-            <TabsTrigger value="orders">Bot Orders</TabsTrigger>
-            <TabsTrigger value="manual">Manual Actions</TabsTrigger>
+      {/* Tabs - sticky */}
+      <div className="sticky top-14 lg:top-28 z-10 bg-background border-b">
+        <Tabs value={activeTab} onValueChange={(v) => {
+          setActiveTab(v as SignalTab);
+          sessionStorage.setItem("signals-tab", v);
+          setDisplayLimit(50);
+        }} className="w-full">
+          <TabsList className="grid w-full grid-cols-3 h-10 rounded-none border-0 bg-transparent p-0">
+            <TabsTrigger value="tv" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary">
+              TV Signals
+            </TabsTrigger>
+            <TabsTrigger value="orders" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary">
+              Bot Orders
+            </TabsTrigger>
+            <TabsTrigger value="manual" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary">
+              Manual Actions
+            </TabsTrigger>
           </TabsList>
-
-          <TabsContent value="tv">
-            {renderSignalList(tvSignals, 'tv')}
-          </TabsContent>
-
-          <TabsContent value="orders">
-            {renderSignalList(orderSignals, 'orders')}
-          </TabsContent>
-
-          <TabsContent value="manual">
-            {renderSignalList(manualSignals, 'manual')}
-          </TabsContent>
         </Tabs>
+      </div>
+
+      <div className="overflow-auto flex-1" ref={scrollContainerRef}>
+        <div className="p-4 pb-24">
+          <Tabs value={activeTab} className="w-full">
+            <TabsContent value="tv">
+              {renderSignalList(tvSignals, 'tv')}
+            </TabsContent>
+
+            <TabsContent value="orders">
+              {renderSignalList(orderSignals, 'orders')}
+            </TabsContent>
+
+            <TabsContent value="manual">
+              {renderSignalList(manualSignals, 'manual')}
+            </TabsContent>
+          </Tabs>
+        </div>
       </div>
     </DashboardLayout>
   );
