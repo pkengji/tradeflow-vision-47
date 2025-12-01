@@ -65,11 +65,18 @@ export async function getPushSubscription(): Promise<PushSubscription | null> {
 }
 
 /**
+ * Check if VAPID key is configured
+ */
+export function isVapidKeyConfigured(): boolean {
+  return !!VAPID_PUBLIC_KEY && VAPID_PUBLIC_KEY.length > 0;
+}
+
+/**
  * Subscribe to push notifications and return the subscription object
  */
 export async function subscribeToPushManager(): Promise<PushSubscription> {
   if (!VAPID_PUBLIC_KEY) {
-    throw new Error('VAPID public key not configured');
+    throw new Error('VAPID Public Key ist nicht konfiguriert. Bitte kontaktieren Sie den Administrator.');
   }
 
   if (!('serviceWorker' in navigator)) {
