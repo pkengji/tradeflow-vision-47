@@ -101,21 +101,46 @@ export default function SignalsDetail() {
   const getErrorMessage = (): string | null => {
     if (type === 'manual') {
       const manualSignal = signal as OutboxItem;
-      if (manualSignal.error_message) return manualSignal.error_message;
+      // Check error_message field
+      if (manualSignal.error_message && manualSignal.error_message !== 'null' && manualSignal.error_message !== '') {
+        return manualSignal.error_message;
+      }
+      // Check payload.error
       if (manualSignal.payload && typeof manualSignal.payload === 'object' && 'error' in manualSignal.payload) {
-        return String(manualSignal.payload.error);
+        const payloadError = String(manualSignal.payload.error);
+        if (payloadError && payloadError !== 'null' && payloadError !== 'undefined') {
+          return payloadError;
+        }
+      }
+      return null;
+    }
+    
+    // For other types (tv, orders), check if there's an error field in the data
+    if ('error_message' in signal) {
+      const errorMsg = (signal as any).error_message;
+      // Only return if it's a non-empty, non-null string
+      if (errorMsg && errorMsg !== 'null' && errorMsg !== '') {
+        return errorMsg;
       }
     }
-    // For other types, check if there's an error field in the data
-    if ('error_message' in signal) return (signal as any).error_message;
-    if ('error' in signal) return String((signal as any).error);
+    if ('error' in signal) {
+      const errorMsg = String((signal as any).error);
+      // Only return if it's a non-empty, non-null string
+      if (errorMsg && errorMsg !== 'null' && errorMsg !== 'undefined') {
+        return errorMsg;
+      }
+    }
     return null;
   };
 
   const errorMessage = getErrorMessage();
 
   return (
-    <DashboardLayout pageTitle={`Signal #${signalId}`} mobileHeaderLeft={BackButton}>
+    <DashboardLayout 
+      pageTitle={`Signal #${signalId}`} 
+      mobileHeaderLeft={BackButton}
+      desktopHeaderLeft={BackButton}
+    >
       <div className="space-y-3 p-4 pb-24">
         {/* Header Card */}
         <Card>
