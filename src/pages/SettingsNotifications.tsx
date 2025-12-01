@@ -13,6 +13,7 @@ import {
   getPushSubscription,
   isPushSupported,
   getNotificationPermission,
+  isVapidKeyConfigured,
 } from '@/lib/pushNotifications';
 
 type NotificationEvent = 
@@ -53,6 +54,7 @@ export default function SettingsNotifications() {
 
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushSupported, setPushSupported] = useState(false);
+  const [vapidConfigured, setVapidConfigured] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | null>(null);
 
   // Fetch settings from API
@@ -64,11 +66,17 @@ export default function SettingsNotifications() {
   // Check push notification support and status
   useEffect(() => {
     const checkPushStatus = async () => {
-      setPushSupported(isPushSupported());
+      const supported = isPushSupported();
+      const configured = isVapidKeyConfigured();
+      
+      setPushSupported(supported);
+      setVapidConfigured(configured);
       setNotificationPermission(getNotificationPermission());
 
-      const subscription = await getPushSubscription();
-      setPushSubscribed(!!subscription);
+      if (supported && configured) {
+        const subscription = await getPushSubscription();
+        setPushSubscribed(!!subscription);
+      }
     };
 
     checkPushStatus();
@@ -172,6 +180,11 @@ export default function SettingsNotifications() {
       return;
     }
 
+    if (!vapidConfigured) {
+      toast.error('VAPID Key ist nicht konfiguriert');
+      return;
+    }
+
     try {
       toast.loading('Push-Benachrichtigungen werden aktiviert...');
       
@@ -203,13 +216,14 @@ export default function SettingsNotifications() {
 
   const getPushStatusText = () => {
     if (!pushSupported) return 'Nicht unterstützt';
+    if (!vapidConfigured) return 'Nicht konfiguriert';
     if (notificationPermission === 'denied') return 'Blockiert';
     if (pushSubscribed) return 'Aktiviert';
     return 'Nicht aktiviert';
   };
 
   const getPushStatusColor = () => {
-    if (!pushSupported || notificationPermission === 'denied') return 'text-danger';
+    if (!pushSupported || !vapidConfigured || notificationPermission === 'denied') return 'text-danger';
     if (pushSubscribed) return 'text-success';
     return 'text-muted-foreground';
   };
@@ -238,7 +252,7 @@ export default function SettingsNotifications() {
                   </div>
                 </div>
               </div>
-              {pushSupported && !pushSubscribed && notificationPermission !== 'denied' && (
+              {pushSupported && vapidConfigured && !pushSubscribed && notificationPermission !== 'denied' && (
                 <Button onClick={handlePushSubscribe} size="sm">
                   Aktivieren
                 </Button>
