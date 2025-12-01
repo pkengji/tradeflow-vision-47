@@ -1,37 +1,28 @@
 // src/pages/Signals.tsx
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
-import TradesFiltersBar, { type TradesFilters } from '@/components/app/TradesFiltersBar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Download, SlidersHorizontal, Coins } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { SlidersHorizontal, Radio, Send, Edit3 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import TradesFiltersBar, { type TradesFilters } from '@/components/app/TradesFiltersBar';
 
-// CSV-Export-Button (eigenständig, keine Lib nötig)
-function ExportCSV({ url, filename }: { url: string; filename: string }) {
-  const go = async () => {
-    const res = await fetch(url, { credentials: 'include' });
-    if (!res.ok) { alert('CSV-Export fehlgeschlagen'); return; }
-    const txt = await res.text();
-    const blob = new Blob([txt], { type: "text/csv" });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
-  return (
-    <Button variant="outline" onClick={go} size="sm">
-      <Download className="mr-2 h-4 w-4" />
-      Export CSV
-    </Button>
-  );
+type SignalTab = 'tv' | 'orders' | 'manual';
+type MappedStatus = 'pending' | 'success' | 'failed';
+
+function mapStatus(raw: string): MappedStatus {
+  if (['received', 'pending', 'waiting_for_approval', 'pending_approval'].includes(raw)) return 'pending';
+  if (['processed', 'sent', 'completed', 'ok'].includes(raw)) return 'success';
+  return 'failed'; // error, rejected, failed
 }
 
 export default function Signals() {
-  const navigate = useNavigate();
-  const [outboxItems, setOutboxItems] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<SignalTab>('tv');
+  const [tvSignals, setTvSignals] = useState<any[]>([]);
+  const [orderSignals, setOrderSignals] = useState<any[]>([]);
+  const [manualSignals, setManualSignals] = useState<any[]>([]);
+  
   const [filters, setFilters] = useState<TradesFilters>({
     botIds: [],
     symbols: [],
@@ -44,19 +35,16 @@ export default function Signals() {
     signalKind: 'all',
     signalStatus: 'all',
   });
+  
   const [bots, setBots] = useState<{ id: number; name: string }[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
-  const [selectedSignal, setSelectedSignal] = useState<any>(null);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (filters.botIds.length > 0) count++;
     if (filters.symbols.length > 0) count++;
-    if (filters.side && filters.side !== 'all') count++;
     if (filters.dateFrom || filters.dateTo) count++;
-    if (filters.timeFrom || filters.timeTo) count++;
-    if (filters.signalKind && filters.signalKind !== 'all') count++;
     if (filters.signalStatus && filters.signalStatus !== 'all') count++;
     return count;
   }, [filters]);
@@ -71,12 +59,91 @@ export default function Signals() {
         const symbolsList = await api.getSymbols();
         setSymbols(symbolsList);
       } catch {}
-      try {
-        const items = await api.getOutbox();
-        setOutboxItems(items);
-      } catch {}
     })();
   }, []);
+
+  useEffect(() => {
+    loadSignals();
+  }, [activeTab, filters]);
+
+  const loadSignals = async () => {
+    const params: any = {};
+    
+    // Bot IDs
+    if (filters.botIds.length > 0) {
+      params.bot_id = filters.botIds[0]; // Backend expects single bot_id
+    }
+    
+    // Symbols
+    if (filters.symbols.length > 0) {
+      params.symbol = filters.symbols.join(',');
+    }
+    
+    // Date range
+    if (filters.dateFrom) {
+      const d = new Date(filters.dateFrom);
+      params.date_from = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+    if (filters.dateTo) {
+      const d = new Date(filters.dateTo);
+      params.date_to = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+    
+    // Status mapping
+    if (filters.signalStatus && filters.signalStatus !== 'all') {
+      // For client-side filtering, we'll apply this after fetching
+      // No need to send to backend as it expects raw status values
+    }
+
+    try {
+      if (activeTab === 'tv') {
+        const data = await api.getTvSignals(params);
+        // Apply client-side status filtering
+        let filtered = data;
+        if (filters.signalStatus && filters.signalStatus !== 'all') {
+          filtered = data.filter((item: any) => mapStatus(item.status) === filters.signalStatus);
+        }
+        setTvSignals(filtered);
+      } else if (activeTab === 'orders') {
+        const data = await api.getOutboxItems(params);
+        // Apply client-side status filtering
+        let filtered = data;
+        if (filters.signalStatus && filters.signalStatus !== 'all') {
+          filtered = data.filter((item: any) => mapStatus(item.status) === filters.signalStatus);
+        }
+        setOrderSignals(filtered);
+      } else if (activeTab === 'manual') {
+        const statusParam = params.status || undefined;
+        const data = await api.getOutbox({ status: statusParam });
+        // Client-side filtering for manual actions
+        let filtered = data;
+        
+        // Filter by bot_id
+        if (params.bot_id) {
+          filtered = filtered.filter((item: any) => item.bot_id === params.bot_id);
+        }
+        
+        // Filter by date range
+        if (params.date_from || params.date_to) {
+          filtered = filtered.filter((item: any) => {
+            const itemDate = new Date(item.created_at).toISOString().split('T')[0];
+            if (params.date_from && itemDate < params.date_from) return false;
+            if (params.date_to && itemDate > params.date_to) return false;
+            return true;
+          });
+        }
+        
+        // Filter by status
+        if (filters.signalStatus && filters.signalStatus !== 'all') {
+          filtered = filtered.filter((item: any) => mapStatus(item.status) === filters.signalStatus);
+        }
+        
+        setManualSignals(filtered);
+      }
+    } catch (error) {
+      console.error('Failed to load signals:', error);
+    }
+  };
 
   const formatTime = (iso: string) => {
     return new Date(iso).toLocaleString('de-CH', {
@@ -89,44 +156,80 @@ export default function Signals() {
     });
   };
 
-  const handleSignalClick = (signal: any) => {
-    if (signal.status === 'waiting_for_approval') {
-      setSelectedSignal(signal);
-    } else {
-      navigate(`/signal/${signal.id}`);
-    }
-  };
-
-  const handleApprove = async () => {
-    if (!selectedSignal) return;
-    try {
-      await api.approveOutbox(selectedSignal.id);
-      const items = await api.getOutbox();
-      setOutboxItems(items);
-      setSelectedSignal(null);
-    } catch (error) {
-      console.error('Failed to approve signal:', error);
-    }
-  };
-
-  const handleCancel = async () => {
-    if (!selectedSignal) return;
-    try {
-      await api.rejectOutbox(selectedSignal.id);
-      const items = await api.getOutbox();
-      setOutboxItems(items);
-      setSelectedSignal(null);
-    } catch (error) {
-      console.error('Failed to reject signal:', error);
-    }
-  };
-
   const getStatusBadge = (status: string) => {
-    if (status === 'sent' || status === 'approved') return <Badge variant="default" className="text-xs bg-long-bg text-long">{status}</Badge>;
-    if (status === 'failed') return <Badge variant="destructive" className="text-xs bg-short-bg text-short">failed</Badge>;
-    if (status === 'rejected') return <Badge variant="secondary" className="text-xs">rejected</Badge>;
-    if (status === 'queued') return <Badge variant="secondary" className="text-xs">queued</Badge>;
+    const mapped = mapStatus(status);
+    if (mapped === 'success') {
+      return <Badge variant="default" className="text-xs bg-long-bg text-long">{status}</Badge>;
+    }
+    if (mapped === 'failed') {
+      return <Badge variant="destructive" className="text-xs bg-short-bg text-short">{status}</Badge>;
+    }
     return <Badge variant="outline" className="text-xs">{status}</Badge>;
+  };
+
+  const renderSignalList = (signals: any[], type: SignalTab) => {
+    if (signals.length === 0) {
+      return (
+        <div className="text-sm text-muted-foreground py-8 text-center">
+          Keine Signale gefunden.
+        </div>
+      );
+    }
+
+    return (
+      <div className="divide-y divide-border">
+        {signals.map((signal) => {
+          const Icon = type === 'tv' ? Radio : type === 'orders' ? Send : Edit3;
+          
+          return (
+            <div
+              key={signal.id}
+              className="py-3 hover:bg-muted/30 transition-colors"
+            >
+              <div className="flex items-start gap-3">
+                {/* Icon */}
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mt-1">
+                  <Icon className="h-5 w-5 text-primary" />
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-sm">
+                      {type === 'tv' && `TV Signal #${signal.id}`}
+                      {type === 'orders' && `Order #${signal.id}`}
+                      {type === 'manual' && `Manual #${signal.id}`}
+                    </span>
+                    {signal.symbol && (
+                      <Badge variant="outline" className="text-xs">{signal.symbol}</Badge>
+                    )}
+                    {signal.side && (
+                      <Badge 
+                        variant={signal.side === 'long' ? 'default' : 'destructive'}
+                        className={`text-xs ${signal.side === 'long' ? 'bg-long-bg text-long' : 'bg-short-bg text-short'}`}
+                      >
+                        {signal.side}
+                      </Badge>
+                    )}
+                    {signal.kind && (
+                      <Badge variant="outline" className="text-xs capitalize">{signal.kind}</Badge>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    {formatTime(signal.created_at || signal.tv_ts)}
+                  </div>
+                </div>
+
+                {/* Status Badge */}
+                <div className="text-right flex-shrink-0">
+                  {getStatusBadge(signal.status)}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
   };
 
   const FilterButton = (
@@ -145,6 +248,27 @@ export default function Signals() {
     </Button>
   );
 
+  const handleApplyFilters = () => {
+    setShowFilters(false);
+    loadSignals();
+  };
+
+  const handleResetFilters = () => {
+    setFilters({
+      botIds: [],
+      symbols: [],
+      side: 'all',
+      dateFrom: undefined,
+      dateTo: undefined,
+      timeFrom: undefined,
+      timeTo: undefined,
+      timeMode: 'opened',
+      signalKind: 'all',
+      signalStatus: 'all',
+    });
+    setShowFilters(false);
+  };
+
   return (
     <DashboardLayout
       pageTitle="Signale"
@@ -155,20 +279,21 @@ export default function Signals() {
       {showFilters && (
         <div className="fixed inset-0 bg-background/80 z-50 lg:hidden" onClick={() => setShowFilters(false)}>
           <div className="fixed inset-x-0 top-14 bottom-16 bg-background flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="overflow-auto">
+            <div className="overflow-auto p-4">
               <TradesFiltersBar
                 value={filters}
                 onChange={setFilters}
                 availableBots={bots}
                 availableSymbols={symbols}
                 showDateRange={true}
-                showTimeRange={true}
-                showSignalKind={true}
+                showTimeRange={false}
+                showSignalKind={false}
                 showSignalStatus={true}
               />
             </div>
-            <div className="border-t p-3">
-              <Button className="w-full" onClick={() => setShowFilters(false)}>Fertig</Button>
+            <div className="border-t p-3 flex gap-3">
+              <Button className="flex-1" onClick={handleApplyFilters}>Fertig</Button>
+              <Button variant="outline" className="flex-1" onClick={handleResetFilters}>Zurücksetzen</Button>
             </div>
           </div>
         </div>
@@ -185,76 +310,38 @@ export default function Signals() {
                 availableBots={bots}
                 availableSymbols={symbols}
                 showDateRange={true}
-                showTimeRange={true}
-                showSignalKind={true}
+                showTimeRange={false}
+                showSignalKind={false}
                 showSignalStatus={true}
               />
             </div>
-            <div className="border-t p-3">
-              <Button className="w-full" onClick={() => setShowFilters(false)}>
-                Fertig
-              </Button>
+            <div className="border-t p-3 flex gap-3">
+              <Button className="flex-1" onClick={handleApplyFilters}>Fertig</Button>
+              <Button variant="outline" className="flex-1" onClick={handleResetFilters}>Zurücksetzen</Button>
             </div>
           </div>
         )}
 
-        {/* Liste */}
-        <div className="divide-y divide-border">
-          {outboxItems.map((item) => (
-            <div
-              key={item.id}
-              onClick={() => handleSignalClick(item)}
-              className="cursor-pointer hover:bg-muted/30 transition-colors py-2"
-            >
-              <div className="flex items-start gap-3">
-                {/* Icon */}
-                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mt-1">
-                  <Coins className="h-5 w-5 text-primary" />
-                </div>
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as SignalTab)} className="w-full">
+          <TabsList className="grid w-full grid-cols-3 mb-4">
+            <TabsTrigger value="tv">TV Signals</TabsTrigger>
+            <TabsTrigger value="orders">Bot Orders</TabsTrigger>
+            <TabsTrigger value="manual">Manual Actions</TabsTrigger>
+          </TabsList>
 
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-sm">Outbox #{item.id}</span>
-                    <Badge variant="outline" className="text-xs capitalize">{item.kind}</Badge>
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    {new Date(item.created_at).toLocaleString('de-CH')}
-                  </div>
-                </div>
+          <TabsContent value="tv">
+            {renderSignalList(tvSignals, 'tv')}
+          </TabsContent>
 
-                {/* Right side */}
-                <div className="text-right flex-shrink-0">
-                  <div className="mt-0.5">
-                    {getStatusBadge(item.status)}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-          {outboxItems.length === 0 && (
-            <div className="text-sm text-muted-foreground py-4">Keine Signals gefunden.</div>
-          )}
-        </div>
+          <TabsContent value="orders">
+            {renderSignalList(orderSignals, 'orders')}
+          </TabsContent>
 
-        {/* Action buttons for queued signals */}
-        {selectedSignal && selectedSignal.status === 'queued' && (
-          <div className="fixed inset-x-0 bottom-16 bg-card border-t p-3 flex gap-3 z-50">
-            <Button 
-              className="flex-1" 
-              onClick={handleApprove}
-            >
-              Approve
-            </Button>
-            <Button 
-              variant="outline"
-              className="flex-1"
-              onClick={handleCancel}
-            >
-              Cancel
-            </Button>
-          </div>
-        )}
+          <TabsContent value="manual">
+            {renderSignalList(manualSignals, 'manual')}
+          </TabsContent>
+        </Tabs>
       </div>
     </DashboardLayout>
   );
