@@ -185,12 +185,36 @@ export type Summary = Record<string, any>;
 
 export type OutboxItem = {
   id: number;
+  bot_id: number;
   kind: string;
-  status: "queued" | "approved" | "rejected" | "sent" | "failed";
-  position_id: number | null;
+  status: "queued" | "approved" | "rejected" | "sent" | "failed" | "waiting_for_approval" | "completed" | "pending" | "ok" | "error";
+  position_id?: number | null;
   payload?: Record<string, any> | null;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
+  dispatched_at?: string | null;
+  result?: any;
+};
+
+export type TvSignal = {
+  id: number;
+  bot_id: number;
+  symbol: string;
+  side: "long" | "short";
+  status: string;
+  tv_ts: string;
+  stop_loss_tv?: number | null;
+  take_profit_tv?: number | null;
+  created_at: string;
+};
+
+export type OutboxItemExtended = {
+  id: number;
+  bot_id: number;
+  symbol: string;
+  trade_uid?: string | null;
+  status: string;
+  created_at: string;
 };
 
 export type Trade = {
@@ -556,6 +580,26 @@ async function getDailyPnl(params?: {
 async function getOutbox(params?: { status?: string; limit?: number }): Promise<OutboxItem[]> {
   return http<OutboxItem[]>("/api/v1/outbox", { query: params });
 }
+
+async function getTvSignals(params?: {
+  bot_id?: number;
+  symbol?: string;
+  status?: string;
+  date_from?: string;
+  date_to?: string;
+}): Promise<TvSignal[]> {
+  return http<TvSignal[]>("/api/v1/tv/signals", { query: params });
+}
+
+async function getOutboxItems(params?: {
+  bot_id?: number;
+  symbol?: string;
+  status?: string;
+  date_from?: string;
+  date_to?: string;
+}): Promise<OutboxItemExtended[]> {
+  return http<OutboxItemExtended[]>("/api/v1/outbox-items", { query: params });
+}
 async function approveOutbox(id: number): Promise<OutboxItem> {
   return http<OutboxItem>(`/api/v1/outbox/${id}/approve`, { method: "POST" });
 }
@@ -732,8 +776,10 @@ export const api = {
   // Dashboard
   getDashboardSummary,
 
-  // Outbox
+  // Outbox & Signals
   getOutbox,
+  getTvSignals,
+  getOutboxItems,
   approveOutbox,
   rejectOutbox,
   previewOutbox,
