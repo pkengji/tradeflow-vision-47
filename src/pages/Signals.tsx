@@ -386,7 +386,7 @@ export default function Signals() {
         )}
 
         {/* Tabs - sticky */}
-        <div className="sticky top-14 lg:top-28 z-10 bg-background border-b">
+        <div className="sticky top-0 z-10 bg-background border-b">
           <Tabs value={activeTab} onValueChange={(v) => {
             setActiveTab(v as SignalTab);
             sessionStorage.setItem("signals-tab", v);
