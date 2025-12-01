@@ -366,10 +366,10 @@ export default function Signals() {
       )}
 
       <div className="overflow-auto flex-1" ref={scrollContainerRef}>
-        <div className="space-y-4 p-4 pb-24">
-          {/* Filter - Desktop (collapsible) */}
-          {showFilters && (
-            <div className="hidden lg:block border rounded-lg bg-muted/30">
+        {/* Filter - Desktop (collapsible) */}
+        {showFilters && (
+          <div className="hidden lg:block p-4 pb-0">
+            <div className="border rounded-lg bg-muted/30">
               <TradesFiltersBar
                 value={filters}
                 onChange={setFilters}
@@ -382,30 +382,32 @@ export default function Signals() {
                 onClose={() => setShowFilters(false)}
               />
             </div>
-          )}
-
-          {/* Tabs - sticky */}
-          <div className="sticky top-14 lg:top-28 z-10 bg-background border-b -mx-4 px-4">
-        <Tabs value={activeTab} onValueChange={(v) => {
-          setActiveTab(v as SignalTab);
-          sessionStorage.setItem("signals-tab", v);
-          setDisplayLimit(50);
-        }} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 h-10 rounded-none border-0 bg-transparent p-0">
-            <TabsTrigger value="tv" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary">
-              TV Signals
-            </TabsTrigger>
-            <TabsTrigger value="orders" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary">
-              Bot Orders
-            </TabsTrigger>
-            <TabsTrigger value="manual" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary">
-              Manual Actions
-            </TabsTrigger>
-          </TabsList>
-          </Tabs>
           </div>
+        )}
 
-          {/* Tab Content */}
+        {/* Tabs - sticky */}
+        <div className="sticky top-14 lg:top-28 z-10 bg-background border-b">
+          <Tabs value={activeTab} onValueChange={(v) => {
+            setActiveTab(v as SignalTab);
+            sessionStorage.setItem("signals-tab", v);
+            setDisplayLimit(50);
+          }} className="w-full">
+            <TabsList className="grid w-full grid-cols-3 h-10 rounded-none border-0 bg-transparent p-0">
+              <TabsTrigger value="tv" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary">
+                TV Signals
+              </TabsTrigger>
+              <TabsTrigger value="orders" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary">
+                Bot Orders
+              </TabsTrigger>
+              <TabsTrigger value="manual" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary">
+                Manual Actions
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+
+        {/* Tab Content */}
+        <div className="p-4 pb-24">
           <Tabs value={activeTab} className="w-full">
             <TabsContent value="tv">
               {renderSignalList(tvSignals, 'tv')}
