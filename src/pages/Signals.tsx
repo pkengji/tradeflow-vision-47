@@ -336,26 +336,6 @@ export default function Signals() {
     </Button>
   );
 
-  const handleApplyFilters = () => {
-    setShowFilters(false);
-    loadSignals();
-  };
-
-  const handleResetFilters = () => {
-    setFilters({
-      botIds: [],
-      symbols: [],
-      side: 'all',
-      dateFrom: undefined,
-      dateTo: undefined,
-      timeFrom: undefined,
-      timeTo: undefined,
-      timeMode: 'opened',
-      signalKind: 'all',
-      signalStatus: 'all',
-    });
-    setShowFilters(false);
-  };
 
   return (
     <DashboardLayout
@@ -365,32 +345,11 @@ export default function Signals() {
     >
       {/* Filter-Modal - Mobile */}
       {showFilters && (
-        <div className="fixed inset-0 bg-background/80 z-50 lg:hidden" onClick={() => setShowFilters(false)}>
-          <div className="fixed inset-x-0 top-14 bottom-16 bg-background flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="overflow-auto p-4">
-              <TradesFiltersBar
-                value={filters}
-                onChange={setFilters}
-                availableBots={bots}
-                availableSymbols={symbols}
-                showDateRange={true}
-                showTimeRange={false}
-                showSignalKind={false}
-                showSignalStatus={true}
-              />
-            </div>
-            <div className="border-t p-3 flex gap-3">
-              <Button className="flex-1" onClick={handleApplyFilters}>Fertig</Button>
-              <Button variant="outline" className="flex-1" onClick={handleResetFilters}>Zurücksetzen</Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Filter - Desktop (collapsible) */}
-      {showFilters && (
-        <div className="hidden lg:block border rounded-lg bg-muted/30 m-4 mb-0">
-          <div className="p-4">
+        <div className="fixed top-14 inset-x-0 bottom-0 bg-background/80 z-50 lg:hidden" onClick={() => setShowFilters(false)}>
+          <div
+            className="fixed inset-x-0 top-14 bottom-16 bg-background flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
             <TradesFiltersBar
               value={filters}
               onChange={setFilters}
@@ -400,17 +359,33 @@ export default function Signals() {
               showTimeRange={false}
               showSignalKind={false}
               showSignalStatus={true}
+              onClose={() => setShowFilters(false)}
             />
-          </div>
-          <div className="border-t p-3 flex gap-3">
-            <Button className="flex-1" onClick={handleApplyFilters}>Fertig</Button>
-            <Button variant="outline" className="flex-1" onClick={handleResetFilters}>Zurücksetzen</Button>
           </div>
         </div>
       )}
 
-      {/* Tabs - sticky */}
-      <div className="sticky top-14 lg:top-28 z-10 bg-background border-b">
+      <div className="overflow-auto flex-1" ref={scrollContainerRef}>
+        <div className="space-y-4 p-4 pb-24">
+          {/* Filter - Desktop (collapsible) */}
+          {showFilters && (
+            <div className="hidden lg:block border rounded-lg bg-muted/30">
+              <TradesFiltersBar
+                value={filters}
+                onChange={setFilters}
+                availableBots={bots}
+                availableSymbols={symbols}
+                showDateRange={true}
+                showTimeRange={false}
+                showSignalKind={false}
+                showSignalStatus={true}
+                onClose={() => setShowFilters(false)}
+              />
+            </div>
+          )}
+
+          {/* Tabs - sticky */}
+          <div className="sticky top-14 lg:top-28 z-10 bg-background border-b -mx-4 px-4">
         <Tabs value={activeTab} onValueChange={(v) => {
           setActiveTab(v as SignalTab);
           sessionStorage.setItem("signals-tab", v);
@@ -427,11 +402,10 @@ export default function Signals() {
               Manual Actions
             </TabsTrigger>
           </TabsList>
-        </Tabs>
-      </div>
+          </Tabs>
+          </div>
 
-      <div className="overflow-auto flex-1" ref={scrollContainerRef}>
-        <div className="p-4 pb-24">
+          {/* Tab Content */}
           <Tabs value={activeTab} className="w-full">
             <TabsContent value="tv">
               {renderSignalList(tvSignals, 'tv')}
