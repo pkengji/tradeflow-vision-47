@@ -194,6 +194,7 @@ export type OutboxItem = {
   updated_at?: string;
   dispatched_at?: string | null;
   result?: any;
+  error_message?: string | null;
 };
 
 export type TvSignal = {
@@ -581,6 +582,10 @@ async function getOutbox(params?: { status?: string; limit?: number }): Promise<
   return http<OutboxItem[]>("/api/v1/outbox", { query: params });
 }
 
+async function getOutboxById(id: number): Promise<OutboxItem> {
+  return http<OutboxItem>(`/api/v1/outbox/${id}`);
+}
+
 async function getTvSignals(params?: {
   bot_id?: number;
   symbol?: string;
@@ -591,6 +596,10 @@ async function getTvSignals(params?: {
   return http<TvSignal[]>("/api/v1/tv/signals", { query: params });
 }
 
+async function getTvSignal(id: number): Promise<TvSignal> {
+  return http<TvSignal>(`/api/v1/tv/signals/${id}`);
+}
+
 async function getOutboxItems(params?: {
   bot_id?: number;
   symbol?: string;
@@ -599,6 +608,10 @@ async function getOutboxItems(params?: {
   date_to?: string;
 }): Promise<OutboxItemExtended[]> {
   return http<OutboxItemExtended[]>("/api/v1/outbox-items", { query: params });
+}
+
+async function getOutboxItem(id: number): Promise<OutboxItemExtended> {
+  return http<OutboxItemExtended>(`/api/v1/outbox-items/${id}`);
 }
 async function approveOutbox(id: number): Promise<OutboxItem> {
   return http<OutboxItem>(`/api/v1/outbox/${id}/approve`, { method: "POST" });
@@ -778,8 +791,11 @@ export const api = {
 
   // Outbox & Signals
   getOutbox,
+  getOutboxById,
   getTvSignals,
+  getTvSignal,
   getOutboxItems,
+  getOutboxItem,
   approveOutbox,
   rejectOutbox,
   previewOutbox,
