@@ -52,12 +52,8 @@ export default function TradeDetailPanel({ positionId }: Props) {
 
   // --- Mutations
   const closeMutation = useMutation({
-    mutationFn: async () => {
-      await api.logAction('UI_CLICK_CLOSE', { position_id: pid });
-      return api.closePosition(pid);
-    },
-    onSuccess: async (res) => {
-      await api.logAction('API_SENT_CLOSE', { position_id: pid, response: res });
+    mutationFn: () => api.closePosition(pid),
+    onSuccess: async () => {
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['position', pid] }),
         qc.invalidateQueries({ queryKey: ['positions'] }),
@@ -65,22 +61,19 @@ export default function TradeDetailPanel({ positionId }: Props) {
       ]);
       setDialogOpen(false);
     },
-    onError: async (err: any) => {
-      await api.logAction('API_ERROR_CLOSE', { position_id: pid, error: String(err?.message ?? err) });
+    onError: (err: any) => {
       alert(err?.message ?? 'Close fehlgeschlagen');
     },
   });
 
   const sltpMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: () => {
       const payload: { sl?: number; tp?: number } = {};
       if (sl.trim() !== '') payload.sl = Number(sl);
       if (tp.trim() !== '') payload.tp = Number(tp);
-      await api.logAction('UI_CLICK_SLTP', { position_id: pid, payload });
       return api.setPositionSlTp(pid, payload);
     },
-    onSuccess: async (res) => {
-      await api.logAction('API_SENT_SLTP', { position_id: pid, response: res });
+    onSuccess: async () => {
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['position', pid] }),
         qc.invalidateQueries({ queryKey: ['orders', pid] }),
@@ -88,8 +81,7 @@ export default function TradeDetailPanel({ positionId }: Props) {
       ]);
       setDialogOpen(false);
     },
-    onError: async (err: any) => {
-      await api.logAction('API_ERROR_SLTP', { position_id: pid, error: String(err?.message ?? err) });
+    onError: (err: any) => {
       alert(err?.message ?? 'SL/TP Update fehlgeschlagen');
     },
   });
