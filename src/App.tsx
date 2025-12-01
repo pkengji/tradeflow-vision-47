@@ -14,6 +14,7 @@ import Bots from "@/pages/Bots";
 import BotDetail from "./pages/BotDetail";
 import Signals from "./pages/Signals";
 import SignalDetail from "./pages/SignalDetail";
+import SignalsDetail from "./pages/SignalsDetail";
 import Settings from './pages/Settings';
 import SettingsAccount from './pages/SettingsAccount';
 import SettingsNotifications from './pages/SettingsNotifications';
@@ -87,6 +88,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Signals />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/signals/:id"
+              element={
+                <ProtectedRoute>
+                  <SignalsDetail />
                 </ProtectedRoute>
               }
             />

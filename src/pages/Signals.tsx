@@ -4,7 +4,7 @@ import api from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { SlidersHorizontal, Radio, Send, Edit3 } from 'lucide-react';
+import { SlidersHorizontal } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import TradesFiltersBar, { type TradesFilters } from '@/components/app/TradesFiltersBar';
 
@@ -179,19 +179,16 @@ export default function Signals() {
     return (
       <div className="divide-y divide-border">
         {signals.map((signal) => {
-          const Icon = type === 'tv' ? Radio : type === 'orders' ? Send : Edit3;
-          
           return (
             <div
               key={signal.id}
-              className="py-3 hover:bg-muted/30 transition-colors"
+              onClick={() => {
+                const queryParam = type === 'tv' ? 'tv' : type === 'orders' ? 'orders' : 'manual';
+                window.location.href = `/signals/${signal.id}?type=${queryParam}`;
+              }}
+              className="py-3 hover:bg-muted/30 transition-colors cursor-pointer"
             >
               <div className="flex items-start gap-3">
-                {/* Icon */}
-                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mt-1">
-                  <Icon className="h-5 w-5 text-primary" />
-                </div>
-
                 {/* Content */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
