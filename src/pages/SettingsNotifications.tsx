@@ -5,9 +5,15 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Bell, BellOff } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
+import {
+  subscribeToPushManager,
+  getPushSubscription,
+  isPushSupported,
+  getNotificationPermission,
+} from '@/lib/pushNotifications';
 
 type NotificationEvent = 
   | 'trade_opened' 
@@ -45,11 +51,28 @@ export default function SettingsNotifications() {
     system_alerts: { email: true, push: true },
   });
 
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushSupported, setPushSupported] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | null>(null);
+
   // Fetch settings from API
   const { data: savedSettings, isLoading } = useQuery({
     queryKey: ['notification-settings'],
     queryFn: api.getNotificationSettings,
   });
+
+  // Check push notification support and status
+  useEffect(() => {
+    const checkPushStatus = async () => {
+      setPushSupported(isPushSupported());
+      setNotificationPermission(getNotificationPermission());
+
+      const subscription = await getPushSubscription();
+      setPushSubscribed(!!subscription);
+    };
+
+    checkPushStatus();
+  }, []);
 
   useEffect(() => {
     if (savedSettings) {
@@ -111,18 +134,63 @@ export default function SettingsNotifications() {
     },
   });
 
-  const handleToggle = (event: NotificationEvent, type: 'email' | 'push') => {
+  const handleToggle = async (event: NotificationEvent, type: 'email' | 'push') => {
+    const newValue = !settings[event][type];
+    
     setSettings(prev => ({
       ...prev,
       [event]: {
         ...prev[event],
-        [type]: !prev[event][type],
+        [type]: newValue,
       },
     }));
+
+    // If enabling push for any event and not subscribed yet, trigger subscription
+    if (type === 'push' && newValue && !pushSubscribed) {
+      try {
+        await handlePushSubscribe();
+      } catch (error) {
+        // Revert the toggle if subscription failed
+        setSettings(prev => ({
+          ...prev,
+          [event]: {
+            ...prev[event],
+            [type]: false,
+          },
+        }));
+      }
+    }
   };
 
   const handleSave = () => {
     saveMutation.mutate(settings);
+  };
+
+  const handlePushSubscribe = async () => {
+    if (!pushSupported) {
+      toast.error('Push-Benachrichtigungen werden nicht unterstützt');
+      return;
+    }
+
+    try {
+      toast.loading('Push-Benachrichtigungen werden aktiviert...');
+      
+      // Subscribe to push manager
+      const subscription = await subscribeToPushManager();
+      
+      // Send subscription to backend
+      await api.subscribeToPush(subscription.toJSON());
+      
+      setPushSubscribed(true);
+      setNotificationPermission('granted');
+      toast.dismiss();
+      toast.success('Push-Benachrichtigungen aktiviert');
+    } catch (error: any) {
+      toast.dismiss();
+      console.error('Push subscription failed:', error);
+      toast.error(error.message || 'Fehler beim Aktivieren der Push-Benachrichtigungen');
+      throw error;
+    }
   };
 
   const BackButton = (
@@ -133,6 +201,19 @@ export default function SettingsNotifications() {
     </Link>
   );
 
+  const getPushStatusText = () => {
+    if (!pushSupported) return 'Nicht unterstützt';
+    if (notificationPermission === 'denied') return 'Blockiert';
+    if (pushSubscribed) return 'Aktiviert';
+    return 'Nicht aktiviert';
+  };
+
+  const getPushStatusColor = () => {
+    if (!pushSupported || notificationPermission === 'denied') return 'text-danger';
+    if (pushSubscribed) return 'text-success';
+    return 'text-muted-foreground';
+  };
+
   return (
     <DashboardLayout
       pageTitle="Benachrichtigungen"
@@ -140,6 +221,32 @@ export default function SettingsNotifications() {
       desktopHeaderLeft={BackButton}
     >
       <div className="flex-1 overflow-y-auto p-4 pb-24">
+        {/* Push Status Card */}
+        <Card className="mb-4">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {pushSubscribed ? (
+                  <Bell className="h-5 w-5 text-success" />
+                ) : (
+                  <BellOff className="h-5 w-5 text-muted-foreground" />
+                )}
+                <div>
+                  <div className="font-medium">Push-Benachrichtigungen</div>
+                  <div className={`text-sm ${getPushStatusColor()}`}>
+                    {getPushStatusText()}
+                  </div>
+                </div>
+              </div>
+              {pushSupported && !pushSubscribed && notificationPermission !== 'denied' && (
+                <Button onClick={handlePushSubscribe} size="sm">
+                  Aktivieren
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardContent className="p-0">
             <div className="flex items-center border-b px-4 py-3">

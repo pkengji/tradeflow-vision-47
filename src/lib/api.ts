@@ -631,6 +631,10 @@ async function updateNotificationSettings(settings: NotificationSettingsOut): Pr
   return http("/api/v1/notifications/settings", { method: "PUT", body: settings });
 }
 
+async function subscribeToPush(subscription: PushSubscriptionJSON): Promise<void> {
+  return http("/api/v1/push/subscribe", { method: "POST", body: subscription });
+}
+
 // Cashflows
 async function getCashflows(params?: { 
   date_from?: string; 
@@ -742,6 +746,7 @@ export const api = {
   updateTimezone,
   getNotificationSettings,
   updateNotificationSettings,
+  subscribeToPush,
 
   // Cashflows
   getCashflows,
