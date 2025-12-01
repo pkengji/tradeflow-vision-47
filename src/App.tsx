@@ -78,9 +78,7 @@ const App = () => (
               path="/bots/:id"
               element={
                 <ProtectedRoute>
-                  <DashboardLayout>
-                    <BotDetail />
-                  </DashboardLayout>
+                  <BotDetail />
                 </ProtectedRoute>
               }
             />
