@@ -456,7 +456,10 @@ async function getPosition(id: number): Promise<any> {
 }
 
 async function setPositionSlTp(position_id: number, params: { sl?: number; tp?: number }) {
-  return http(`/api/v1/positions/${position_id}/set-sl-tp`, { method: "POST", body: params });
+  const body: { stop_loss?: number; take_profit?: number } = {};
+  if (params.sl !== undefined) body.stop_loss = params.sl;
+  if (params.tp !== undefined) body.take_profit = params.tp;
+  return http(`/api/v1/positions/${position_id}/update-sl-tp`, { method: "POST", body });
 }
 
 async function closePosition(position_id: number) {
