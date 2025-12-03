@@ -105,11 +105,20 @@ export default function SignalsDetail() {
       if (manualSignal.error_message && manualSignal.error_message !== 'null' && manualSignal.error_message !== '') {
         return manualSignal.error_message;
       }
-      // Check payload.error
-      if (manualSignal.payload && typeof manualSignal.payload === 'object' && 'error' in manualSignal.payload) {
-        const payloadError = String(manualSignal.payload.error);
-        if (payloadError && payloadError !== 'null' && payloadError !== 'undefined') {
-          return payloadError;
+      // Check payload.error - payload is a JSON string that needs parsing
+      if (manualSignal.payload) {
+        try {
+          const parsedPayload = typeof manualSignal.payload === 'string' 
+            ? JSON.parse(manualSignal.payload) 
+            : manualSignal.payload;
+          if (parsedPayload && typeof parsedPayload === 'object' && 'error' in parsedPayload) {
+            const payloadError = String(parsedPayload.error);
+            if (payloadError && payloadError !== 'null' && payloadError !== 'undefined') {
+              return payloadError;
+            }
+          }
+        } catch (e) {
+          // payload is not valid JSON, ignore
         }
       }
       return null;
