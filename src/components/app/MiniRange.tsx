@@ -41,7 +41,7 @@ function formatWithBestDecimals(value: number | null | undefined, best: number |
 const TRACK_Y_ADJUST_PX = -6; // + runter, - rauf
 const LABEL_GAP_PX = -11; // vertikal (Tip → Text)
 const LABEL_SIDE_GAP_PX = 5; // seitlich (Text ↔ Strich)
-const EDGE_INSET_PX = 4; // Abstand der Striche vom Rand zur Mitte
+const EDGE_INSET_PX = 0; // Striche am Rand (0 = kein Inset)
 
 function labelLeft(xPct: number, align: "left" | "center" | "right") {
   if (align === "left") return `calc(${xPct}% + ${LABEL_SIDE_GAP_PX}px)`;
