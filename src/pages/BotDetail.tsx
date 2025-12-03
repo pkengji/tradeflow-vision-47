@@ -83,6 +83,9 @@ export default function BotDetail() {
   const [sortBy, setSortBy] = useState<"symbol" | "leverage" | "multiplier">("symbol");
   const [addPairDialogOpen, setAddPairDialogOpen] = useState(false);
   const [selectedNewPairs, setSelectedNewPairs] = useState<string[]>([]);
+  
+  // Local input states for deferred validation
+  const [pairInputs, setPairInputs] = useState<Record<string, { leverage: string; einsatz: string }>>({});
   const [showUserSecret, setShowUserSecret] = useState(false);
   const [showApiSecret, setShowApiSecret] = useState(false);
 
@@ -739,21 +742,33 @@ export default function BotDetail() {
                     <div className="flex flex-col gap-0.5 w-14 shrink-0 ml-auto">
                       <span className="text-[9px] text-muted-foreground leading-tight">Leverage</span>
                       <Input
-                        type="number"
-                        min="0"
-                        max={maxLev}
-                        value={pair.leverage === "max" ? "" : pair.leverage}
-                        className="h-6 text-xs px-1.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        type="text"
+                        inputMode="numeric"
+                        value={pairInputs[pair.symbol]?.leverage ?? (pair.leverage === "max" ? "" : String(pair.leverage))}
+                        className="h-6 text-xs px-1.5"
                         onChange={(e) => {
-                          const val = e.target.value;
-                          if (val === "") {
+                          setPairInputs(prev => ({
+                            ...prev,
+                            [pair.symbol]: {
+                              ...prev[pair.symbol],
+                              leverage: e.target.value,
+                              einsatz: prev[pair.symbol]?.einsatz ?? String(pair.tvMultiplier)
+                            }
+                          }));
+                        }}
+                        onBlur={() => {
+                          const val = pairInputs[pair.symbol]?.leverage;
+                          if (val === undefined) return;
+                          const num = parseFloat(val);
+                          if (val === "" || isNaN(num) || num <= 0) {
                             updatePair(pair.symbol, { leverage: 10 });
                           } else {
-                            const num = parseFloat(val);
-                            if (!isNaN(num) && num >= 0) {
-                              updatePair(pair.symbol, { leverage: Math.min(num, maxLev) });
-                            }
+                            updatePair(pair.symbol, { leverage: Math.min(num, maxLev) });
                           }
+                          setPairInputs(prev => {
+                            const { [pair.symbol]: _, ...rest } = prev;
+                            return rest;
+                          });
                         }}
                       />
                     </div>
@@ -762,15 +777,34 @@ export default function BotDetail() {
                     <div className="flex flex-col gap-0.5 w-14 shrink-0">
                       <span className="text-[9px] text-muted-foreground leading-tight">Einsatz</span>
                       <Input
-                        type="number"
-                        step="0.1"
-                        value={pair.tvMultiplier}
-                        className="h-6 text-xs px-1.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        onChange={(e) =>
-                          updatePair(pair.symbol, {
-                            tvMultiplier: parseFloat(e.target.value) || 1.0,
-                          })
-                        }
+                        type="text"
+                        inputMode="decimal"
+                        value={pairInputs[pair.symbol]?.einsatz ?? String(pair.tvMultiplier)}
+                        className="h-6 text-xs px-1.5"
+                        onChange={(e) => {
+                          setPairInputs(prev => ({
+                            ...prev,
+                            [pair.symbol]: {
+                              ...prev[pair.symbol],
+                              leverage: prev[pair.symbol]?.leverage ?? (pair.leverage === "max" ? "" : String(pair.leverage)),
+                              einsatz: e.target.value
+                            }
+                          }));
+                        }}
+                        onBlur={() => {
+                          const val = pairInputs[pair.symbol]?.einsatz;
+                          if (val === undefined) return;
+                          const num = parseFloat(val);
+                          if (val === "" || isNaN(num) || num <= 0) {
+                            updatePair(pair.symbol, { tvMultiplier: 1.0 });
+                          } else {
+                            updatePair(pair.symbol, { tvMultiplier: num });
+                          }
+                          setPairInputs(prev => {
+                            const { [pair.symbol]: _, ...rest } = prev;
+                            return rest;
+                          });
+                        }}
                       />
                     </div>
 

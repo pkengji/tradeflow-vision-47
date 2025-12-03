@@ -18,21 +18,19 @@ import { getAllSymbols, getSymbolInfo, type SymbolInfo } from "@/lib/symbols";
 function formatWithBestDecimals(value: number | null | undefined, best: number | null | undefined): string {
   if (value == null || Number.isNaN(Number(value))) return "—";
 
-  // Wenn kein "best"-Wert da ist → normal mit max. 8 Nachkommastellen
-  if (best == null || Number.isNaN(Number(best))) {
-    return Number(value).toLocaleString(undefined, {
-      maximumFractionDigits: 8,
-    });
+  // Determine decimal places from best value
+  let decimals = 8; // default max
+  if (best != null && !Number.isNaN(Number(best))) {
+    const refStr = String(best);
+    const dot = refStr.indexOf(".");
+    decimals = dot >= 0 ? refStr.length - dot - 1 : 0;
   }
 
-  const refStr = String(best);
-  const dot = refStr.indexOf(".");
-  const decimals = dot >= 0 ? refStr.length - dot - 1 : 0;
-
-  return Number(value).toLocaleString(undefined, {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  });
+  // Format with ' as thousand separator and . as decimal separator
+  const fixed = Number(value).toFixed(decimals);
+  const [intPart, decPart] = fixed.split(".");
+  const withThousands = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+  return decPart ? `${withThousands}.${decPart}` : withThousands;
 }
 
 export default function TradeDetail() {
@@ -258,7 +256,7 @@ export default function TradeDetail() {
                     <div className="text-muted-foreground mb-0.5">QTY (Base)</div>
                     <div className="font-semibold">
                       {position.qty != null
-                        ? position.qty.toLocaleString(undefined, { maximumFractionDigits: 8 })
+                        ? formatWithBestDecimals(position.qty, position.qty)
                         : "—"}
                     </div>
                   </div>
