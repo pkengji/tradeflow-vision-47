@@ -21,6 +21,7 @@ import SettingsNotifications from './pages/SettingsNotifications';
 import SettingsPayments from './pages/Payments';
 import SettingsTime from './pages/SettingsTime';
 import SettingsOwner from './pages/SettingsOwner';
+import SettingsLiquidity from './pages/SettingsLiquidity';
 import NotFound from "@/pages/NotFound";
 import OutboxPage from "./pages/Outbox";
 
@@ -144,6 +145,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <SettingsOwner />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/settings/liquidity"
+              element={
+                <ProtectedRoute>
+                  <SettingsLiquidity />
                 </ProtectedRoute>
               }
             />

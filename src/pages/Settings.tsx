@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, User, Bell, Clock, Shield, Wallet } from "lucide-react";
+import { ChevronRight, User, Bell, Clock, Shield, Wallet, Droplets } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 type SettingsOption = {
@@ -41,6 +41,12 @@ export default function Settings() {
       label: 'Zeit',
       icon: <Clock className="w-5 h-5" />,
       path: '/settings/time',
+    },
+    {
+      id: 'liquidity',
+      label: 'Liquiditätstracker',
+      icon: <Droplets className="w-5 h-5" />,
+      path: '/settings/liquidity',
     },
     {
       id: 'owner',
