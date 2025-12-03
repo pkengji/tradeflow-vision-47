@@ -392,7 +392,7 @@ export default function TradeDetail() {
             </CardHeader>
             <CollapsibleContent>
               <CardContent className="pt-0">
-                <pre className="text-[10px] bg-muted/40 rounded p-2 max-h-48 overflow-x-auto overflow-y-auto whitespace-pre">
+                <pre className="text-[10px] bg-muted/40 rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap break-all">
                   {JSON.stringify(position, null, 2)}
                 </pre>
               </CardContent>
@@ -410,7 +410,7 @@ export default function TradeDetail() {
             </CardHeader>
             <CollapsibleContent>
               <CardContent className="pt-0">
-                <pre className="text-[10px] bg-muted/40 rounded p-2 max-h-48 overflow-x-auto overflow-y-auto whitespace-pre">
+                <pre className="text-[10px] bg-muted/40 rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap break-all">
                   {JSON.stringify(orders, null, 2)}
                 </pre>
               </CardContent>
