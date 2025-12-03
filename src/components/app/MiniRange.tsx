@@ -41,6 +41,7 @@ function formatWithBestDecimals(value: number | null | undefined, best: number |
 const TRACK_Y_ADJUST_PX = -6; // + runter, - rauf
 const LABEL_GAP_PX = -11; // vertikal (Tip → Text)
 const LABEL_SIDE_GAP_PX = 5; // seitlich (Text ↔ Strich)
+const EDGE_INSET_PX = 4; // Abstand der Striche vom Rand zur Mitte
 
 function labelLeft(xPct: number, align: "left" | "center" | "right") {
   if (align === "left") return `calc(${xPct}% + ${LABEL_SIDE_GAP_PX}px)`;
@@ -95,16 +96,16 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
               <div
                 className="absolute bg-zinc-500"
                 style={{
-                  [isEntryLeft ? 'left' : 'right']: 0,
-                  top: BAR_THICK_PX,
+                  [isEntryLeft ? 'left' : 'right']: EDGE_INSET_PX,
+                  top: 0,
                   width: 2,
-                  height: H_ENTRY,
+                  height: BAR_THICK_PX + H_ENTRY,
                 }}
               />
               <div
                 className="absolute whitespace-nowrap text-[10px] leading-tight"
                 style={{
-                  [isEntryLeft ? 'left' : 'right']: isEntryLeft ? 5 : 5,
+                  [isEntryLeft ? 'left' : 'right']: EDGE_INSET_PX + 5,
                   top: BAR_THICK_PX + H_ENTRY + LABEL_GAP_PX,
                 }}
               >
@@ -119,17 +120,17 @@ export default function MiniRange({ sl, entry, tp, mark, labelEntry = "ENTRY", s
                   <div
                     className="absolute bg-zinc-700 dark:bg-zinc-200"
                     style={{
-                      [!isEntryLeft ? 'left' : 'right']: 0,
-                      bottom: BAR_THICK_PX,
+                      [!isEntryLeft ? 'left' : 'right']: EDGE_INSET_PX,
+                      bottom: 0,
                       width: 2,
-                      height: H_MARK,
+                      height: BAR_THICK_PX + H_MARK,
                     }}
                   />
                   <div
                     className="absolute whitespace-nowrap text-[11px] font-medium"
                     style={{
-                      [!isEntryLeft ? 'left' : 'right']: 0,
-                      bottom: BAR_THICK_PX + H_MARK + LABEL_GAP_PX,
+                      [!isEntryLeft ? 'left' : 'right']: EDGE_INSET_PX,
+                      bottom: BAR_THICK_PX + H_MARK - 2,
                     }}
                   >
                     {(() => {
@@ -315,9 +316,9 @@ function Tick({
     return "translateX(-50%)"; // Center at position
   };
 
-  // vertical anchor at bar edge
-  const baseTop = direction === "down" ? barHeightPx : -8;
-  const lineTop = baseTop + TRACK_Y_ADJUST_PX;
+  // vertical anchor at bar edge - Striche gehen durch den Balken
+  const lineTop = direction === "down" ? 0 : -(heightPx - barHeightPx);
+  const lineHeight = direction === "down" ? barHeightPx + heightPx : heightPx;
   const labelTop =
     direction === "down"
       ? barHeightPx + heightPx + LABEL_GAP_PX + TRACK_Y_ADJUST_PX // unter der Spitze
@@ -331,10 +332,10 @@ function Tick({
       <div
         className={`absolute ${colorClass}`}
         style={{
-          left: `${xPct}%`,
+          left: `calc(${xPct}% + ${xPct < 10 ? EDGE_INSET_PX : xPct > 90 ? -EDGE_INSET_PX : 0}px)`,
           top: lineTop,
           width: 2,
-          height: heightPx,
+          height: lineHeight,
           transform,
         }}
       />
@@ -343,7 +344,7 @@ function Tick({
         <div
           className="absolute whitespace-nowrap text-[10px] leading-tight"
           style={{
-            left: labelLeft(xPct, align),
+            left: `calc(${labelLeft(xPct, align)} + ${xPct < 10 ? EDGE_INSET_PX : xPct > 90 ? -EDGE_INSET_PX : 0}px)`,
             top: labelTop,
             transform,
           }}
@@ -386,12 +387,14 @@ function MarkLabel({
     return "translateX(-50%)";
   };
 
-  const top = `calc(0px - ${tickHeightPx}px - ${labelGapPx}px)`;
+  // Label näher am Balken positionieren
+  const top = `calc(0px - ${tickHeightPx}px - ${labelGapPx - 6}px)`;
+  const xOffset = xPct < 10 ? EDGE_INSET_PX : xPct > 90 ? -EDGE_INSET_PX : 0;
 
   return (
     <div
       className="absolute whitespace-nowrap text-[11px] font-medium"
-      style={{ left: labelLeft(xPct, align), top, transform: getTransform() }}
+      style={{ left: `calc(${labelLeft(xPct, align)} + ${xOffset}px)`, top, transform: getTransform() }}
     >
       {percent != null && (
         <span className={percentColorClass}>{`${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%`}</span>
