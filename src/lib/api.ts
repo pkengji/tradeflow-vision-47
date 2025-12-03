@@ -187,7 +187,17 @@ export type OutboxItem = {
   id: number;
   bot_id: number;
   kind: string;
-  status: "queued" | "approved" | "rejected" | "sent" | "failed" | "waiting_for_approval" | "completed" | "pending" | "ok" | "error";
+  status:
+    | "queued"
+    | "approved"
+    | "rejected"
+    | "sent"
+    | "failed"
+    | "waiting_for_approval"
+    | "completed"
+    | "pending"
+    | "ok"
+    | "error";
   position_id?: number | null;
   payload?: Record<string, any> | null;
   created_at: string;
@@ -421,6 +431,7 @@ async function getPositions(params?: PositionsParams): Promise<{ items: Position
       exit_price: p.exit_price ?? null,
       exit_price_best: p.exit_price_best ?? null,
       exit_price_vwap: p.exit_price_vwap ?? null,
+      risk_amount_usdt: p.risk_amount_usdt ?? null,
       mark_price: p.mark_price ?? null,
       sl: p.sl_price ?? null,
       tp: p.tp_price ?? null,
@@ -698,10 +709,10 @@ async function subscribeToPush(subscription: PushSubscriptionJSON): Promise<void
 }
 
 // Cashflows
-async function getCashflows(params?: { 
-  date_from?: string; 
-  date_to?: string; 
-  direction?: string 
+async function getCashflows(params?: {
+  date_from?: string;
+  date_to?: string;
+  direction?: string;
 }): Promise<CashflowOut[]> {
   return http<CashflowOut[]>("/api/v1/cashflows", { query: params });
 }
@@ -720,10 +731,13 @@ async function createCashflow(data: {
   return http<CashflowOut>("/api/v1/cashflows/manual", { method: "POST", body: payload });
 }
 
-async function updateCashflow(id: number, data: {
-  amount_usdt: number;
-  date: string;
-}): Promise<CashflowOut> {
+async function updateCashflow(
+  id: number,
+  data: {
+    amount_usdt: number;
+    date: string;
+  },
+): Promise<CashflowOut> {
   return http<CashflowOut>(`/api/v1/cashflows/${id}`, { method: "PUT", body: data });
 }
 
