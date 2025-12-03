@@ -17,24 +17,23 @@ type Props = {
 };
 
 // Formatierung mit gleicher Dezimalstellen-Logik wie in TradeDetail.tsx
+// Uses ' as thousand separator and . as decimal separator
 function formatWithBestDecimals(value: number | null | undefined, best: number | null | undefined): string {
   if (value == null || Number.isNaN(Number(value))) return "—";
 
-  // Wenn kein "best"-Wert da ist → normal mit max. 8 Nachkommastellen
-  if (best == null || Number.isNaN(Number(best))) {
-    return Number(value).toLocaleString(undefined, {
-      maximumFractionDigits: 8,
-    });
+  // Determine decimal places from best value
+  let decimals = 8; // default max
+  if (best != null && !Number.isNaN(Number(best))) {
+    const refStr = String(best);
+    const dot = refStr.indexOf(".");
+    decimals = dot >= 0 ? refStr.length - dot - 1 : 0;
   }
 
-  const refStr = String(best);
-  const dot = refStr.indexOf(".");
-  const decimals = dot >= 0 ? refStr.length - dot - 1 : 0;
-
-  return Number(value).toLocaleString(undefined, {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  });
+  // Format with ' as thousand separator and . as decimal separator
+  const fixed = Number(value).toFixed(decimals);
+  const [intPart, decPart] = fixed.split(".");
+  const withThousands = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+  return decPart ? `${withThousands}.${decPart}` : withThousands;
 }
 
 // Layout-Feinjustage (global)
