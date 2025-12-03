@@ -77,7 +77,7 @@ export default function OutboxPage() {
               {r.payload && (
                 <>
                   <div className="mt-2 text-[11px] text-muted-foreground">Payload</div>
-                  <pre className="mt-1 text-xs bg-muted/40 rounded p-2 overflow-auto">
+                  <pre className="mt-1 text-xs bg-muted/40 rounded p-2 max-h-48 overflow-x-auto overflow-y-auto whitespace-pre">
                     {JSON.stringify(r.payload, null, 2)}
                   </pre>
                 </>
@@ -100,7 +100,7 @@ export default function OutboxPage() {
               {previewById[r.id] && (
                 <>
                   <div className="mt-3 text-[11px] text-muted-foreground">Dispatch Preview</div>
-                  <pre className="mt-1 text-xs bg-muted/40 rounded p-2 overflow-auto">
+                  <pre className="mt-1 text-xs bg-muted/40 rounded p-2 max-h-48 overflow-x-auto overflow-y-auto whitespace-pre">
                     {JSON.stringify(previewById[r.id], null, 2)}
                   </pre>
                 </>
