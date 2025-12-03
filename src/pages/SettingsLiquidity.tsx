@@ -261,36 +261,49 @@ export default function SettingsLiquidity() {
     },
   });
 
-  // Handle quantile input change with validation (1-99)
+  // Handle quantile input change (allow any value while editing)
   const handleQuantileChange = (index: number, value: string) => {
     const newInputs = [...quantileInputs];
     newInputs[index] = value;
     setQuantileInputs(newInputs);
-
-    const num = parseInt(value, 10);
-    if (!isNaN(num)) {
-      const clamped = Math.max(1, Math.min(99, num));
-      const newQuantiles = [...quantiles];
-      newQuantiles[index] = clamped;
-      setQuantiles(newQuantiles);
-      if (clamped !== num) {
-        newInputs[index] = String(clamped);
-        setQuantileInputs(newInputs);
-      }
-    }
   };
 
-  // Handle slippage input change
+  // Handle quantile blur - validate and clamp to 1-99
+  const handleQuantileBlur = (index: number) => {
+    const value = quantileInputs[index];
+    const num = parseInt(value, 10);
+    const clamped = isNaN(num) || num < 1 ? 1 : num > 99 ? 99 : num;
+    
+    const newInputs = [...quantileInputs];
+    newInputs[index] = String(clamped);
+    setQuantileInputs(newInputs);
+    
+    const newQuantiles = [...quantiles];
+    newQuantiles[index] = clamped;
+    setQuantiles(newQuantiles);
+  };
+
+  // Handle slippage input change (allow any value while editing)
   const handleSlippageChange = (index: number, value: string) => {
     const newInputs = [...slippageInputs];
     newInputs[index] = value;
     setSlippageInputs(newInputs);
+  };
 
+  // Handle slippage blur - validate
+  const handleSlippageBlur = (index: number) => {
+    const value = slippageInputs[index];
     const num = parseFloat(value);
+    
     if (!isNaN(num) && num > 0) {
       const newSlippages = [...targetSlippages];
       newSlippages[index] = num;
       setTargetSlippages(newSlippages);
+    } else {
+      // Reset to previous valid value
+      const newInputs = [...slippageInputs];
+      newInputs[index] = String(targetSlippages[index]);
+      setSlippageInputs(newInputs);
     }
   };
 
@@ -319,9 +332,12 @@ export default function SettingsLiquidity() {
     );
   };
 
-  // Format number with thousand separator
-  const formatNumber = (n: number): string => {
-    return n.toLocaleString("de-CH", { maximumFractionDigits: 0 });
+  // Format number with ' as thousand separator and . as decimal separator
+  const formatNumber = (n: number, decimals = 0): string => {
+    const fixed = n.toFixed(decimals);
+    const [intPart, decPart] = fixed.split(".");
+    const withThousands = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+    return decPart ? `${withThousands}.${decPart}` : withThousands;
   };
 
   // Get first_ts_utc for selected symbol
@@ -454,12 +470,12 @@ export default function SettingsLiquidity() {
                 {quantileInputs.map((val, i) => (
                   <Input
                     key={i}
-                    type="number"
-                    min={1}
-                    max={99}
+                    type="text"
+                    inputMode="numeric"
                     value={val}
                     onChange={(e) => handleQuantileChange(i, e.target.value)}
-                    className="w-16 text-sm text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    onBlur={() => handleQuantileBlur(i)}
+                    className="w-16 text-sm text-center"
                   />
                 ))}
               </div>
@@ -481,11 +497,11 @@ export default function SettingsLiquidity() {
             <div className="space-y-2">
               <Label className="text-xs">Positionsgrösse (USDT)</Label>
               <Input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 value={positionSize}
                 onChange={(e) => setPositionSize(e.target.value)}
                 placeholder="z.B. 3000"
-                className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
             </div>
 
@@ -532,11 +548,12 @@ export default function SettingsLiquidity() {
                 {slippageInputs.map((val, i) => (
                   <div key={i} className="flex items-center gap-1">
                     <Input
-                      type="number"
-                      step="0.01"
+                      type="text"
+                      inputMode="decimal"
                       value={val}
                       onChange={(e) => handleSlippageChange(i, e.target.value)}
-                      className="w-20 text-sm text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      onBlur={() => handleSlippageBlur(i)}
+                      className="w-20 text-sm text-center"
                     />
                     <span className="text-xs text-muted-foreground">%</span>
                   </div>
