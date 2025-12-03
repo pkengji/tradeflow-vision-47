@@ -273,7 +273,7 @@ export default function TradeDetailPanel({ positionId }: Props) {
             </CardHeader>
             <CollapsibleContent>
               <CardContent className="pt-0">
-                <pre className="text-[10px] overflow-auto bg-muted/40 rounded p-2 max-h-48">
+                <pre className="text-[10px] bg-muted/40 rounded p-2 max-h-48 overflow-x-auto overflow-y-auto whitespace-pre">
                   {JSON.stringify(position, null, 2)}
                 </pre>
               </CardContent>
@@ -291,7 +291,7 @@ export default function TradeDetailPanel({ positionId }: Props) {
             </CardHeader>
             <CollapsibleContent>
               <CardContent className="pt-0">
-                <pre className="text-[10px] overflow-auto bg-muted/40 rounded p-2 max-h-48">
+                <pre className="text-[10px] bg-muted/40 rounded p-2 max-h-48 overflow-x-auto overflow-y-auto whitespace-pre">
                   {JSON.stringify(orders, null, 2)}
                 </pre>
               </CardContent>
@@ -309,7 +309,7 @@ export default function TradeDetailPanel({ positionId }: Props) {
             </CardHeader>
             <CollapsibleContent>
               <CardContent className="pt-0">
-                <pre className="text-[10px] overflow-auto bg-muted/40 rounded p-2 max-h-48">
+                <pre className="text-[10px] bg-muted/40 rounded p-2 max-h-48 overflow-x-auto overflow-y-auto whitespace-pre">
                   {JSON.stringify(funding, null, 2)}
                 </pre>
               </CardContent>

@@ -54,7 +54,7 @@ export default function SignalDetail() {
   const statusVariant = signal.status === 'sent' || signal.status === 'approved' ? 'default' : signal.status === 'failed' ? 'destructive' : 'secondary';
 
   return (
-    <DashboardLayout pageTitle={`Signal #${signalId}`} mobileHeaderLeft={BackButton}>
+    <DashboardLayout pageTitle={`Signal #${signalId}`} mobileHeaderLeft={BackButton} desktopHeaderLeft={BackButton}>
       <div className="space-y-3 p-4 pb-24">
         {/* Header Card */}
         <Card>
@@ -98,7 +98,7 @@ export default function SignalDetail() {
             </CardHeader>
             <CollapsibleContent>
               <CardContent className="pt-0">
-                <pre className="text-[10px] overflow-auto bg-muted/40 rounded p-2 max-h-96">
+                <pre className="text-[10px] bg-muted/40 rounded p-2 max-h-96 overflow-x-auto overflow-y-auto whitespace-pre">
                   {JSON.stringify(signal, null, 2)}
                 </pre>
               </CardContent>

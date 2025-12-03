@@ -149,6 +149,7 @@ export type PositionListItem = {
   exit_price?: number | null;
   exit_price_best?: number | null;
   exit_price_vwap?: number | null;
+  risk_amount_usdt?: number | null;
   mark_price?: number | null;
   sl?: number | null;
   tp?: number | null;
