@@ -217,6 +217,10 @@ export type TvSignal = {
   tv_ts: string;
   stop_loss_tv?: number | null;
   take_profit_tv?: number | null;
+  entry_price_trigger?: number | null;
+  tv_risk_amount?: number | null;
+  rrr?: number | null;
+  raw_json?: string | null;
   created_at: string;
 };
 
