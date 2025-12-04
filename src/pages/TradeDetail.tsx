@@ -63,10 +63,11 @@ export default function TradeDetail() {
     }
   }, [position?.symbol]);
 
-  const { data: orders } = useQuery({
-    queryKey: ["orders", pid],
-    queryFn: () => api.getOrders(pid),
-    enabled: Number.isFinite(pid),
+  // Fetch TV Signal if position has tv_signal_id
+  const { data: tvSignal } = useQuery({
+    queryKey: ["tvSignal", position?.tv_signal_id],
+    queryFn: () => api.getTvSignal(position!.tv_signal_id!),
+    enabled: !!position?.tv_signal_id,
   });
 
   const isOpen = position?.status === "open";
@@ -79,7 +80,7 @@ export default function TradeDetail() {
 
   // Collapsible states
   const [positionOpen, setPositionOpen] = useState(false);
-  const [ordersOpen, setOrdersOpen] = useState(false);
+  const [tvSignalOpen, setTvSignalOpen] = useState(false);
 
   // --- Mutations
   const closeMutation = useMutation({
@@ -270,6 +271,18 @@ export default function TradeDetail() {
                     <div className="text-muted-foreground mb-0.5">Leverage</div>
                     <div className="font-semibold">{position.leverage || "—"}x</div>
                   </div>
+                  {tvSignal?.tv_risk_amount != null && (
+                    <div>
+                      <div className="text-muted-foreground mb-0.5">Einsatz</div>
+                      <div className="font-semibold">{formatCurrency(tvSignal.tv_risk_amount)}</div>
+                    </div>
+                  )}
+                  {tvSignal?.rrr != null && (
+                    <div>
+                      <div className="text-muted-foreground mb-0.5">Risk/Reward</div>
+                      <div className="font-semibold">{tvSignal.rrr}</div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-1">
@@ -398,23 +411,25 @@ export default function TradeDetail() {
           </Collapsible>
         </Card>
 
-        <Card>
-          <Collapsible open={ordersOpen} onOpenChange={setOrdersOpen}>
-            <CardHeader className="cursor-pointer pb-2" onClick={() => setOrdersOpen(!ordersOpen)}>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm">Orders (Raw JSON)</CardTitle>
-                {ordersOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-              </div>
-            </CardHeader>
-            <CollapsibleContent>
-              <CardContent className="pt-0">
-                <pre className="text-[10px] bg-muted/40 rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap break-all">
-                  {JSON.stringify(orders, null, 2)}
-                </pre>
-              </CardContent>
-            </CollapsibleContent>
-          </Collapsible>
-        </Card>
+        {tvSignal && (
+          <Card>
+            <Collapsible open={tvSignalOpen} onOpenChange={setTvSignalOpen}>
+              <CardHeader className="cursor-pointer pb-2" onClick={() => setTvSignalOpen(!tvSignalOpen)}>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm">TV Signal (Raw JSON)</CardTitle>
+                  {tvSignalOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                </div>
+              </CardHeader>
+              <CollapsibleContent>
+                <CardContent className="pt-0">
+                  <pre className="text-[10px] bg-muted/40 rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap break-all">
+                    {JSON.stringify(tvSignal, null, 2)}
+                  </pre>
+                </CardContent>
+              </CollapsibleContent>
+            </Collapsible>
+          </Card>
+        )}
       </div>
 
       {/* Fixed Action Bar */}
