@@ -271,18 +271,14 @@ export default function TradeDetail() {
                     <div className="text-muted-foreground mb-0.5">Leverage</div>
                     <div className="font-semibold">{position.leverage || "—"}x</div>
                   </div>
-                  {tvSignal?.tv_risk_amount != null && (
-                    <div>
-                      <div className="text-muted-foreground mb-0.5">Einsatz</div>
-                      <div className="font-semibold">{formatCurrency(tvSignal.tv_risk_amount)}</div>
-                    </div>
-                  )}
-                  {tvSignal?.rrr != null && (
-                    <div>
-                      <div className="text-muted-foreground mb-0.5">Risk/Reward</div>
-                      <div className="font-semibold">{tvSignal.rrr}</div>
-                    </div>
-                  )}
+                  <div>
+                    <div className="text-muted-foreground mb-0.5">Einsatz</div>
+                    <div className="font-semibold">{tvSignal?.tv_risk_amount != null ? formatCurrency(tvSignal.tv_risk_amount) : "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground mb-0.5">Risk/Reward</div>
+                    <div className="font-semibold">{tvSignal?.rrr != null ? tvSignal.rrr : "—"}</div>
+                  </div>
                 </div>
 
                 <div className="pt-1">
@@ -411,25 +407,27 @@ export default function TradeDetail() {
           </Collapsible>
         </Card>
 
-        {tvSignal && (
-          <Card>
-            <Collapsible open={tvSignalOpen} onOpenChange={setTvSignalOpen}>
-              <CardHeader className="cursor-pointer pb-2" onClick={() => setTvSignalOpen(!tvSignalOpen)}>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm">TV Signal (Raw JSON)</CardTitle>
-                  {tvSignalOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                </div>
-              </CardHeader>
-              <CollapsibleContent>
-                <CardContent className="pt-0">
+        <Card>
+          <Collapsible open={tvSignalOpen} onOpenChange={setTvSignalOpen}>
+            <CardHeader className="cursor-pointer pb-2" onClick={() => setTvSignalOpen(!tvSignalOpen)}>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm">TV Signal (Raw JSON)</CardTitle>
+                {tvSignalOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              </div>
+            </CardHeader>
+            <CollapsibleContent>
+              <CardContent className="pt-0">
+                {tvSignal ? (
                   <pre className="text-[10px] bg-muted/40 rounded p-2 max-h-48 overflow-y-auto whitespace-pre-wrap break-all">
                     {JSON.stringify(tvSignal, null, 2)}
                   </pre>
-                </CardContent>
-              </CollapsibleContent>
-            </Collapsible>
-          </Card>
-        )}
+                ) : (
+                  <div className="text-sm text-muted-foreground">Kein TV Signal vorhanden</div>
+                )}
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
       </div>
 
       {/* Fixed Action Bar */}
