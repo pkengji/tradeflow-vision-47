@@ -523,7 +523,7 @@ export default function SettingsLiquidity() {
                         <tr key={q} className="border-t">
                           <td className="p-2">{q}%</td>
                           <td className="p-2 text-right">
-                            {slippage !== undefined ? `${(slippage * 100).toFixed(4)}%` : "—"}
+                            {slippage !== undefined ? `${slippage}%` : "—"}
                           </td>
                         </tr>
                       );
