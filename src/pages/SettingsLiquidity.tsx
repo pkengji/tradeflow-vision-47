@@ -570,7 +570,7 @@ export default function SettingsLiquidity() {
                   <thead className="bg-muted">
                     <tr>
                       <th className="text-left p-2 font-medium">Quantil</th>
-                      {targetSlippages.map((slip) => (
+                      {targetSlippages.slice(0, 2).map((slip) => (
                         <th key={slip} className="text-right p-2 font-medium">
                           {slip}%
                         </th>
@@ -581,13 +581,13 @@ export default function SettingsLiquidity() {
                     {quantiles.map((q) => (
                       <tr key={q} className="border-t">
                         <td className="p-2">{q}%</td>
-                        {targetSlippages.map((slip) => {
+                        {targetSlippages.slice(0, 2).map((slip) => {
                           const slipKey = String(slip);
-                          const sizeData = summary.max_size_multi_usdt[slipKey];
+                          const sizeData = summary.max_size_multi_usdt?.[slipKey];
                           const size = sizeData?.[String(q)];
                           return (
                             <td key={slip} className="p-2 text-right">
-                              {size !== undefined ? formatNumber(size) : "—"}
+                              {size != null ? formatNumber(size) : "—"}
                             </td>
                           );
                         })}
