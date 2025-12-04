@@ -546,7 +546,7 @@ export default function SettingsLiquidity() {
             <div className="space-y-2">
               <Label className="text-xs">Ziel-Slippages (%)</Label>
               <div className="flex gap-2">
-                {slippageInputs.map((val, i) => (
+                {slippageInputs.slice(0, 2).map((val, i) => (
                   <div key={i} className="flex items-center gap-1">
                     <Input
                       type="text"
