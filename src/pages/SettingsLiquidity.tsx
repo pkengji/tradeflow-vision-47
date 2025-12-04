@@ -507,7 +507,7 @@ export default function SettingsLiquidity() {
 
             {summaryLoading ? (
               <div className="text-sm text-muted-foreground">Lade...</div>
-            ) : summary?.slippage_quantiles_pct ? (
+            ) : summary?.slippage_quantiles_pct && Object.keys(summary.slippage_quantiles_pct).length > 0 ? (
               <div className="border rounded-lg overflow-hidden">
                 <table className="w-full text-sm">
                   <thead className="bg-muted">
@@ -517,16 +517,16 @@ export default function SettingsLiquidity() {
                     </tr>
                   </thead>
                   <tbody>
-                    {quantiles.map((q) => (
-                      <tr key={q} className="border-t">
-                        <td className="p-2">{q}%</td>
-                        <td className="p-2 text-right">
-                          {summary.slippage_quantiles_pct[String(q)] !== undefined
-                            ? `${summary.slippage_quantiles_pct[String(q)].toFixed(4)}%`
-                            : "—"}
-                        </td>
-                      </tr>
-                    ))}
+                    {Object.entries(summary.slippage_quantiles_pct)
+                      .sort(([a], [b]) => parseFloat(a) - parseFloat(b))
+                      .map(([quantile, slippage]) => (
+                        <tr key={quantile} className="border-t">
+                          <td className="p-2">{quantile}%</td>
+                          <td className="p-2 text-right">
+                            {(slippage * 100).toFixed(4)}%
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>
@@ -563,38 +563,49 @@ export default function SettingsLiquidity() {
 
             {summaryLoading ? (
               <div className="text-sm text-muted-foreground">Lade...</div>
-            ) : summary?.max_size_multi_usdt ? (
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted">
-                    <tr>
-                      <th className="text-left p-2 font-medium">Quantil</th>
-                      {targetSlippages.map((slip) => (
-                        <th key={slip} className="text-right p-2 font-medium">
-                          {slip}%
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {quantiles.map((q) => (
-                      <tr key={q} className="border-t">
-                        <td className="p-2">{q}%</td>
-                        {targetSlippages.map((slip) => {
-                          const slipKey = String(slip);
-                          const sizeData = summary.max_size_multi_usdt[slipKey];
-                          const size = sizeData?.[String(q)];
-                          return (
-                            <td key={slip} className="p-2 text-right">
-                              {size !== undefined ? formatNumber(size) : "—"}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            ) : summary?.max_size_multi_usdt && Object.keys(summary.max_size_multi_usdt).length > 0 ? (
+              (() => {
+                // Get all unique quantile keys from all slippage entries
+                const allQuantileKeys = new Set<string>();
+                Object.values(summary.max_size_multi_usdt).forEach((sizeData) => {
+                  Object.keys(sizeData).forEach((k) => allQuantileKeys.add(k));
+                });
+                const sortedQuantiles = Array.from(allQuantileKeys).sort((a, b) => parseFloat(a) - parseFloat(b));
+                
+                return (
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted">
+                        <tr>
+                          <th className="text-left p-2 font-medium">Quantil</th>
+                          {targetSlippages.map((slip) => (
+                            <th key={slip} className="text-right p-2 font-medium">
+                              {slip}%
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sortedQuantiles.map((q) => (
+                          <tr key={q} className="border-t">
+                            <td className="p-2">{q}%</td>
+                            {targetSlippages.map((slip) => {
+                              const slipKey = String(slip);
+                              const sizeData = summary.max_size_multi_usdt[slipKey];
+                              const size = sizeData?.[q];
+                              return (
+                                <td key={slip} className="p-2 text-right">
+                                  {size !== undefined ? formatNumber(size) : "—"}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()
             ) : (
               <div className="text-sm text-muted-foreground">Keine Daten verfügbar</div>
             )}
